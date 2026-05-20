@@ -8,6 +8,7 @@ const keys = {
   visitors: `${STORE_PREFIX}visitors`,
   notices: `${STORE_PREFIX}notices`,
   staff: `${STORE_PREFIX}staff`,
+  staffSchedules: `${STORE_PREFIX}staffSchedules`,
   services: `${STORE_PREFIX}services`,
   serviceRequests: `${STORE_PREFIX}serviceRequests`,
   contactMessages: `${STORE_PREFIX}contactMessages`,
@@ -67,6 +68,7 @@ let asaasConfig = null;
 let asaasConfigLoading = false;
 let activityLogsCache = [];
 let activityLogsLoading = false;
+let scheduleFilterDate = new Date().toISOString().slice(0, 10);
 
 function apartments() {
   const list = [];
@@ -402,6 +404,8 @@ function getNotices() { return read(keys.notices, []); }
 function saveNotices(value) { write(keys.notices, value); }
 function getStaff() { return read(keys.staff, []); }
 function saveStaff(value) { write(keys.staff, value); }
+function getStaffSchedules() { return read(keys.staffSchedules, []); }
+function saveStaffSchedules(value) { write(keys.staffSchedules, value); }
 function getServices() { return read(keys.services, []); }
 function saveServices(value) { write(keys.services, value); }
 function getServiceRequests() { return read(keys.serviceRequests, []); }
@@ -623,13 +627,17 @@ function updateActiveSection() {
 
 async function logPortariaActivity(action, details = {}, entityType = '') {
   if (!backendAvailable || currentRole() !== 'portaria') return;
+  const safeDetails = { ...details };
+  if (safeDetails.photo) safeDetails.photo = '[foto registrada]';
+  if (safeDetails.labelText && String(safeDetails.labelText).length > 1000) safeDetails.labelText = `${String(safeDetails.labelText).slice(0, 1000)}...`;
+  if (safeDetails.rawText && String(safeDetails.rawText).length > 1000) safeDetails.rawText = `${String(safeDetails.rawText).slice(0, 1000)}...`;
   const payload = {
     action,
     entityType,
-    entityId: details.id || details.entityId || '',
-    apartment: details.apartment || '',
-    summary: details.summary || '',
-    details,
+    entityId: safeDetails.id || safeDetails.entityId || '',
+    apartment: safeDetails.apartment || '',
+    summary: safeDetails.summary || '',
+    details: safeDetails,
   };
   try {
     await apiRequest('/api/activity-logs', { method: 'POST', body: JSON.stringify(payload) });
@@ -747,6 +755,7 @@ function renderAll() {
   renderPackages();
   renderNotices();
   renderStaff();
+  renderStaffSchedules();
   renderContactCenter();
   renderServices();
   renderServiceRequests();
@@ -1011,6 +1020,7 @@ function setupBookings() {
   const aptSelect = $('[data-booking-apartment]');
   spaceSelect?.addEventListener('change', updateBookingFee);
   aptSelect?.addEventListener('change', updateBookingFee);
+  form?.querySelector('[name="target"]')?.addEventListener('change', () => renderContactCenter());
   form?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const data = new FormData(form);
@@ -1529,14 +1539,83 @@ function renderNoticeItem(notice) {
 }
 
 
+function staffStatusLabel(status) {
+  return {
+    disponivel: 'Disponível',
+    afastado: 'Afastado',
+    ausente: 'Ausente',
+    ferias: 'Férias',
+  }[status] || 'Disponível';
+}
+function staffStatusClass(status) {
+  return status === 'disponivel' || !status ? 'approved' : 'pending';
+}
+function todayLocalISO(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+function currentShift(date = new Date()) {
+  const hour = date.getHours();
+  if (hour >= 6 && hour < 12) return 'Manhã';
+  if (hour >= 12 && hour < 18) return 'Tarde';
+  return 'Noite';
+}
+function shiftOrder(shift) {
+  return { 'Manhã': 1, 'Tarde': 2, 'Noite': 3 }[shift] || 9;
+}
+function staffAvailable(person, dateISO = todayLocalISO()) {
+  if (!person || person.active === false) return false;
+  const status = person.status || 'disponivel';
+  if (status !== 'disponivel') return false;
+  const from = person.awayFrom || '';
+  const to = person.awayTo || '';
+  if (from && dateISO < from) return true;
+  if (from && to && dateISO >= from && dateISO <= to) return false;
+  if (from && !to && dateISO >= from) return false;
+  return true;
+}
+function onDutyStaff({ role = 'porteiro', date = todayLocalISO(), shift = currentShift() } = {}) {
+  const staff = getStaff();
+  const scheduledIds = getStaffSchedules()
+    .filter((item) => item.date === date && item.shift === shift)
+    .map((item) => item.staffId);
+  return staff.filter((person) => {
+    if (role && person.role !== role) return false;
+    if (!scheduledIds.includes(person.id)) return false;
+    return staffAvailable(person, date);
+  });
+}
+function onDutyPorters(date = todayLocalISO(), shift = currentShift()) {
+  return onDutyStaff({ role: 'porteiro', date, shift });
+}
+function availableStaffByRole(roleList, date = todayLocalISO()) {
+  const roles = Array.isArray(roleList) ? roleList : [roleList];
+  return getStaff().filter((item) => roles.includes(item.role) && staffAvailable(item, date));
+}
+function recipientHintForTarget(target) {
+  if (target === 'portaria') {
+    const shift = currentShift();
+    const list = isResident() ? onDutyPorters(todayLocalISO(), shift) : availableStaffByRole('porteiro');
+    if (!list.length) return `Nenhum porteiro disponível no turno ${shift}. O envio fica bloqueado até haver escala ativa.`;
+    return `Destinatário disponível: ${list.map((p) => p.name).join(', ')} • turno ${shift}.`;
+  }
+  const admins = availableStaffByRole(['sindico', 'subsindico']);
+  if (!admins.length) return 'Nenhum síndico/subsíndico disponível para receber mensagens.';
+  return `Destinatário(s) disponível(is): ${admins.map((p) => `${p.name} (${roleLabel(p.role)})`).join(', ')}.`;
+}
+
 function roleLabel(role) {
   return { sindico: 'Síndico', subsindico: 'Subsíndico', porteiro: 'Porteiro' }[role] || role || '-';
 }
 function activeStaffFor(target) {
-  const staff = getStaff().filter((item) => item.active !== false);
-  if (target === 'sindico') return staff.filter((item) => ['sindico', 'subsindico'].includes(item.role));
-  if (target === 'portaria') return staff.filter((item) => item.role === 'porteiro');
-  return staff;
+  if (target === 'sindico') return availableStaffByRole(['sindico', 'subsindico']);
+  if (target === 'portaria') {
+    if (isResident()) return onDutyPorters(todayLocalISO(), currentShift());
+    return availableStaffByRole('porteiro');
+  }
+  return getStaff().filter((item) => staffAvailable(item));
 }
 function primaryStaff(role = 'sindico') {
   const list = activeStaffFor(role);
@@ -1555,12 +1634,16 @@ function setupStaff() {
       email: data.get('email').trim(),
       whatsapp: data.get('whatsapp').trim(),
       active: Boolean(data.get('active')),
+      status: data.get('status') || 'disponivel',
+      awayFrom: data.get('awayFrom') || '',
+      awayTo: data.get('awayTo') || '',
       notes: data.get('notes').trim(),
       createdAt: nowISO(),
     };
     saveStaff([item, ...getStaff()]);
     form.reset();
     form.active.checked = true;
+    if (form.status) form.status.value = 'disponivel';
     $('[data-staff-message]').textContent = 'Cadastro de equipe salvo. Apenas o síndico pode alterar estes dados.';
     renderAll();
   });
@@ -1573,14 +1656,16 @@ function renderStaff() {
     <div class="item">
       <div class="item-row">
         <div>
-          <div class="item-title">${escapeHTML(item.name)} <span class="badge">${escapeHTML(roleLabel(item.role))}</span> ${item.active === false ? '<span class="badge badge--danger">Inativo</span>' : '<span class="badge badge--approved">Ativo</span>'}</div>
+          <div class="item-title">${escapeHTML(item.name)} <span class="badge">${escapeHTML(roleLabel(item.role))}</span> ${item.active === false ? '<span class="badge badge--danger">Inativo</span>' : '<span class="badge badge--approved">Ativo</span>'} <span class="status status--${staffStatusClass(item.status)}">${escapeHTML(staffStatusLabel(item.status))}</span></div>
           <div class="item-sub">E-mail: ${escapeHTML(item.email || 'não informado')} • WhatsApp: ${escapeHTML(item.whatsapp || 'não informado')}</div>
+          ${(item.awayFrom || item.awayTo) ? `<div class="item-sub">Período informado: ${escapeHTML(item.awayFrom || '-')} até ${escapeHTML(item.awayTo || '-')}</div>` : ''}
+          ${!staffAvailable(item) ? `<div class="item-sub"><strong>Bloqueado para mensagens automáticas enquanto estiver ${escapeHTML(staffStatusLabel(item.status).toLowerCase())}.</strong></div>` : ''}
           ${item.notes ? `<div class="item-sub">${escapeHTML(item.notes)}</div>` : ''}
         </div>
       </div>
       <div class="item-actions">
         <button class="btn btn--outline btn--sm" data-edit-staff="${item.id}">Editar</button>
-        <button class="btn btn--danger btn--sm" data-remove-staff="${item.id}">Remover</button>
+        <button class="btn btn--danger btn--sm" data-remove-staff="${item.id}">Excluir</button>
       </div>
     </div>`).join('') : empty('Nenhum síndico, subsíndico ou porteiro cadastrado.');
 }
@@ -1592,27 +1677,104 @@ function editStaff(id) {
   const role = prompt('Perfil (sindico, subsindico ou porteiro):', item.role) ?? item.role;
   const email = prompt('E-mail:', item.email || '') ?? item.email;
   const whatsapp = prompt('WhatsApp:', item.whatsapp || '') ?? item.whatsapp;
+  const status = prompt('Situação (disponivel, afastado, ausente ou ferias):', item.status || 'disponivel') ?? item.status;
+  const awayFrom = prompt('Início do afastamento/ausência/férias (AAAA-MM-DD), se houver:', item.awayFrom || '') ?? item.awayFrom;
+  const awayTo = prompt('Fim do afastamento/ausência/férias (AAAA-MM-DD), se houver:', item.awayTo || '') ?? item.awayTo;
   const notes = prompt('Observações:', item.notes || '') ?? item.notes;
-  const active = confirm('Manter este cadastro ativo? Clique em Cancelar para inativar.');
-  saveStaff(getStaff().map((staff) => staff.id === id ? { ...staff, name: name.trim(), role: String(role || item.role).trim(), email: String(email || '').trim(), whatsapp: String(whatsapp || '').trim(), notes: String(notes || '').trim(), active, updatedAt: nowISO() } : staff));
-  renderAll();
+  const active = confirm('Manter este cadastro ativo? Clique em Cancelar para inativar/excluir do recebimento.');
+  saveStaff(getStaff().map((staff) => staff.id === id ? { ...staff, name: name.trim(), role: String(role || item.role).trim(), email: String(email || '').trim(), whatsapp: String(whatsapp || '').trim(), status: String(status || 'disponivel').trim(), awayFrom: String(awayFrom || '').trim(), awayTo: String(awayTo || '').trim(), notes: String(notes || '').trim(), active, updatedAt: nowISO() } : staff));
+  fillStaffScheduleSelects(); renderAll();
 }
 function removeStaff(id) {
   if (!isSyndic()) return;
   if (!confirm('Remover este cadastro de equipe?')) return;
   saveStaff(getStaff().filter((item) => item.id !== id));
+  saveStaffSchedules(getStaffSchedules().filter((item) => item.staffId !== id));
+  fillStaffScheduleSelects(); renderAll();
+}
+
+function fillStaffScheduleSelects() {
+  const options = getStaff()
+    .filter((item) => item.active !== false)
+    .sort((a, b) => String(a.role).localeCompare(String(b.role)) || String(a.name).localeCompare(String(b.name)))
+    .map((item) => `<option value="${escapeHTML(item.id)}">${escapeHTML(item.name)} — ${escapeHTML(roleLabel(item.role))}${staffAvailable(item) ? '' : ' — indisponível'}</option>`)
+    .join('');
+  $$('[data-schedule-staff-select]').forEach((select) => { select.innerHTML = options || '<option value="">Cadastre a equipe primeiro</option>'; });
+}
+function setupStaffSchedules() {
+  const form = $('[data-staff-schedule-form]');
+  if (!form) return;
+  const dateField = $('[data-schedule-date-filter]');
+  const formDate = form.querySelector('[name="date"]');
+  if (formDate && !formDate.value) formDate.value = todayLocalISO();
+  if (dateField && !dateField.value) dateField.value = scheduleFilterDate;
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!isSyndic()) return;
+    const data = new FormData(form);
+    const staffId = data.get('staffId');
+    const person = getStaff().find((item) => item.id === staffId);
+    if (!person) { $('[data-schedule-message]').textContent = 'Selecione um funcionário cadastrado.'; return; }
+    const schedule = { id: uid('schedule'), staffId, staffName: person.name, staffRole: person.role, date: data.get('date'), shift: data.get('shift'), notes: data.get('notes')?.trim() || '', createdAt: nowISO() };
+    const exists = getStaffSchedules().some((item) => item.staffId === schedule.staffId && item.date === schedule.date && item.shift === schedule.shift);
+    if (exists && !confirm('Este funcionário já está escalado neste turno. Deseja adicionar mesmo assim?')) return;
+    saveStaffSchedules([schedule, ...getStaffSchedules()]);
+    $('[data-schedule-message]').textContent = 'Turno salvo na escala.';
+    form.reset();
+    if (formDate) formDate.value = schedule.date;
+    renderAll();
+  });
+  dateField?.addEventListener('change', () => { scheduleFilterDate = dateField.value || todayLocalISO(); renderStaffSchedules(); });
+}
+function renderStaffSchedules() {
+  fillStaffScheduleSelects();
+  const filter = $('[data-schedule-date-filter]');
+  if (filter && !filter.value) filter.value = scheduleFilterDate;
+  const date = filter?.value || scheduleFilterDate || todayLocalISO();
+  const box = $('[data-staff-schedule-list]');
+  if (!box) return;
+  const staff = getStaff();
+  const list = getStaffSchedules()
+    .filter((item) => item.date === date)
+    .sort((a, b) => shiftOrder(a.shift) - shiftOrder(b.shift) || String(a.staffName).localeCompare(String(b.staffName)));
+  const currentBox = $('[data-current-shift-summary]');
+  if (currentBox) {
+    const shift = currentShift();
+    const porters = onDutyPorters(todayLocalISO(), shift);
+    currentBox.innerHTML = `<strong>Agora: turno ${escapeHTML(shift)}</strong><br>${porters.length ? `Porteiro em atendimento: ${porters.map((p) => escapeHTML(p.name)).join(', ')}` : 'Nenhum porteiro disponível/escalado para o turno atual.'}`;
+  }
+  box.innerHTML = list.length ? list.map((item) => {
+    const person = staff.find((s) => s.id === item.staffId) || {};
+    const available = staffAvailable(person, item.date);
+    return `<div class="item">
+      <div class="item-row">
+        <div>
+          <div class="item-title">${escapeHTML(item.shift)} • ${escapeHTML(item.staffName || person.name || 'Equipe')} <span class="badge">${escapeHTML(roleLabel(item.staffRole || person.role))}</span></div>
+          <div class="item-sub">${available ? 'Disponível para atendimento/mensagens' : `Indisponível: ${escapeHTML(staffStatusLabel(person.status).toLowerCase())}`} ${item.notes ? `• ${escapeHTML(item.notes)}` : ''}</div>
+        </div>
+        <button class="btn btn--danger btn--sm" data-remove-staff-schedule="${item.id}">Excluir turno</button>
+      </div>
+    </div>`;
+  }).join('') : empty('Nenhum turno cadastrado para a data selecionada.');
+}
+function removeStaffSchedule(id) {
+  if (!isSyndic()) return;
+  if (!confirm('Excluir este turno da escala?')) return;
+  saveStaffSchedules(getStaffSchedules().filter((item) => item.id !== id));
   renderAll();
 }
 
+
 function setupContactCenter() {
   const form = $('[data-contact-form]');
+  form?.querySelector('[name="target"]')?.addEventListener('change', () => renderContactCenter());
   form?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const data = new FormData(form);
     const target = data.get('target');
     const channel = data.get('channel');
     const recipients = activeStaffFor(target);
-    if (!recipients.length) { $('[data-contact-message]').textContent = 'Nenhum destinatário ativo cadastrado para este setor.'; return; }
+    if (!recipients.length) { $('[data-contact-message]').textContent = recipientHintForTarget(target); renderContactCenter(); return; }
     const resident = currentResidentRecord() || {};
     const subject = `Contato do morador — unidade ${session?.apartment || resident.apartment || '-'}`;
     const message = `Mensagem enviada pelo sistema Vitória Régia\n\nOrigem: ${session?.name || resident.name || 'Morador'}\nUnidade: ${session?.apartment || resident.apartment || '-'}\nAssunto: ${data.get('subject')}\n\nMensagem:\n${data.get('message')}\n\nObservação: o contato do destinatário não foi revelado ao morador.`;
@@ -1637,6 +1799,15 @@ function setupContactCenter() {
   });
 }
 function renderContactCenter() {
+  const info = $('[data-current-contact-recipients]');
+  const form = $('[data-contact-form]');
+  const target = form ? (new FormData(form).get('target') || 'sindico') : 'sindico';
+  if (info) {
+    const recipients = activeStaffFor(target);
+    info.innerHTML = recipients.length
+      ? `<div class="item"><div class="item-title">${escapeHTML(recipientHintForTarget(target))}</div><div class="item-sub">O morador não visualiza e-mail nem WhatsApp dos destinatários.</div></div>`
+      : `<div class="empty-state">${escapeHTML(recipientHintForTarget(target))}</div>`;
+  }
   const history = $('[data-contact-history]');
   if (!history) return;
   let list = getContactMessages().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -2007,7 +2178,7 @@ function handleDocumentClick(event) {
     ['data-auto-visitor-whatsapp', (id) => notifyVisitorById(id, ['whatsapp'])], ['data-auto-visitor-email', (id) => notifyVisitorById(id, ['email'])],
     ['data-auto-package-whatsapp', (id) => notifyPackageById(id, ['whatsapp'])], ['data-auto-package-email', (id) => notifyPackageById(id, ['email'])],
     ['data-auto-resident-whatsapp', (id) => notifyResidentById(id, ['whatsapp'])], ['data-auto-resident-email', (id) => notifyResidentById(id, ['email'])],
-    ['data-edit-staff', editStaff], ['data-remove-staff', removeStaff],
+    ['data-edit-staff', editStaff], ['data-remove-staff', removeStaff], ['data-remove-staff-schedule', removeStaffSchedule],
     ['data-edit-service', editService], ['data-remove-service', removeService],
     ['data-approve-service-request', (id) => updateServiceRequest(id, 'approved')], ['data-cancel-service-request', (id) => updateServiceRequest(id, 'canceled')],
     ['data-refresh-activity-logs', async () => { await renderActivityLogs(true); }], ['data-export-activity-logs', exportActivityLogsCSV],
@@ -2023,6 +2194,7 @@ function handleDocumentChange(event) {
   if (target.matches('[data-space-name]')) updateSpace(target.dataset.spaceName, { name: target.value });
   if (target.matches('[data-space-fee]')) updateSpace(target.dataset.spaceFee, { fee: Number(target.value || 0) });
   if (target.matches('[data-activity-log-search]')) renderActivityLogsFromCache();
+  if (target.matches('[data-schedule-date-filter]')) { scheduleFilterDate = target.value || todayLocalISO(); renderStaffSchedules(); }
 }
 
 function setupPrint() { $('[data-print-boleto]')?.addEventListener('click', () => window.print()); }
@@ -2038,6 +2210,7 @@ async function init() {
   fillApartmentSelects();
   fillSpaceSelects();
   fillServiceSelects();
+  fillStaffScheduleSelects();
   setupCurrentDate();
   authSetup();
   navigationSetup();
@@ -2049,6 +2222,7 @@ async function init() {
   setupPackages();
   setupNotices();
   setupStaff();
+  setupStaffSchedules();
   setupContactCenter();
   setupServices();
   setupSettings();

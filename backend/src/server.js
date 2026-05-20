@@ -40,6 +40,7 @@ const DEFAULT_STATE = {
   visitors: [],
   notices: [],
   staff: [],
+  staffSchedules: [],
   services: [],
   serviceRequests: [],
   contactMessages: [],
@@ -143,6 +144,12 @@ function toJson(value) {
   return JSON.stringify(value || {});
 }
 
+function fromJson(value, fallback) {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (typeof value === 'object') return value;
+  try { return JSON.parse(value); } catch (_) { return fallback; }
+}
+
 function isoOrNow(value) {
   const date = value ? new Date(value) : new Date();
   return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
@@ -228,18 +235,18 @@ async function saveStoreToDatabase(nextStore) {
   try {
     await client.query('begin');
     await client.query(
-      `insert into app_meta (key, value, updated_at) values ('state', $1::jsonb, now())
-       on conflict (key) do update set value = excluded.value, updated_at = now()`,
+      `insert into app_meta (` + "`key`" + `, value, updated_at) values ('state', ?, now())
+       on duplicate key update value = values(value), updated_at = now()`,
       [toJson(nextStore.state || DEFAULT_STATE)]
     );
     await client.query(
-      `insert into notification_config (id, config, updated_at) values (1, $1::jsonb, now())
-       on conflict (id) do update set config = excluded.config, updated_at = now()`,
+      `insert into notification_config (id, config, updated_at) values (1, ?, now())
+       on duplicate key update config = values(config), updated_at = now()`,
       [toJson(nextStore.notificationConfig || DEFAULT_NOTIFICATION_CONFIG)]
     );
     await client.query(
-      `insert into asaas_config (id, config, updated_at) values (1, $1::jsonb, now())
-       on conflict (id) do update set config = excluded.config, updated_at = now()`,
+      `insert into asaas_config (id, config, updated_at) values (1, ?, now())
+       on duplicate key update config = values(config), updated_at = now()`,
       [toJson(nextStore.asaasConfig || DEFAULT_ASAAS_CONFIG)]
     );
     await mirrorStateToTables(client, nextStore.state || DEFAULT_STATE);
@@ -264,9 +271,9 @@ async function loadStoreFromDatabase() {
   `);
 
   return normalizeStore({
-    state: stateResult.rows[0]?.value || DEFAULT_STATE,
-    notificationConfig: configResult.rows[0]?.config || DEFAULT_NOTIFICATION_CONFIG,
-    asaasConfig: asaasConfigResult.rows[0]?.config || DEFAULT_ASAAS_CONFIG,
+    state: fromJson(stateResult.rows[0]?.value, DEFAULT_STATE),
+    notificationConfig: fromJson(configResult.rows[0]?.config, DEFAULT_NOTIFICATION_CONFIG),
+    asaasConfig: fromJson(asaasConfigResult.rows[0]?.config, DEFAULT_ASAAS_CONFIG),
     notificationLogs: logsResult.rows || [],
   });
 }
@@ -283,11 +290,11 @@ async function loadStore() {
       databaseReady = false;
       console.error('Banco de dados indisponível:', error.message);
       if (REQUIRE_DATABASE) {
-        throw new Error(`Banco obrigatório indisponível. Corrija as variáveis PGHOST/PGPORT/PGDATABASE/PGUSER/PGPASSWORD/PGSSLMODE no Render. Detalhe: ${error.message}`);
+        throw new Error(`Banco obrigatório indisponível. Corrija as variáveis MYSQL_HOST/MYSQL_PORT/MYSQL_DATABASE/MYSQL_USER/MYSQL_PASSWORD/MYSQL_SSL no Render. Detalhe: ${error.message}`);
       }
     }
   } else if (REQUIRE_DATABASE) {
-    throw new Error('Banco obrigatório não configurado. Informe DATABASE_URL ou PGHOST/PGDATABASE/PGUSER/PGPASSWORD nas Environment Variables do Render.');
+    throw new Error('Banco obrigatório não configurado. Informe DATABASE_URL ou MYSQL_HOST/MYSQL_DATABASE/MYSQL_USER/MYSQL_PASSWORD nas Environment Variables do Render.');
   }
   console.warn('Modo temporário por arquivo ativado porque REQUIRE_DATABASE=false. Não use em produção.');
   return readJsonFileFallback();

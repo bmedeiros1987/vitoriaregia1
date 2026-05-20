@@ -144,6 +144,7 @@
         <a href="#aprovacoes" data-nav data-roles="sindico"><span>✅</span> Aprovações</a>
         <a href="#moradores" data-nav data-roles="sindico"><span>🏠</span> Moradores</a>
         <a href="#equipe" data-nav data-roles="sindico"><span>🧑‍💼</span> Equipe</a>
+        <a href="#escala" data-nav data-roles="sindico"><span>🕒</span> Escala</a>
         <a href="#meu-cadastro" data-nav data-roles="morador"><span>👥</span> Meu cadastro</a>
         <a href="#reservas" data-nav data-roles="morador,sindico"><span>📅</span> Reservas</a>
         <a href="#calendario" data-nav data-roles="morador,sindico"><span>🗓️</span> Calendário</a>
@@ -260,14 +261,45 @@
             <label><span>Perfil</span><select name="role" required><option value="sindico">Síndico</option><option value="subsindico">Subsíndico</option><option value="porteiro">Porteiro</option></select></label>
             <label><span>E-mail interno para recebimento</span><input name="email" type="email" placeholder="não será exibido ao morador" /></label>
             <label><span>WhatsApp interno para recebimento</span><input name="whatsapp" type="tel" placeholder="não será exibido ao morador" /></label>
-            <label class="checkline checkline--boxed"><input type="checkbox" name="active" checked /><span>Cadastro ativo para receber mensagens do sistema</span></label>
-            <label><span>Observações / escala</span><textarea name="notes" rows="3" placeholder="Ex.: turno, função, observações internas"></textarea></label>
+            <label class="checkline checkline--boxed"><input type="checkbox" name="active" checked /><span>Cadastro ativo no sistema</span></label>
+            <div class="form-row">
+              <label><span>Situação</span><select name="status"><option value="disponivel">Disponível</option><option value="afastado">Afastado</option><option value="ausente">Ausente</option><option value="ferias">Férias</option></select></label>
+              <label><span>Início da indisponibilidade</span><input name="awayFrom" type="date" /></label>
+            </div>
+            <label><span>Fim da indisponibilidade</span><input name="awayTo" type="date" /></label>
+            <p class="form-hint">Quando estiver afastado, ausente ou de férias, o funcionário/síndico/subsíndico não receberá mensagens pelo sistema.</p>
+            <label><span>Observações internas</span><textarea name="notes" rows="3" placeholder="Ex.: função, restrição, observações internas"></textarea></label>
             <button class="btn btn--primary" type="submit">Salvar equipe</button>
             <p class="form-hint" data-staff-message></p>
           </form>
           <article class="panel">
             <div class="panel-header"><div><span class="eyebrow">Contatos internos</span><h2>Equipe cadastrada</h2></div></div>
             <div data-staff-list class="list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="escala" class="section" data-section data-roles="sindico">
+        <div class="section-head">
+          <div><span class="eyebrow">Gestão de equipe</span><h2>Escala por turno</h2><p>Defina quem estará de serviço nos turnos manhã, tarde e noite. O morador verá apenas o porteiro escalado e disponível no turno atual.</p></div>
+        </div>
+        <div class="content-grid content-grid--two">
+          <form class="panel form-card" data-staff-schedule-form autocomplete="off">
+            <div class="panel-header"><div><span class="eyebrow">Novo turno</span><h2>Adicionar à escala</h2></div></div>
+            <label><span>Funcionário</span><select name="staffId" required data-schedule-staff-select></select></label>
+            <div class="form-row">
+              <label><span>Data</span><input name="date" type="date" required /></label>
+              <label><span>Turno</span><select name="shift" required><option>Manhã</option><option>Tarde</option><option>Noite</option></select></label>
+            </div>
+            <label><span>Observações do turno</span><textarea name="notes" rows="3" placeholder="Ex.: troca de turno, cobertura, substituição"></textarea></label>
+            <button class="btn btn--primary" type="submit">Salvar turno</button>
+            <p class="form-hint" data-schedule-message></p>
+          </form>
+          <article class="panel">
+            <div class="panel-header"><div><span class="eyebrow">Hoje</span><h2>Atendimento atual</h2></div></div>
+            <div class="empty-state" data-current-shift-summary>Carregando turno atual...</div>
+            <label class="filter-inline"><span>Ver escala da data</span><input type="date" data-schedule-date-filter /></label>
+            <div data-staff-schedule-list class="list"></div>
           </article>
         </div>
       </section>
@@ -414,6 +446,7 @@ João Souza - CPF ***.000.***-**"></textarea></label>
             <button class="btn btn--primary" type="submit">Enviar sem revelar contatos</button>
             <p class="form-hint" data-contact-message></p>
           </form>
+          <article class="panel"><div class="panel-header"><div><span class="eyebrow">Destinatário disponível</span><h2>Contato sem expor dados</h2></div></div><div data-current-contact-recipients class="list"></div></article>
           <article class="panel"><div class="panel-header"><div><span class="eyebrow">Histórico</span><h2>Mensagens do sistema</h2></div></div><div data-contact-history class="list"></div></article>
         </div>
       </section>

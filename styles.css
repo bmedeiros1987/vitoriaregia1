@@ -996,3 +996,28 @@ body.no-scroll { overflow: hidden; }
     min-height: 44px;
   }
 }
+
+/* Escala e disponibilidade da equipe */
+.filter-inline {
+  display: grid;
+  gap: 6px;
+  margin: 14px 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+.filter-inline input {
+  width: 100%;
+}
+.item-title .status {
+  margin-left: 6px;
+}
+.badge--danger {
+  background: rgba(220, 38, 38, 0.12);
+  color: #b91c1c;
+  border-color: rgba(220, 38, 38, 0.22);
+}
+.badge--approved {
+  background: rgba(22, 163, 74, 0.12);
+  color: #15803d;
+  border-color: rgba(22, 163, 74, 0.22);
+}
