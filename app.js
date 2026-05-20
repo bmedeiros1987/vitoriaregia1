@@ -61,7 +61,8 @@ const defaultSettings = {
 let session = null;
 let calendarDate = new Date();
 let currentBoletoBookingId = null;
-let currentVisitorPhoto = '';
+let currentVisitorPhoto = null;
+let currentVisitorPhotoPreview = '';
 let notificationConfig = null;
 let notificationConfigLoading = false;
 let asaasConfig = null;
@@ -458,11 +459,100 @@ function roleAllowed(rolesCsv) {
   if (!rolesCsv) return true;
   return rolesCsv.split(',').map((item) => item.trim()).includes(currentRole());
 }
+
+function currentStaffRecord() {
+  const email = normalizeEmail(session?.email || '');
+  return getStaff().find((person) => {
+    if (person.active === false) return false;
+    if (session?.staffId && person.id === session.staffId) return true;
+    return email && normalizeEmail(person.email || '') === email;
+  }) || null;
+}
+function canManageSchedule() {
+  if (isSyndic()) return true;
+  const person = currentStaffRecord();
+  return Boolean(person && person.canManageSchedule && staffAvailable(person));
+}
+function sanitizeDetailsForLog(details = {}) {
+  const clone = JSON.parse(JSON.stringify(details || {}));
+  const walk = (obj) => {
+    if (!obj || typeof obj !== 'object') return obj;
+    for (const key of Object.keys(obj)) {
+      const value = obj[key];
+      if (key === 'dataUrl' || (key === 'photo' && typeof value === 'string' && value.startsWith('data:'))) obj[key] = '[arquivo/foto não armazenado no banco]';
+      else if (typeof value === 'string' && value.length > 1000) obj[key] = `${value.slice(0, 1000)}...`;
+      else if (typeof value === 'object') walk(value);
+    }
+    return obj;
+  };
+  return walk(clone);
+}
+function downloadTextFile(filename, content, type = 'text/plain;charset=utf-8') {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Não foi possível ler o arquivo.'));
+    reader.readAsText(file, 'utf-8');
+  });
+}
+function icsEscape(value = '') {
+  return String(value || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+}
+function toICSDate(date) {
+  return String(date || '').replace(/-/g, '');
+}
+function addDaysISO(date, days = 1) {
+  const d = new Date(`${date}T12:00:00`);
+  d.setDate(d.getDate() + days);
+  return toISODate(d);
+}
+function shiftTimes(shift = '') {
+  const normalized = normalizeText(shift);
+  if (normalized.includes('manha')) return ['08:00', '12:00'];
+  if (normalized.includes('tarde')) return ['12:00', '18:00'];
+  if (normalized.includes('noite')) return ['18:00', '23:59'];
+  return ['08:00', '18:00'];
+}
+function toICSDateTime(date, time) {
+  return `${String(date || '').replace(/-/g, '')}T${String(time || '08:00').replace(':', '')}00`;
+}
+function makeICS(events = []) {
+  const now = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Vitoria Regia//Sistema Condominial//PT-BR', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
+  events.forEach((event) => {
+    lines.push('BEGIN:VEVENT');
+    lines.push(`UID:${icsEscape(event.uid || uid('ics'))}@vitoria-regia`);
+    lines.push(`DTSTAMP:${now}`);
+    if (event.allDay) {
+      lines.push(`DTSTART;VALUE=DATE:${toICSDate(event.date)}`);
+      lines.push(`DTEND;VALUE=DATE:${toICSDate(addDaysISO(event.date, 1))}`);
+    } else {
+      lines.push(`DTSTART:${toICSDateTime(event.date, event.start || '08:00')}`);
+      lines.push(`DTEND:${toICSDateTime(event.date, event.end || '18:00')}`);
+    }
+    lines.push(`SUMMARY:${icsEscape(event.summary || 'Evento Vitória Régia')}`);
+    if (event.description) lines.push(`DESCRIPTION:${icsEscape(event.description)}`);
+    if (event.location) lines.push(`LOCATION:${icsEscape(event.location)}`);
+    lines.push('END:VEVENT');
+  });
+  lines.push('END:VCALENDAR');
+  return lines.join('\r\n');
+}
 function isSyndic() { return currentRole() === 'sindico'; }
 function isResident() { return currentRole() === 'morador'; }
 
 function applyPermissions() {
   $$('[data-roles]').forEach((el) => el.classList.toggle('is-role-hidden', !roleAllowed(el.dataset.roles)));
+  $$('[data-schedule-manager]').forEach((el) => el.classList.toggle('is-role-hidden', !canManageSchedule()));
   const profileName = $('[data-profile-name]');
   const profileUnit = $('[data-profile-unit]');
   if (profileName) profileName.textContent = session ? `${roles[currentRole()].label}` : 'Não autenticado';
@@ -631,8 +721,8 @@ function updateActiveSection() {
   if (!session) return;
   let id = (location.hash || '#dashboard').replace('#', '');
   let section = document.getElementById(id);
-  if (!section || !roleAllowed(section.dataset.roles)) {
-    section = $$('[data-section]').find((sec) => roleAllowed(sec.dataset.roles));
+  if (!section || !roleAllowed(section.dataset.roles) || (section.hasAttribute('data-schedule-manager') && !canManageSchedule())) {
+    section = $$('[data-section]').find((sec) => roleAllowed(sec.dataset.roles) && (!sec.hasAttribute('data-schedule-manager') || canManageSchedule()));
     id = section?.id || 'dashboard';
     if (location.hash !== `#${id}`) history.replaceState(null, '', `#${id}`);
   }
@@ -646,24 +736,8 @@ function updateActiveSection() {
 
 
 async function logPortariaActivity(action, details = {}, entityType = '') {
-  if (!backendAvailable || currentRole() !== 'portaria') return;
-  const safeDetails = { ...details };
-  if (safeDetails.photo) safeDetails.photo = '[foto registrada]';
-  if (safeDetails.labelText && String(safeDetails.labelText).length > 1000) safeDetails.labelText = `${String(safeDetails.labelText).slice(0, 1000)}...`;
-  if (safeDetails.rawText && String(safeDetails.rawText).length > 1000) safeDetails.rawText = `${String(safeDetails.rawText).slice(0, 1000)}...`;
-  const payload = {
-    action,
-    entityType,
-    entityId: safeDetails.id || safeDetails.entityId || '',
-    apartment: safeDetails.apartment || '',
-    summary: safeDetails.summary || '',
-    details: safeDetails,
-  };
-  try {
-    await apiRequest('/api/activity-logs', { method: 'POST', body: JSON.stringify(payload) });
-  } catch (error) {
-    console.warn('Não foi possível registrar log de atividade:', error.message);
-  }
+  if (currentRole() !== 'portaria') return;
+  return logActivity(action, details, entityType);
 }
 
 async function loadActivityLogs(force = false) {
@@ -1091,7 +1165,31 @@ function setupBookings() {
     renderAll();
   });
   $('[data-booking-filter]')?.addEventListener('change', renderBookings);
+  $('[data-guest-import]')?.addEventListener('change', async (event) => {
+    const file = event.target.files?.[0];
+    if (!file || !form) return;
+    try {
+      const text = await readFileAsText(file);
+      const parsed = parseGuestList(text);
+      const area = form.querySelector('[name="guestList"]');
+      if (area) area.value = guestsText(parsed);
+      const count = form.querySelector('[name="guestCount"]');
+      if (count && !count.value) count.value = parsed.length;
+      $('[data-booking-message]').textContent = `Lista importada com ${parsed.length} convidado(s).`;
+    } catch (error) {
+      $('[data-booking-message]').textContent = `Erro ao importar lista: ${error.message}`;
+    } finally {
+      event.target.value = '';
+    }
+  });
+  $('[data-clear-guests]')?.addEventListener('click', () => {
+    if (!form) return;
+    form.querySelector('[name="guestList"]').value = '';
+    form.querySelector('[name="guestCount"]').value = '';
+    $('[data-booking-message]').textContent = 'Lista de convidados limpa.';
+  });
 }
+
 function updateBookingFee() {
   const select = $('[data-space-select]');
   const fee = $('[data-booking-fee]');
@@ -1125,10 +1223,12 @@ function renderBookingItem(booking) {
     ${booking.status === 'pending' ? `<button class="btn btn--success btn--sm" data-approve-booking="${booking.id}">Validar</button>` : ''}
     <button class="btn btn--outline btn--sm" data-boleto-booking="${booking.id}">Gerar boleto Asaas</button>
     <label class="btn btn--outline btn--sm">Upload doc.<input type="file" hidden data-manager-doc="${booking.id}" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"></label>
+    ${guests.length ? `<button class="btn btn--outline btn--sm" data-print-guests="${booking.id}">Imprimir convidados</button><button class="btn btn--outline btn--sm" data-export-guests="${booking.id}">Exportar convidados CSV</button>` : ''}
     <button class="btn btn--outline btn--sm" data-edit-booking="${booking.id}">Modificar</button>
     <button class="btn btn--danger btn--sm" data-cancel-booking="${booking.id}">Cancelar</button>
   ` : `
     ${booking.boleto ? `<button class="btn btn--outline btn--sm" data-boleto-booking="${booking.id}">Ver boleto</button>` : ''}
+    ${guests.length ? `<button class="btn btn--outline btn--sm" data-print-guests="${booking.id}">Imprimir convidados</button>` : ''}
     <a class="btn btn--outline btn--sm" href="mailto:${encodeURIComponent(booking.residentEmail || '')}?subject=${encodeURIComponent('Reserva Vitória Régia')}">E-mail</a>
   `;
   return `
@@ -1148,6 +1248,38 @@ function renderBookingItem(booking) {
     </div>`;
 }
 
+
+function guestRowsForBooking(booking) {
+  const guests = Array.isArray(booking?.guests) ? booking.guests : parseGuestList(booking?.guestListText || '');
+  return guests.map((guest, index) => ({ numero: index + 1, nome: guest.name || guest, documento: guest.document || '', observacao: guest.note || '' }));
+}
+function printGuestList(id) {
+  const booking = getBookings().find((item) => item.id === id);
+  if (!booking) return;
+  const rows = guestRowsForBooking(booking);
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Lista de convidados</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#111}h1{font-size:22px}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #ccc;padding:8px;text-align:left}small{color:#555}.sign{margin-top:36px;border-top:1px solid #333;width:300px;text-align:center;padding-top:8px}</style></head><body><h1>Lista de convidados — ${escapeHTML(booking.spaceName)}</h1><p><strong>Data:</strong> ${formatDate(booking.date)} • <strong>Período:</strong> ${escapeHTML(booking.period)} • <strong>Unidade:</strong> ${escapeHTML(booking.apartment)}</p><p><strong>Responsável:</strong> ${escapeHTML(booking.eventResponsible || booking.residentName || '')} • <strong>Previstos:</strong> ${Number(booking.guestCount || rows.length || 0)}</p><table><thead><tr><th>#</th><th>Nome</th><th>Documento/observação</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${row.numero}</td><td>${escapeHTML(row.nome)}</td><td>${escapeHTML(row.documento || row.observacao || '')}</td></tr>`).join('')}</tbody></table><div class="sign">Portaria / responsável</div><script>window.print()</script></body></html>`;
+  const win = window.open('', '_blank');
+  if (win) { win.document.write(html); win.document.close(); }
+}
+function exportGuestListCSV(id) {
+  const booking = getBookings().find((item) => item.id === id);
+  if (!booking) return;
+  const rows = guestRowsForBooking(booking);
+  exportCSV(`convidados-${booking.apartment}-${booking.date}.csv`, rows);
+}
+function exportReservationsICS() {
+  const events = getBookings().filter((booking) => !['canceled', 'rejected'].includes(booking.status)).map((booking) => ({
+    uid: booking.id,
+    date: booking.date,
+    allDay: true,
+    summary: `${booking.status === 'pending' ? 'Pré-agendado' : 'Reserva'}: ${booking.spaceName}`,
+    location: getSettings().condominiumName,
+    description: isSyndic() ? `Unidade ${booking.apartment} - ${booking.residentName || ''} - Período: ${booking.period} - Status: ${statusLabel(booking.status)}` : `Período: ${booking.period} - Status: ${booking.status === 'pending' ? 'Pré-agendado' : 'Ocupado'}`,
+  }));
+  if (!events.length) { alert('Não há reservas para exportar.'); return; }
+  downloadTextFile('calendario-reservas-vitoria-regia.ics', makeICS(events), 'text/calendar;charset=utf-8');
+}
+
 async function approveBooking(id) {
   let updated = null;
   saveBookings(getBookings().map((booking) => {
@@ -1157,6 +1289,7 @@ async function approveBooking(id) {
   }));
   renderAll();
   if (updated) {
+    logActivity('Validou reserva', { ...updated, summary: `Reserva validada: ${updated.spaceName} em ${updated.date}` }, 'reserva');
     try {
       if (await shouldUseAsaas()) {
         await generateAsaasBoletoForBooking(updated.id, { silent: true });
@@ -1178,7 +1311,7 @@ async function cancelBooking(id) {
     return updated;
   }));
   renderAll();
-  if (updated) await maybeNotifyResident({ email: updated.residentEmail, whatsapp: updated.residentWhatsapp, name: updated.residentName }, 'bookingStatus', 'Reserva cancelada — Condomínio Vitória Régia', `Olá, ${updated.residentName}. Sua reserva de ${updated.spaceName} para ${formatDate(updated.date)} (${updated.period}) foi cancelada. Motivo: ${reason}`);
+  if (updated) { logActivity('Cancelou reserva', { ...updated, summary: `Reserva cancelada: ${updated.spaceName} em ${updated.date}` }, 'reserva'); await maybeNotifyResident({ email: updated.residentEmail, whatsapp: updated.residentWhatsapp, name: updated.residentName }, 'bookingStatus', 'Reserva cancelada — Condomínio Vitória Régia', `Olá, ${updated.residentName}. Sua reserva de ${updated.spaceName} para ${formatDate(updated.date)} (${updated.period}) foi cancelada. Motivo: ${reason}`); }
 }
 function editBooking(id) {
   const booking = getBookings().find((item) => item.id === id);
@@ -1189,11 +1322,13 @@ function editBooking(id) {
   const conflict = reservationConflict({ spaceId: booking.spaceId, date: newDate, period: newPeriod, ignoreId: id });
   if (conflict) { alert('A nova data/período já está bloqueada.'); return; }
   saveBookings(getBookings().map((item) => item.id === id ? { ...item, date: newDate, period: newPeriod, modifiedAt: nowISO() } : item));
+  logActivity('Modificou reserva', { ...booking, newDate, newPeriod, summary: `Reserva alterada para ${newDate} ${newPeriod}` }, 'reserva');
   renderAll();
 }
 async function uploadManagerDocument(id, file) {
   const managerDocument = await fileMeta(file);
   saveBookings(getBookings().map((booking) => booking.id === id ? { ...booking, managerDocument } : booking));
+  logActivity('Anexou documento de reserva', { entityId: id, summary: `Documento anexado à reserva ${id}`, document: managerDocument }, 'reserva');
   renderAll();
 }
 
@@ -1355,13 +1490,19 @@ async function markPaid(id) {
     return updated;
   }));
   renderAll();
-  if (updated) await maybeNotifyResident({ email: updated.residentEmail, whatsapp: updated.residentWhatsapp, name: updated.residentName }, 'bookingStatus', 'Pagamento confirmado — Condomínio Vitória Régia', `Olá, ${updated.residentName}. O pagamento da reserva de ${updated.spaceName} para ${formatDate(updated.date)} foi registrado no sistema.`);
+  if (updated) {
+    logActivity('Marcou pagamento de reserva', { ...updated, summary: `Pagamento registrado: ${updated.spaceName} em ${updated.date}` }, 'reserva');
+    await maybeNotifyResident({ email: updated.residentEmail, whatsapp: updated.residentWhatsapp, name: updated.residentName }, 'bookingStatus', 'Pagamento confirmado — Condomínio Vitória Régia', `Olá, ${updated.residentName}. O pagamento da reserva de ${updated.spaceName} para ${formatDate(updated.date)} foi registrado no sistema.`);
+  }
 }
 
 function setupVisitors() {
   const photoInput = $('[data-visitor-photo]');
   photoInput?.addEventListener('change', async () => {
-    currentVisitorPhoto = await fileToDataURL(photoInput.files?.[0]);
+    const file = photoInput.files?.[0];
+    currentVisitorPhoto = await fileMeta(file);
+    if (currentVisitorPhotoPreview) URL.revokeObjectURL(currentVisitorPhotoPreview);
+    currentVisitorPhotoPreview = file ? URL.createObjectURL(file) : '';
     renderPhotoPreview();
   });
   $('[data-visitor-form]')?.addEventListener('submit', (event) => {
@@ -1370,13 +1511,15 @@ function setupVisitors() {
     const data = new FormData(form);
     const visitor = {
       id: uid('visitor'), name: data.get('name').trim(), document: data.get('document').trim(), phone: data.get('phone').trim(),
-      apartment: data.get('apartment'), type: data.get('type'), notes: data.get('notes').trim(), photo: currentVisitorPhoto, createdAt: nowISO(),
+      apartment: data.get('apartment'), type: data.get('type'), notes: data.get('notes').trim(), photo: null, photoMeta: currentVisitorPhoto, createdAt: nowISO(),
     };
     saveVisitors([visitor, ...getVisitors()]);
     logPortariaActivity('Registrou visitante', { ...visitor, summary: `Visitante ${visitor.name} registrado para a unidade ${visitor.apartment}` }, 'visitante');
     const resident = approvedResidentByApartment(visitor.apartment);
     $('[data-visitor-message]').innerHTML = resident ? `Visitante salvo. <a class="text-link" target="_blank" href="${whatsAppLink(resident.whatsapp, visitorMessage(visitor, resident))}">Abrir WhatsApp manual</a>` : 'Visitante salvo. Morador da unidade não encontrado.';
-    currentVisitorPhoto = '';
+    currentVisitorPhoto = null;
+    if (currentVisitorPhotoPreview) URL.revokeObjectURL(currentVisitorPhotoPreview);
+    currentVisitorPhotoPreview = '';
     form.reset(); fillApartmentSelects(); renderPhotoPreview(); renderAll();
     if (resident) maybeNotifyResident(resident, 'visitor', 'Visitante registrado — Condomínio Vitória Régia', visitorMessage(visitor, resident)).then((response) => {
       if (response) $('[data-visitor-message]').textContent = `Visitante salvo. Notificação automática: ${resultSummary(response)}`;
@@ -1387,7 +1530,7 @@ function setupVisitors() {
 function renderPhotoPreview() {
   const box = $('[data-visitor-photo-preview]');
   if (!box) return;
-  box.innerHTML = currentVisitorPhoto ? `<img src="${currentVisitorPhoto}" alt="Foto do visitante">` : '<span>Foto</span>';
+  box.innerHTML = currentVisitorPhotoPreview ? `<img src="${currentVisitorPhotoPreview}" alt="Prévia da foto do visitante">` : '<span>Foto</span>';
 }
 function renderVisitors() {
   const box = $('[data-visitors-list]');
@@ -1400,8 +1543,8 @@ function renderVisitors() {
     return `<div class="item">
       <div class="item-row">
         <div style="display:flex;gap:12px;align-items:flex-start">
-          ${visitor.photo ? `<img class="visitor-avatar" src="${visitor.photo}" alt="Foto de ${escapeHTML(visitor.name)}">` : `<div class="visitor-avatar">${escapeHTML(visitor.name.charAt(0) || 'V')}</div>`}
-          <div><div class="item-title">${escapeHTML(visitor.name)} • Unidade ${escapeHTML(visitor.apartment)}</div><div class="item-sub">${escapeHTML(visitor.type)} • ${escapeHTML(visitor.document || 'sem documento')} • ${formatDateTime(visitor.createdAt)}${visitor.notes ? `<br>${escapeHTML(visitor.notes)}` : ''}</div></div>
+          <div class="visitor-avatar">${escapeHTML(visitor.name.charAt(0) || 'V')}</div>
+          <div><div class="item-title">${escapeHTML(visitor.name)} • Unidade ${escapeHTML(visitor.apartment)}</div><div class="item-sub">${escapeHTML(visitor.type)} • ${escapeHTML(visitor.document || 'sem documento')} • ${formatDateTime(visitor.createdAt)}${visitor.photoMeta ? ` • Foto registrada: ${escapeHTML(visitor.photoMeta.name || 'arquivo')}` : ''}${visitor.notes ? `<br>${escapeHTML(visitor.notes)}` : ''}</div></div>
         </div>
       </div>
       <div class="item-actions">
@@ -1420,39 +1563,181 @@ function whatsAppLink(phone, text) {
 }
 
 
-function detectCarrierFromText(text = '') {
-  const normalized = normalizeText(text);
-  const carriers = ['Correios', 'Jadlog', 'Loggi', 'Amazon', 'Mercado Livre', 'Shopee', 'Total Express', 'Azul Cargo', 'DHL', 'FedEx', 'UPS', 'Sequoia'];
-  return carriers.find((name) => normalized.includes(normalizeText(name))) || '';
+
+function detectCarrierFromText(text = '', code = '') {
+  const normalized = normalizeText(`${text} ${code}`);
+  const carriers = [
+    { name: 'Correios', keys: ['correios', 'sedex', 'pac', 'objeto'] },
+    { name: 'Jadlog', keys: ['jadlog'] },
+    { name: 'Loggi', keys: ['loggi'] },
+    { name: 'Amazon', keys: ['amazon', 'amzn'] },
+    { name: 'Mercado Livre', keys: ['mercado livre', 'melhor envio', 'meli', 'mlb'] },
+    { name: 'Shopee', keys: ['shopee', 'spx'] },
+    { name: 'Total Express', keys: ['total express', 'totalexpress', 'tex courier'] },
+    { name: 'Azul Cargo', keys: ['azul cargo', 'azulcargo'] },
+    { name: 'DHL', keys: ['dhl'] },
+    { name: 'FedEx', keys: ['fedex', 'fedex express'] },
+    { name: 'UPS', keys: ['ups'] },
+    { name: 'Sequoia', keys: ['sequoia', 'sequoia log'] },
+    { name: 'Braspress', keys: ['braspress'] },
+    { name: 'Mandaê', keys: ['mandae', 'mandaê'] },
+    { name: 'Kangu', keys: ['kangu'] },
+    { name: 'J&T Express', keys: ['j&t', 'jtexpress', 'j t express'] },
+  ];
+  const found = carriers.find((carrier) => carrier.keys.some((key) => normalized.includes(normalizeText(key))));
+  if (found) return found.name;
+  if (/^[A-Z]{2}\d{9}[A-Z]{2}$/i.test(String(code || '').trim())) return 'Correios';
+  if (/^BR\d{10,}$/i.test(String(code || '').trim())) return 'Shopee / logística parceira';
+  return '';
+}
+
+function compactLabelText(text = '') {
+  return String(text || '')
+    .replace(/\r/g, '\n')
+    .replace(/[\t]+/g, ' ')
+    .replace(/[ ]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function probableTrackingCodes(text = '') {
+  const joined = String(text || '').replace(/\s+/g, ' ').toUpperCase();
+  const candidates = [];
+  const labeled = [...joined.matchAll(/(?:CODIGO|CÓDIGO|RASTREIO|TRACKING|AWB|PEDIDO|OBJETO|REMESSA|NF|NOTA FISCAL|ETIQUETA)[\s:#\-]*([A-Z0-9.\-]{6,48})/gi)].map((m) => m[1]);
+  candidates.push(...labeled);
+  candidates.push(...(joined.match(/\b[A-Z]{2}\d{9}[A-Z]{2}\b/g) || []));
+  candidates.push(...(joined.match(/\b[A-Z0-9]{10,44}\b/g) || []));
+  candidates.push(...(joined.match(/\b\d{8,44}\b/g) || []));
+  return [...new Set(candidates.map((item) => String(item).replace(/[^A-Z0-9.-]/gi, '').toUpperCase()))]
+    .filter((item) => item.length >= 6)
+    .sort((a, b) => {
+      const score = (value) => {
+        let s = 0;
+        if (/^[A-Z]{2}\d{9}[A-Z]{2}$/.test(value)) s += 10;
+        if (/[A-Z]/.test(value) && /\d/.test(value)) s += 4;
+        if (value.length >= 10 && value.length <= 20) s += 3;
+        if (/^\d+$/.test(value) && value.length > 20) s -= 1;
+        return s;
+      };
+      return score(b) - score(a);
+    });
+}
+
+function findApartmentInLabel(text = '') {
+  const joined = String(text || '').replace(/\s+/g, ' ');
+  const apartmentsList = apartments();
+  const patterns = [
+    /(?:apto|apartamento|unidade|unid\.?|ap\.?|apt\.?)\s*[:#\-º°]?\s*(\d{3,4})/i,
+    /(?:torre|bloco)?\s*(?:vit[oó]ria\s*r[eé]gia)?\s*(?:apto|apartamento|unidade)?\s*[:#\-º°]?\s*(\d{3,4})/i,
+  ];
+  for (const pattern of patterns) {
+    const match = joined.match(pattern);
+    if (match?.[1] && apartmentsList.includes(match[1])) return match[1];
+  }
+  return apartmentsList.find((apt) => new RegExp(`(^|\\D)${apt}(\\D|$)`).test(joined)) || '';
+}
+
+function inferApartmentByRecipientName(recipient = '') {
+  const cleanRecipient = normalizeText(recipient).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!cleanRecipient || cleanRecipient.length < 5) return '';
+  const residents = getResidents();
+  const tokens = cleanRecipient.split(' ').filter((t) => t.length >= 3);
+  let best = null;
+  for (const resident of residents) {
+    const cleanName = normalizeText(resident.name || '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!cleanName) continue;
+    let score = 0;
+    if (cleanName.includes(cleanRecipient) || cleanRecipient.includes(cleanName)) score += 20;
+    for (const token of tokens) if (cleanName.includes(token)) score += 2;
+    if (!best || score > best.score) best = { score, resident };
+  }
+  return best?.score >= 4 ? best.resident.apartment : '';
+}
+
+function extractRecipientFromLabel(lines = []) {
+  const ignore = /codigo|código|rastreio|tracking|awb|pedido|nota|nf|cpf|cnpj|cep|endere[cç]o|bairro|cidade|uf|remetente|transportadora|correios|jadlog|loggi|amazon|mercado livre|shopee|total express|destino|origem|declara/i;
+  const labelled = lines.find((line) => /destinat[aá]rio|recebedor|a\/c|aos cuidados|nome/i.test(line));
+  if (labelled) {
+    const clean = labelled.replace(/.*?(destinat[aá]rio|recebedor|a\/c|aos cuidados|nome)\s*[:#\-]?\s*/i, '').trim();
+    if (clean && clean.length > 2) return clean.slice(0, 90);
+  }
+  const nextToLabelIndex = lines.findIndex((line) => /destinat[aá]rio|recebedor/i.test(line));
+  if (nextToLabelIndex >= 0 && lines[nextToLabelIndex + 1] && !ignore.test(lines[nextToLabelIndex + 1])) return lines[nextToLabelIndex + 1].slice(0, 90);
+  const candidates = lines
+    .map((line) => line.replace(/\s{2,}/g, ' ').trim())
+    .filter((line) => line.length >= 5 && line.length <= 90)
+    .filter((line) => !ignore.test(line))
+    .filter((line) => /[A-Za-zÀ-ÿ]{3,}\s+[A-Za-zÀ-ÿ]{2,}/.test(line))
+    .filter((line) => !detectCarrierFromText(line));
+  return candidates[0] || '';
 }
 
 function parsePackageLabelText(text = '') {
-  const raw = String(text || '').replace(/\r/g, '\n');
+  const raw = compactLabelText(text);
   const lines = raw.split('\n').map((line) => line.trim()).filter(Boolean);
   const joined = lines.join(' ');
-  const fields = { rawText: raw };
-  const apartmentsList = apartments();
-  const aptByLabel = joined.match(/(?:apto|apartamento|unidade|apt\.?|unid\.?)[\s:#-]*(\d{3,4})/i);
-  const aptStandalone = apartmentsList.find((apt) => new RegExp(`(^|\\D)${apt}(\\D|$)`).test(joined));
-  if (aptByLabel?.[1] && apartmentsList.includes(aptByLabel[1])) fields.apartment = aptByLabel[1];
-  else if (aptStandalone) fields.apartment = aptStandalone;
+  const fields = { rawText: raw, confidence: 0, warnings: [] };
 
-  const carrier = detectCarrierFromText(raw);
-  if (carrier) fields.carrier = carrier;
+  fields.apartment = findApartmentInLabel(joined);
+  if (fields.apartment) fields.confidence += 25;
 
-  const labeledCode = joined.match(/(?:codigo|código|rastreio|tracking|awb|pedido|nf|nota fiscal)[\s:#-]*([A-Z0-9.-]{6,44})/i);
-  const correiosCode = joined.match(/\b[A-Z]{2}\d{9}[A-Z]{2}\b/i);
-  const longNumeric = joined.match(/\b\d{8,44}\b/);
-  fields.code = (labeledCode?.[1] || correiosCode?.[0] || longNumeric?.[0] || '').replace(/[^A-Za-z0-9.-]/g, '').toUpperCase();
+  fields.recipient = extractRecipientFromLabel(lines);
+  if (fields.recipient) fields.confidence += 25;
 
-  const recipientLine = lines.find((line) => /destinat[aá]rio|recebedor|nome/i.test(line));
-  if (recipientLine) fields.recipient = recipientLine.replace(/.*?(destinat[aá]rio|recebedor|nome)\s*[:#-]?\s*/i, '').trim();
-  if (!fields.recipient) {
-    const candidates = lines.filter((line) => !/codigo|código|rastreio|tracking|awb|pedido|nota|cpf|cnpj|cep|endere[cç]o|bairro|cidade|uf/i.test(line));
-    const probable = candidates.find((line) => /[A-Za-zÀ-ÿ]{3,}\s+[A-Za-zÀ-ÿ]{2,}/.test(line));
-    if (probable && !detectCarrierFromText(probable)) fields.recipient = probable.slice(0, 90);
+  if (!fields.apartment && fields.recipient) {
+    const inferredApt = inferApartmentByRecipientName(fields.recipient);
+    if (inferredApt) {
+      fields.apartment = inferredApt;
+      fields.apartmentInferred = true;
+      fields.confidence += 15;
+    }
   }
+
+  if (fields.apartment && !fields.recipient) {
+    const resident = approvedResidentByApartment(fields.apartment);
+    if (resident?.name) {
+      fields.recipient = resident.name;
+      fields.recipientInferred = true;
+      fields.confidence += 10;
+    }
+  }
+
+  const codes = probableTrackingCodes(joined);
+  fields.code = codes[0] || '';
+  fields.codeCandidates = codes.slice(0, 5);
+  if (fields.code) fields.confidence += 25;
+
+  fields.carrier = detectCarrierFromText(raw, fields.code);
+  if (fields.carrier) fields.confidence += 15;
+
+  const cep = joined.match(/\b\d{5}-?\d{3}\b/);
+  if (cep) fields.cep = cep[0];
+
+  if (!fields.apartment) fields.warnings.push('Apartamento não identificado.');
+  if (!fields.recipient) fields.warnings.push('Destinatário não identificado.');
+  if (!fields.code) fields.warnings.push('Código de rastreio não identificado.');
+  fields.confidence = Math.min(100, fields.confidence);
   return fields;
+}
+
+function renderPackageScanResult(fields = {}) {
+  const box = $('[data-package-scan-result]');
+  if (!box) return;
+  const detected = [
+    ['Apartamento', fields.apartment ? `${fields.apartment}${fields.apartmentInferred ? ' (sugerido pelo cadastro)' : ''}` : 'não identificado'],
+    ['Destinatário', fields.recipient ? `${fields.recipient}${fields.recipientInferred ? ' (sugerido pelo cadastro)' : ''}` : 'não identificado'],
+    ['Transportadora', fields.carrier || 'não identificada'],
+    ['Código', fields.code || 'não identificado'],
+  ];
+  const confidence = Number(fields.confidence || 0);
+  const className = confidence >= 70 ? 'ok' : confidence >= 40 ? 'warn' : 'low';
+  box.hidden = false;
+  box.innerHTML = `
+    <div class="scan-result__head"><strong>Dados identificados</strong><span class="scan-score scan-score--${className}">${confidence}%</span></div>
+    <div class="scan-result__grid">${detected.map(([label, value]) => `<div><small>${label}</small><strong>${escapeHTML(value)}</strong></div>`).join('')}</div>
+    ${fields.codeCandidates?.length > 1 ? `<div class="scan-candidates"><small>Outros códigos encontrados:</small> ${fields.codeCandidates.slice(1).map((code) => `<button type="button" class="chip-btn" data-use-package-code="${escapeHTML(code)}">${escapeHTML(code)}</button>`).join('')}</div>` : ''}
+    ${fields.warnings?.length ? `<p class="scan-warning">${escapeHTML(fields.warnings.join(' '))} Confira antes de registrar.</p>` : ''}
+  `;
 }
 
 function applyPackageLabelFields(fields = {}) {
@@ -1463,37 +1748,86 @@ function applyPackageLabelFields(fields = {}) {
   if (fields.carrier && form.carrier) form.carrier.value = fields.carrier;
   if (fields.code && form.code) form.code.value = fields.code;
   if (fields.rawText && form.labelText) form.labelText.value = fields.rawText;
+  renderPackageScanResult(fields);
   const filled = ['apartment', 'recipient', 'carrier', 'code'].filter((key) => fields[key]).map((key) => ({ apartment: 'apartamento', recipient: 'destinatário', carrier: 'transportadora', code: 'código' }[key]));
   const msg = $('[data-package-scan-message]');
-  if (msg) msg.textContent = filled.length ? `Etiqueta lida. Campos preenchidos: ${filled.join(', ')}.` : 'Etiqueta lida, mas não encontrei dados reconhecíveis. Preencha manualmente ou cole o texto da etiqueta.';
+  if (msg) msg.textContent = filled.length ? `Etiqueta processada. Campos preenchidos: ${filled.join(', ')}. Confira os dados antes de registrar.` : 'Etiqueta processada, mas não encontrei dados suficientes. Preencha manualmente ou fotografe novamente com melhor iluminação.';
+}
+
+function loadTesseract() {
+  if (window.Tesseract) return Promise.resolve(window.Tesseract);
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-tesseract-loader]');
+    if (existing) {
+      existing.addEventListener('load', () => resolve(window.Tesseract), { once: true });
+      existing.addEventListener('error', reject, { once: true });
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+    script.async = true;
+    script.dataset.tesseractLoader = 'true';
+    script.onload = () => resolve(window.Tesseract);
+    script.onerror = () => reject(new Error('Não foi possível carregar o leitor OCR. Cole o texto da etiqueta manualmente.'));
+    document.head.appendChild(script);
+  });
+}
+
+async function readTextFromImageWithOcr(file, onProgress) {
+  const Tesseract = await loadTesseract();
+  const result = await Tesseract.recognize(file, 'por+eng', {
+    logger: (m) => {
+      if (m.status && typeof m.progress === 'number') onProgress?.(`${m.status} ${Math.round(m.progress * 100)}%`);
+    },
+  });
+  return result?.data?.text || '';
 }
 
 async function decodeBarcodeFromImage(file) {
   if (!file) throw new Error('Selecione ou fotografe uma etiqueta.');
-  if (!('BarcodeDetector' in window)) throw new Error('Este navegador não oferece leitura automática de código de barras. Cole o texto da etiqueta no campo abaixo.');
+  if (!('BarcodeDetector' in window)) return '';
   const formats = ['qr_code', 'code_128', 'code_39', 'ean_13', 'ean_8', 'itf', 'upc_a', 'upc_e', 'pdf417', 'aztec', 'data_matrix'];
   const detector = new BarcodeDetector({ formats });
   const bitmap = await createImageBitmap(file);
   const codes = await detector.detect(bitmap);
-  if (!codes.length) throw new Error('Nenhum QR code ou código de barras foi detectado na imagem. Tente aproximar a câmera ou cole o texto da etiqueta.');
   return codes.map((item) => item.rawValue).filter(Boolean).join('\n');
 }
 
 async function handlePackageLabelImage(file) {
   const msg = $('[data-package-scan-message]');
-  if (msg) msg.textContent = 'Lendo etiqueta pela câmera...';
+  const useOcr = $('[data-package-ocr-enabled]')?.checked !== false;
+  if (msg) msg.textContent = 'Lendo código de barras/QR da etiqueta...';
   try {
-    const decoded = await decodeBarcodeFromImage(file);
+    let decoded = await decodeBarcodeFromImage(file);
+    if (!decoded && useOcr) {
+      if (msg) msg.textContent = 'Nenhum código encontrado. Iniciando OCR local da imagem...';
+      decoded = await readTextFromImageWithOcr(file, (progress) => { if (msg) msg.textContent = `Lendo texto da etiqueta: ${progress}`; });
+    }
+    if (!decoded) throw new Error('Não consegui ler a etiqueta. Tente fotografar mais perto, com boa luz, ou cole o texto manualmente.');
     const textArea = $('[data-package-label-text]');
     if (textArea) textArea.value = decoded;
     applyPackageLabelFields(parsePackageLabelText(decoded));
   } catch (error) {
-    if (msg) msg.textContent = error.message;
+    if (msg) msg.textContent = error.message || 'Erro ao ler etiqueta.';
   }
 }
 
 function packageMessage(pkg) {
   return `Olá. Há uma encomenda na portaria para a unidade ${pkg.apartment}. Destinatário: ${pkg.recipient}. ${pkg.carrier ? `Transportadora: ${pkg.carrier}.` : ''} ${pkg.code ? `Código: ${pkg.code}.` : ''}`;
+}
+
+function clearPackageScan() {
+  const form = $('[data-package-form]');
+  if (!form) return;
+  if (form.labelText) form.labelText.value = '';
+  if (form.recipient) form.recipient.value = '';
+  if (form.carrier) form.carrier.value = '';
+  if (form.code) form.code.value = '';
+  if (form.notes) form.notes.value = '';
+  const result = $('[data-package-scan-result]');
+  if (result) { result.hidden = true; result.innerHTML = ''; }
+  const msg = $('[data-package-scan-message]');
+  if (msg) msg.textContent = 'Leitura limpa. Fotografe a etiqueta ou cole o texto para preencher automaticamente.';
 }
 
 function setupPackages() {
@@ -1502,17 +1836,42 @@ function setupPackages() {
     const text = $('[data-package-label-text]')?.value || '';
     applyPackageLabelFields(parsePackageLabelText(text));
   });
+  $('[data-clear-package-scan]')?.addEventListener('click', clearPackageScan);
+  $('[data-package-label-text]')?.addEventListener('blur', (event) => {
+    if (event.target.value.trim().length >= 8) applyPackageLabelFields(parsePackageLabelText(event.target.value));
+  });
+  document.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-use-package-code]');
+    if (!button) return;
+    const form = $('[data-package-form]');
+    if (form?.code) form.code.value = button.dataset.usePackageCode || '';
+  });
   $('[data-package-form]')?.addEventListener('submit', (event) => {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
-    const pkg = { id: uid('package'), apartment: data.get('apartment'), recipient: data.get('recipient').trim(), carrier: data.get('carrier').trim(), code: data.get('code').trim(), labelText: data.get('labelText')?.trim() || '', notes: data.get('notes').trim(), status: 'open', createdAt: nowISO() };
+    const pkg = {
+      id: uid('package'),
+      apartment: data.get('apartment'),
+      recipient: data.get('recipient').trim(),
+      carrier: data.get('carrier').trim(),
+      code: data.get('code').trim(),
+      labelText: data.get('labelText')?.trim() || '',
+      storageLocation: data.get('storageLocation')?.trim() || '',
+      packageType: data.get('packageType') || 'Encomenda',
+      notes: data.get('notes').trim(),
+      status: 'open',
+      createdAt: nowISO(),
+    };
     savePackages([pkg, ...getPackages()]);
     logPortariaActivity('Registrou encomenda', { ...pkg, summary: `Encomenda registrada para ${pkg.recipient} na unidade ${pkg.apartment}` }, 'encomenda');
     const resident = approvedResidentByApartment(pkg.apartment);
     const msg = packageMessage(pkg);
     $('[data-package-message]').textContent = 'Encomenda registrada.';
-    form.reset(); fillApartmentSelects(); renderAll();
+    form.reset(); fillApartmentSelects();
+    const result = $('[data-package-scan-result]');
+    if (result) { result.hidden = true; result.innerHTML = ''; }
+    renderAll();
     if (resident) maybeNotifyResident(resident, 'package', 'Encomenda na portaria — Condomínio Vitória Régia', msg).then((response) => {
       if (response) $('[data-package-message]').textContent = `Encomenda registrada. Notificação automática: ${resultSummary(response)}`;
     });
@@ -1526,7 +1885,7 @@ function renderPackages() {
     const resident = approvedResidentByApartment(pkg.apartment);
     const msg = packageMessage(pkg);
     return `<div class="item">
-      <div class="item-row"><div><div class="item-title">Unidade ${escapeHTML(pkg.apartment)} • ${escapeHTML(pkg.recipient)}</div><div class="item-sub">${escapeHTML(pkg.carrier || 'Transportadora não informada')} • ${escapeHTML(pkg.code || 'sem código')} • ${formatDateTime(pkg.createdAt)}${pkg.notes ? `<br>${escapeHTML(pkg.notes)}` : ''}</div></div><span class="status status--pending">Aguardando retirada</span></div>
+      <div class="item-row"><div><div class="item-title">Unidade ${escapeHTML(pkg.apartment)} • ${escapeHTML(pkg.recipient)}</div><div class="item-sub">${escapeHTML(pkg.packageType || 'Encomenda')} • ${escapeHTML(pkg.carrier || 'Transportadora não informada')} • ${escapeHTML(pkg.code || 'sem código')} • ${formatDateTime(pkg.createdAt)}${pkg.storageLocation ? `<br>Local: ${escapeHTML(pkg.storageLocation)}` : ''}${pkg.notes ? `<br>${escapeHTML(pkg.notes)}` : ''}</div></div><span class="status status--pending">Aguardando retirada</span></div>
       <div class="item-actions">${resident ? `<button class="btn btn--success btn--sm" data-auto-package-whatsapp="${pkg.id}">Auto WhatsApp</button><button class="btn btn--success btn--sm" data-auto-package-email="${pkg.id}">Auto e-mail</button><a class="btn btn--outline btn--sm" target="_blank" href="${whatsAppLink(resident.whatsapp, msg)}">Manual WhatsApp</a><a class="btn btn--outline btn--sm" href="mailto:${encodeURIComponent(resident.email)}?subject=${encodeURIComponent('Encomenda na portaria')}&body=${encodeURIComponent(msg)}">Manual e-mail</a>` : ''}<button class="btn btn--success btn--sm" data-deliver-package="${pkg.id}">Marcar retirada</button></div>
     </div>`;
   }).join('') : empty('Nenhuma encomenda pendente.');
@@ -1658,6 +2017,7 @@ function setupStaff() {
       awayFrom: data.get('awayFrom') || '',
       awayTo: data.get('awayTo') || '',
       notes: data.get('notes').trim(),
+      canManageSchedule: Boolean(data.get('canManageSchedule')),
       createdAt: nowISO(),
     };
     saveStaff([item, ...getStaff()]);
@@ -1680,6 +2040,7 @@ function renderStaff() {
           <div class="item-sub">E-mail: ${escapeHTML(item.email || 'não informado')} • WhatsApp: ${escapeHTML(item.whatsapp || 'não informado')}</div>
           ${(item.awayFrom || item.awayTo) ? `<div class="item-sub">Período informado: ${escapeHTML(item.awayFrom || '-')} até ${escapeHTML(item.awayTo || '-')}</div>` : ''}
           ${!staffAvailable(item) ? `<div class="item-sub"><strong>Bloqueado para mensagens automáticas enquanto estiver ${escapeHTML(staffStatusLabel(item.status).toLowerCase())}.</strong></div>` : ''}
+          ${item.canManageSchedule ? `<div class="item-sub"><strong>Autorizado a alterar escala.</strong></div>` : ''}
           ${item.notes ? `<div class="item-sub">${escapeHTML(item.notes)}</div>` : ''}
         </div>
       </div>
@@ -1701,15 +2062,19 @@ function editStaff(id) {
   const awayFrom = prompt('Início do afastamento/ausência/férias (AAAA-MM-DD), se houver:', item.awayFrom || '') ?? item.awayFrom;
   const awayTo = prompt('Fim do afastamento/ausência/férias (AAAA-MM-DD), se houver:', item.awayTo || '') ?? item.awayTo;
   const notes = prompt('Observações:', item.notes || '') ?? item.notes;
+  const canManageSchedule = confirm('Autorizar este usuário a alterar a escala?');
   const active = confirm('Manter este cadastro ativo? Clique em Cancelar para inativar/excluir do recebimento.');
-  saveStaff(getStaff().map((staff) => staff.id === id ? { ...staff, name: name.trim(), role: String(role || item.role).trim(), email: String(email || '').trim(), whatsapp: String(whatsapp || '').trim(), status: String(status || 'disponivel').trim(), awayFrom: String(awayFrom || '').trim(), awayTo: String(awayTo || '').trim(), notes: String(notes || '').trim(), active, updatedAt: nowISO() } : staff));
+  saveStaff(getStaff().map((staff) => staff.id === id ? { ...staff, name: name.trim(), role: String(role || item.role).trim(), email: String(email || '').trim(), whatsapp: String(whatsapp || '').trim(), status: String(status || 'disponivel').trim(), awayFrom: String(awayFrom || '').trim(), awayTo: String(awayTo || '').trim(), notes: String(notes || '').trim(), canManageSchedule, active, updatedAt: nowISO() } : staff));
+  logActivity('Alterou cadastro de equipe', { entityId: id, summary: `Cadastro de ${name} alterado`, role, canManageSchedule }, 'equipe');
   fillStaffScheduleSelects(); renderAll();
 }
 function removeStaff(id) {
   if (!isSyndic()) return;
   if (!confirm('Remover este cadastro de equipe?')) return;
+  const person = getStaff().find((item) => item.id === id);
   saveStaff(getStaff().filter((item) => item.id !== id));
   saveStaffSchedules(getStaffSchedules().filter((item) => item.staffId !== id));
+  if (person) logActivity('Excluiu cadastro de equipe', { entityId: id, summary: `Equipe removida: ${person.name}`, role: person.role }, 'equipe');
   fillStaffScheduleSelects(); renderAll();
 }
 
@@ -1721,6 +2086,33 @@ function fillStaffScheduleSelects() {
     .join('');
   $$('[data-schedule-staff-select]').forEach((select) => { select.innerHTML = options || '<option value="">Cadastre a equipe primeiro</option>'; });
 }
+
+function parseDateListFromScheduleForm(data) {
+  const dates = new Set();
+  const start = String(data.get('date') || '').trim();
+  const end = String(data.get('dateEnd') || '').trim();
+  if (start) dates.add(start);
+  if (start && end && end >= start) {
+    const d = new Date(`${start}T12:00:00`);
+    const last = new Date(`${end}T12:00:00`);
+    while (d <= last) { dates.add(toISODate(d)); d.setDate(d.getDate() + 1); }
+  }
+  String(data.get('datesBulk') || '').split(/[\n,;]+/).map((item) => item.trim()).filter(Boolean).forEach((item) => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(item)) dates.add(item);
+  });
+  return Array.from(dates).sort();
+}
+function scheduleRecordFor(person, date, shift, notes = '') {
+  return { id: uid('schedule'), staffId: person.id, staffName: person.name, staffRole: person.role, date, shift, notes, createdAt: nowISO(), createdBy: session?.email || '' };
+}
+async function logActivity(action, details = {}, entityType = '') {
+  if (!backendAvailable || !['portaria', 'sindico'].includes(currentRole())) return;
+  const safeDetails = sanitizeDetailsForLog(details);
+  const payload = { action, entityType, entityId: safeDetails.id || safeDetails.entityId || '', apartment: safeDetails.apartment || '', summary: safeDetails.summary || '', details: safeDetails };
+  try { await apiRequest('/api/activity-logs', { method: 'POST', body: JSON.stringify(payload) }); }
+  catch (error) { console.warn('Não foi possível registrar log de atividade:', error.message); }
+}
+function logScheduleChange(action, details = {}) { return logActivity(action, details, 'escala'); }
 function setupStaffSchedules() {
   const form = $('[data-staff-schedule-form]');
   if (!form) return;
@@ -1728,23 +2120,41 @@ function setupStaffSchedules() {
   const formDate = form.querySelector('[name="date"]');
   if (formDate && !formDate.value) formDate.value = todayLocalISO();
   if (dateField && !dateField.value) dateField.value = scheduleFilterDate;
-  form.addEventListener('submit', (event) => {
+  form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (!isSyndic()) return;
+    if (!canManageSchedule()) { $('[data-schedule-message]').textContent = 'Você não tem permissão para alterar a escala.'; return; }
     const data = new FormData(form);
     const staffId = data.get('staffId');
     const person = getStaff().find((item) => item.id === staffId);
     if (!person) { $('[data-schedule-message]').textContent = 'Selecione um funcionário cadastrado.'; return; }
-    const schedule = { id: uid('schedule'), staffId, staffName: person.name, staffRole: person.role, date: data.get('date'), shift: data.get('shift'), notes: data.get('notes')?.trim() || '', createdAt: nowISO() };
-    const exists = getStaffSchedules().some((item) => item.staffId === schedule.staffId && item.date === schedule.date && item.shift === schedule.shift);
-    if (exists && !confirm('Este funcionário já está escalado neste turno. Deseja adicionar mesmo assim?')) return;
-    saveStaffSchedules([schedule, ...getStaffSchedules()]);
-    $('[data-schedule-message]').textContent = 'Turno salvo na escala.';
+    const dates = parseDateListFromScheduleForm(data);
+    if (!dates.length) { $('[data-schedule-message]').textContent = 'Informe pelo menos uma data.'; return; }
+    const shift = data.get('shift');
+    const notes = data.get('notes')?.trim() || '';
+    const existing = getStaffSchedules();
+    const newSchedules = [];
+    const skipped = [];
+    for (const date of dates) {
+      const duplicate = existing.some((item) => item.staffId === staffId && item.date === date && item.shift === shift);
+      if (duplicate) { skipped.push(date); continue; }
+      newSchedules.push(scheduleRecordFor(person, date, shift, notes));
+    }
+    if (!newSchedules.length) { $('[data-schedule-message]').textContent = 'Nenhum turno novo incluído; todos já existiam.'; return; }
+    saveStaffSchedules([...newSchedules, ...existing]);
+    await logScheduleChange('Incluiu turno(s) na escala', { summary: `${person.name} incluído em ${newSchedules.length} turno(s)`, staffId, staffName: person.name, shift, dates: newSchedules.map((i) => i.date), skipped });
+    $('[data-schedule-message]').textContent = `Escala salva: ${newSchedules.length} turno(s) incluído(s). ${skipped.length ? `${skipped.length} duplicado(s) ignorado(s).` : ''}`;
     form.reset();
-    if (formDate) formDate.value = schedule.date;
+    if (formDate) formDate.value = dates[0] || todayLocalISO();
     renderAll();
   });
   dateField?.addEventListener('change', () => { scheduleFilterDate = dateField.value || todayLocalISO(); renderStaffSchedules(); });
+  $('[data-import-schedule-file]')?.addEventListener('change', async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try { await importScheduleFile(file); }
+    catch (error) { $('[data-schedule-message]').textContent = `Erro ao importar escala: ${error.message}`; }
+    finally { event.target.value = ''; }
+  });
 }
 function renderStaffSchedules() {
   fillStaffScheduleSelects();
@@ -1753,6 +2163,10 @@ function renderStaffSchedules() {
   const date = filter?.value || scheduleFilterDate || todayLocalISO();
   const box = $('[data-staff-schedule-list]');
   if (!box) return;
+  const canEditScale = canManageSchedule();
+  const form = $('[data-staff-schedule-form]');
+  if (form) form.classList.toggle('is-readonly', !canEditScale);
+  if (!canEditScale) { box.innerHTML = empty('A escala é visível, mas apenas o síndico ou o funcionário autorizado pelo síndico pode alterar.'); }
   const staff = getStaff();
   const list = getStaffSchedules()
     .filter((item) => item.date === date)
@@ -1772,16 +2186,72 @@ function renderStaffSchedules() {
           <div class="item-title">${escapeHTML(item.shift)} • ${escapeHTML(item.staffName || person.name || 'Equipe')} <span class="badge">${escapeHTML(roleLabel(item.staffRole || person.role))}</span></div>
           <div class="item-sub">${available ? 'Disponível para atendimento/mensagens' : `Indisponível: ${escapeHTML(staffStatusLabel(person.status).toLowerCase())}`} ${item.notes ? `• ${escapeHTML(item.notes)}` : ''}</div>
         </div>
-        <button class="btn btn--danger btn--sm" data-remove-staff-schedule="${item.id}">Excluir turno</button>
+        ${canEditScale ? `<button class="btn btn--danger btn--sm" data-remove-staff-schedule="${item.id}">Excluir turno</button>` : ''}
       </div>
     </div>`;
   }).join('') : empty('Nenhum turno cadastrado para a data selecionada.');
 }
 function removeStaffSchedule(id) {
-  if (!isSyndic()) return;
+  if (!canManageSchedule()) return;
   if (!confirm('Excluir este turno da escala?')) return;
+  const removed = getStaffSchedules().find((item) => item.id === id);
   saveStaffSchedules(getStaffSchedules().filter((item) => item.id !== id));
+  if (removed) logScheduleChange('Excluiu turno da escala', { ...removed, summary: `${removed.staffName} removido do turno ${removed.shift} em ${removed.date}` });
   renderAll();
+}
+function parseScheduleCSV(text = '') {
+  const lines = String(text || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (!lines.length) return [];
+  const separator = lines[0].includes(';') ? ';' : ',';
+  const header = lines[0].split(separator).map((h) => normalizeText(h).replace(/\s+/g, ''));
+  const idx = (names) => names.map((n) => header.indexOf(n)).find((i) => i >= 0);
+  const dateIndex = idx(['data', 'date']);
+  const shiftIndex = idx(['turno', 'shift']);
+  const emailIndex = idx(['email', 'e-mail']);
+  const nameIndex = idx(['nome', 'funcionario', 'funcionário', 'porteiro']);
+  const notesIndex = idx(['observacoes', 'observações', 'notas', 'notes']);
+  if (dateIndex < 0 || shiftIndex < 0 || (emailIndex < 0 && nameIndex < 0)) return [];
+  return lines.slice(1).map((line) => {
+    const cols = line.split(separator).map((c) => c.trim());
+    return { date: cols[dateIndex] || '', shift: cols[shiftIndex] || '', email: emailIndex >= 0 ? cols[emailIndex] : '', name: nameIndex >= 0 ? cols[nameIndex] : '', notes: notesIndex >= 0 ? cols[notesIndex] : '' };
+  }).filter((row) => row.date && row.shift && (row.email || row.name));
+}
+
+
+
+async function importScheduleFile(file) {
+  if (!canManageSchedule()) throw new Error('Você não tem permissão para importar escala.');
+  const text = await readFileAsText(file);
+  const rows = parseScheduleCSV(text);
+  if (!rows.length) throw new Error('Arquivo inválido. Use as colunas: data;turno;email;observacoes ou data;turno;nome;observacoes.');
+  const staff = getStaff();
+  const existing = getStaffSchedules();
+  const created = [];
+  const ignored = [];
+  for (const row of rows) {
+    const person = staff.find((item) => (row.email && normalizeEmail(item.email) === normalizeEmail(row.email)) || (row.name && normalizeText(item.name) === normalizeText(row.name)));
+    if (!person) { ignored.push({ ...row, reason: 'funcionário não encontrado' }); continue; }
+    const duplicate = existing.concat(created).some((item) => item.staffId === person.id && item.date === row.date && item.shift === row.shift);
+    if (duplicate) { ignored.push({ ...row, reason: 'duplicado' }); continue; }
+    created.push(scheduleRecordFor(person, row.date, row.shift, row.notes || `Importado de ${file.name}`));
+  }
+  if (!created.length) throw new Error('Nenhum turno novo importado. Verifique funcionários, datas e duplicidades.');
+  saveStaffSchedules([...created, ...existing]);
+  await logScheduleChange('Importou escala de arquivo', { summary: `${created.length} turno(s) importado(s) de ${file.name}`, fileName: file.name, created: created.length, ignored });
+  $('[data-schedule-message]').textContent = `Importação concluída: ${created.length} turno(s) incluído(s), ${ignored.length} ignorado(s).`;
+  renderAll();
+}
+function downloadScheduleTemplate() {
+  const content = ['data;turno;email;observacoes', `${todayLocalISO()};Manhã;porteiro@email.com;Turno normal`, `${addDaysISO(todayLocalISO(), 1)};Tarde;porteiro@email.com;Cobertura`, `${addDaysISO(todayLocalISO(), 2)};Noite;porteiro@email.com;Plantão`].join('\n');
+  downloadTextFile('modelo-importacao-escala-vitoria-regia.csv', content, 'text/csv;charset=utf-8');
+}
+function exportScheduleICS() {
+  const events = getStaffSchedules().map((item) => {
+    const [start, end] = shiftTimes(item.shift);
+    return { uid: item.id, date: item.date, start, end, summary: `Escala: ${item.staffName} (${item.shift})`, location: getSettings().condominiumName, description: `${roleLabel(item.staffRole)} - ${item.notes || ''}` };
+  });
+  if (!events.length) { alert('Não há escala para exportar.'); return; }
+  downloadTextFile('escala-equipe-vitoria-regia.ics', makeICS(events), 'text/calendar;charset=utf-8');
 }
 
 
@@ -2167,12 +2637,11 @@ function removeSpace(id) {
 
 async function fileToDataURL(file) {
   if (!file || !file.size) return '';
-  if (file.size > 2.5 * 1024 * 1024) { alert('Arquivo muito grande para armazenamento local. Use até 2,5 MB nesta versão.'); return ''; }
-  return new Promise((resolve) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => resolve(''); reader.readAsDataURL(file); });
+  return '';
 }
 async function fileMeta(file) {
   if (!file || !file.size) return null;
-  return { name: file.name, type: file.type, size: file.size, uploadedAt: nowISO(), dataUrl: await fileToDataURL(file) };
+  return { name: file.name, type: file.type, size: file.size, uploadedAt: nowISO(), storage: 'metadata-only', note: 'Arquivo/foto não foi salvo no banco de dados.' };
 }
 
 function exportCSV(filename, rows) {
@@ -2202,6 +2671,8 @@ function handleDocumentClick(event) {
     ['data-edit-service', editService], ['data-remove-service', removeService],
     ['data-approve-service-request', (id) => updateServiceRequest(id, 'approved')], ['data-cancel-service-request', (id) => updateServiceRequest(id, 'canceled')],
     ['data-refresh-activity-logs', async () => { await renderActivityLogs(true); }], ['data-export-activity-logs', exportActivityLogsCSV],
+    ['data-print-guests', printGuestList], ['data-export-guests', exportGuestListCSV],
+    ['data-export-calendar-google', exportReservationsICS], ['data-export-schedule-google', exportScheduleICS], ['data-download-schedule-template', downloadScheduleTemplate],
   ];
   for (const [attr, fn] of actionMap) {
     const el = target.closest(`[${attr}]`);

@@ -1021,3 +1021,134 @@ body.no-scroll { overflow: hidden; }
   color: #15803d;
   border-color: rgba(22, 163, 74, 0.22);
 }
+
+/* Melhorias: importação, impressão e escala */
+.import-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0 12px;
+}
+.template-help {
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.65);
+  margin: 8px 0 14px;
+}
+.template-help summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--blue-900, #0f2742);
+}
+.template-help pre {
+  white-space: pre-wrap;
+  overflow-x: auto;
+  background: rgba(15, 23, 42, 0.06);
+  padding: 12px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+.form-card.is-readonly {
+  opacity: .75;
+}
+.form-card.is-readonly input,
+.form-card.is-readonly select,
+.form-card.is-readonly textarea,
+.form-card.is-readonly button[type="submit"] {
+  pointer-events: none;
+}
+@media print {
+  .sidebar, .topbar, .nav, .hero, .kpi-grid, .btn, .calendar-controls, .calendar-filters { display: none !important; }
+  .main { margin: 0 !important; padding: 0 !important; }
+  .panel, .item { box-shadow: none !important; border: 1px solid #ddd !important; }
+}
+
+/* Melhorias do cadastro de encomendas: leitura de etiqueta por câmera/OCR */
+.scan-box--smart {
+  border-style: solid;
+  border-color: rgba(13, 71, 120, .16);
+  background:
+    radial-gradient(circle at top left, rgba(213, 178, 91, .15), transparent 35%),
+    linear-gradient(135deg, rgba(255,255,255,.96), rgba(240,247,255,.86));
+}
+.scan-actions {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr .8fr;
+  gap: 10px;
+}
+.scan-result {
+  border: 1px solid rgba(15, 23, 42, .08);
+  border-radius: 16px;
+  padding: 12px;
+  background: rgba(255,255,255,.82);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, .06);
+}
+.scan-result__head,
+.scan-result__grid {
+  display: grid;
+  gap: 10px;
+}
+.scan-result__head {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.scan-result__grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.scan-result__grid div {
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(248,250,252,.9);
+}
+.scan-result__grid small,
+.scan-candidates small {
+  display: block;
+  color: var(--muted);
+  font-size: .78rem;
+  margin-bottom: 3px;
+}
+.scan-result__grid strong {
+  font-size: .92rem;
+  word-break: break-word;
+}
+.scan-score {
+  display: inline-grid;
+  place-items: center;
+  min-width: 54px;
+  height: 30px;
+  border-radius: 999px;
+  font-size: .78rem;
+  font-weight: 800;
+}
+.scan-score--ok { background: rgba(34, 197, 94, .14); color: #166534; }
+.scan-score--warn { background: rgba(245, 158, 11, .16); color: #92400e; }
+.scan-score--low { background: rgba(239, 68, 68, .13); color: #991b1b; }
+.scan-candidates {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.chip-btn {
+  border: 1px solid rgba(15, 23, 42, .10);
+  background: white;
+  border-radius: 999px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: .78rem;
+  color: var(--ink);
+}
+.chip-btn:hover { border-color: rgba(13, 71, 120, .34); }
+.scan-warning {
+  margin: 10px 0 0;
+  color: #92400e;
+  font-size: .86rem;
+}
+@media (max-width: 720px) {
+  .scan-actions,
+  .scan-result__grid { grid-template-columns: 1fr; }
+}

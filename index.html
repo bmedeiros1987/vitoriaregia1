@@ -144,9 +144,9 @@
         <a href="#aprovacoes" data-nav data-roles="sindico"><span>✅</span> Aprovações</a>
         <a href="#moradores" data-nav data-roles="sindico"><span>🏠</span> Moradores</a>
         <a href="#equipe" data-nav data-roles="sindico"><span>🧑‍💼</span> Equipe</a>
-        <a href="#escala" data-nav data-roles="sindico"><span>🕒</span> Escala</a>
+        <a href="#escala" data-nav data-roles="sindico,portaria" data-schedule-manager><span>🕒</span> Escala</a>
         <a href="#meu-cadastro" data-nav data-roles="morador"><span>👥</span> Meu cadastro</a>
-        <a href="#reservas" data-nav data-roles="morador,sindico"><span>📅</span> Reservas</a>
+        <a href="#reservas" data-nav data-roles="morador,sindico,portaria"><span>📅</span> Reservas</a>
         <a href="#calendario" data-nav data-roles="morador,sindico"><span>🗓️</span> Calendário</a>
         <a href="#financeiro" data-nav data-roles="morador,sindico"><span>💳</span> Financeiro</a>
         <a href="#servicos" data-nav data-roles="morador,sindico"><span>🛒</span> Serviços</a>
@@ -262,6 +262,7 @@
             <label><span>E-mail interno para recebimento</span><input name="email" type="email" placeholder="não será exibido ao morador" /></label>
             <label><span>WhatsApp interno para recebimento</span><input name="whatsapp" type="tel" placeholder="não será exibido ao morador" /></label>
             <label class="checkline checkline--boxed"><input type="checkbox" name="active" checked /><span>Cadastro ativo no sistema</span></label>
+            <label class="checkline checkline--boxed"><input type="checkbox" name="canManageSchedule" /><span>Autorizar este usuário a alterar/importar escala</span></label>
             <div class="form-row">
               <label><span>Situação</span><select name="status"><option value="disponivel">Disponível</option><option value="afastado">Afastado</option><option value="ausente">Ausente</option><option value="ferias">Férias</option></select></label>
               <label><span>Início da indisponibilidade</span><input name="awayFrom" type="date" /></label>
@@ -279,19 +280,25 @@
         </div>
       </section>
 
-      <section id="escala" class="section" data-section data-roles="sindico">
+      <section id="escala" class="section" data-section data-roles="sindico,portaria" data-schedule-manager>
         <div class="section-head">
-          <div><span class="eyebrow">Gestão de equipe</span><h2>Escala por turno</h2><p>Defina quem estará de serviço nos turnos manhã, tarde e noite. O morador verá apenas o porteiro escalado e disponível no turno atual.</p></div>
+          <div><span class="eyebrow">Gestão de equipe</span><h2>Escala por turno</h2><p>Defina quem estará de serviço nos turnos manhã, tarde e noite. O morador verá apenas o porteiro escalado e disponível no turno atual. Apenas o síndico ou usuário expressamente autorizado pelo síndico pode alterar a escala.</p></div>
         </div>
         <div class="content-grid content-grid--two">
           <form class="panel form-card" data-staff-schedule-form autocomplete="off">
             <div class="panel-header"><div><span class="eyebrow">Novo turno</span><h2>Adicionar à escala</h2></div></div>
             <label><span>Funcionário</span><select name="staffId" required data-schedule-staff-select></select></label>
             <div class="form-row">
-              <label><span>Data</span><input name="date" type="date" required /></label>
+              <label><span>Data inicial</span><input name="date" type="date" required /></label>
+              <label><span>Data final opcional</span><input name="dateEnd" type="date" /></label>
+            </div>
+            <div class="form-row">
               <label><span>Turno</span><select name="shift" required><option>Manhã</option><option>Tarde</option><option>Noite</option></select></label>
+              <label><span>Datas avulsas opcional</span><textarea name="datesBulk" rows="2" placeholder="2026-06-01; 2026-06-03
+2026-06-05"></textarea></label>
             </div>
             <label><span>Observações do turno</span><textarea name="notes" rows="3" placeholder="Ex.: troca de turno, cobertura, substituição"></textarea></label>
+            <p class="form-hint">Para montar escala em lote, informe data inicial/final ou cole várias datas avulsas. Duplicidades são ignoradas automaticamente.</p>
             <button class="btn btn--primary" type="submit">Salvar turno</button>
             <p class="form-hint" data-schedule-message></p>
           </form>
@@ -299,6 +306,15 @@
             <div class="panel-header"><div><span class="eyebrow">Hoje</span><h2>Atendimento atual</h2></div></div>
             <div class="empty-state" data-current-shift-summary>Carregando turno atual...</div>
             <label class="filter-inline"><span>Ver escala da data</span><input type="date" data-schedule-date-filter /></label>
+            <div class="import-tools">
+              <label class="btn btn--outline btn--sm">Importar escala CSV/TXT<input type="file" hidden data-import-schedule-file accept=".csv,.txt" /></label>
+              <button class="btn btn--outline btn--sm" type="button" data-download-schedule-template>Baixar modelo</button>
+              <button class="btn btn--outline btn--sm" type="button" data-export-schedule-google>Exportar escala Google Calendar</button>
+            </div>
+            <details class="template-help"><summary>Como deve ser o arquivo de escala?</summary><pre>data;turno;email;observacoes
+2026-06-01;Manhã;porteiro@email.com;Turno normal
+2026-06-01;Tarde;porteiro2@email.com;Cobertura
+2026-06-01;Noite;porteiro3@email.com;Plantão</pre><p>Também pode usar a coluna <strong>nome</strong> no lugar de <strong>email</strong>, desde que o nome esteja igual ao cadastro da equipe.</p></details>
             <div data-staff-schedule-list class="list"></div>
           </article>
         </div>
@@ -331,7 +347,7 @@
         </div>
       </section>
 
-      <section id="reservas" class="section" data-section data-roles="morador,sindico">
+      <section id="reservas" class="section" data-section data-roles="morador,sindico,portaria">
         <div class="section-head">
           <div><span class="eyebrow">Áreas comuns</span><h2>Reservas e validação</h2><p>O pedido entra como pré-agendado, bloqueia a data e só vira ocupado após validação do síndico.</p></div>
         </div>
@@ -355,8 +371,13 @@
             <label><span>Lista de convidados do evento</span><textarea name="guestList" rows="5" placeholder="Informe um convidado por linha. Ex.:
 Maria Silva - RG 000000
 João Souza - CPF ***.000.***-**"></textarea></label>
-            <p class="form-hint">Para reservas do salão de festas, a lista ajuda a portaria a liberar apenas os convidados informados.</p>
-            <label><span>Upload de documento ou comprovante do morador</span><input name="residentDocument" type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" /></label>
+            <div class="import-tools">
+              <label class="btn btn--outline btn--sm">Importar lista CSV/TXT<input type="file" hidden data-guest-import accept=".csv,.txt" /></label>
+              <button class="btn btn--outline btn--sm" type="button" data-clear-guests>Limpar lista</button>
+            </div>
+            <p class="form-hint">Para reservas do salão de festas, a lista ajuda a portaria a liberar apenas os convidados informados. O arquivo pode ter um convidado por linha.</p>
+            <label><span>Documento ou comprovante do morador</span><input name="residentDocument" type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" /></label>
+            <p class="form-hint">Arquivos e fotos não são gravados no banco de dados nesta versão: o sistema salva apenas metadados, como nome, tipo e tamanho. Para produção com arquivos reais, use storage externo como Cloudflare R2, S3 ou Supabase Storage.</p>
             <label class="checkline">
               <input type="checkbox" name="signature" required />
               <span>Assino e dou fé que li as regras de uso do espaço e assumo responsabilidade pela reserva solicitada.</span>
@@ -378,6 +399,7 @@ João Souza - CPF ***.000.***-**"></textarea></label>
             <button class="btn btn--outline btn--sm" type="button" data-cal-prev>‹</button>
             <strong data-calendar-title></strong>
             <button class="btn btn--outline btn--sm" type="button" data-cal-next>›</button>
+            <button class="btn btn--outline btn--sm" type="button" data-export-calendar-google>Exportar Google Calendar</button>
           </div>
         </div>
         <div class="calendar-filters panel-lite">
@@ -462,6 +484,7 @@ João Souza - CPF ***.000.***-**"></textarea></label>
               <div class="photo-preview" data-visitor-photo-preview><span>Foto</span></div>
               <label class="btn btn--outline"><input name="photo" type="file" accept="image/*" capture="environment" hidden data-visitor-photo />Enviar/capturar foto</label>
             </div>
+            <p class="form-hint">A foto serve para conferência no momento do cadastro. O banco guarda apenas os metadados do arquivo, não a imagem em base64.</p>
             <label><span>Nome do visitante</span><input name="name" required /></label>
             <div class="form-row"><label><span>Documento</span><input name="document" /></label><label><span>Telefone</span><input name="phone" type="tel" /></label></div>
             <div class="form-row"><label><span>Apartamento</span><select name="apartment" required data-visitor-apartment></select></label><label><span>Tipo</span><select name="type"><option>Visita social</option><option>Prestador de serviço</option><option>Entrega</option><option>Manutenção</option></select></label></div>
@@ -481,15 +504,24 @@ João Souza - CPF ***.000.***-**"></textarea></label>
         <div class="content-grid content-grid--two">
           <form class="panel form-card" data-package-form autocomplete="off">
             <div class="panel-header"><div><span class="eyebrow">Leitura móvel</span><h2>Cadastrar encomenda</h2><p>Use a câmera do celular para ler QR/código de barras da etiqueta ou cole o texto da etiqueta para preencher automaticamente.</p></div></div>
-            <div class="scan-box">
-              <label class="btn btn--outline"><input name="labelImage" type="file" accept="image/*" capture="environment" hidden data-package-label-image />Ler etiqueta com câmera</label>
-              <button class="btn btn--outline" type="button" data-parse-package-label>Preencher pelo texto</button>
-              <label class="scan-text"><span>Texto/QR da etiqueta</span><textarea name="labelText" rows="4" data-package-label-text placeholder="Cole aqui o texto da etiqueta, QR Code ou dados de rastreio, destinatário, unidade/apartamento..."></textarea></label>
-              <p class="form-hint" data-package-scan-message>Em celulares compatíveis, a câmera reconhece QR code e códigos de barras. Para etiqueta apenas impressa, cole o texto manualmente.</p>
+            <div class="scan-box scan-box--smart">
+              <div class="scan-actions">
+                <label class="btn btn--primary"><input name="labelImage" type="file" accept="image/*" capture="environment" hidden data-package-label-image />Fotografar/ler etiqueta</label>
+                <button class="btn btn--outline" type="button" data-parse-package-label>Preencher pelo texto</button>
+                <button class="btn btn--ghost" type="button" data-clear-package-scan>Limpar leitura</button>
+              </div>
+              <label class="checkline checkline--boxed">
+                <input type="checkbox" data-package-ocr-enabled checked />
+                <span>Usar OCR local na imagem quando não houver QR/código de barras. A foto não é enviada nem salva no banco.</span>
+              </label>
+              <label class="scan-text"><span>Texto/QR da etiqueta</span><textarea name="labelText" rows="4" data-package-label-text placeholder="Cole aqui o texto da etiqueta, QR Code, código de rastreio, destinatário, unidade/apartamento..."></textarea></label>
+              <div class="scan-result" data-package-scan-result hidden></div>
+              <p class="form-hint" data-package-scan-message>Em celulares compatíveis, fotografe a etiqueta. O sistema tentará ler código de barras/QR e, se necessário, extrair o texto por OCR no próprio navegador.</p>
             </div>
             <label><span>Apartamento</span><select name="apartment" required data-package-apartment></select></label>
             <label><span>Destinatário</span><input name="recipient" required /></label>
-            <div class="form-row"><label><span>Transportadora</span><input name="carrier" /></label><label><span>Código</span><input name="code" /></label></div>
+            <div class="form-row"><label><span>Transportadora</span><input name="carrier" /></label><label><span>Código / rastreio</span><input name="code" /></label></div>
+            <div class="form-row"><label><span>Local na portaria</span><input name="storageLocation" placeholder="Ex.: Armário 2, Prateleira B" /></label><label><span>Tipo de volume</span><select name="packageType"><option>Encomenda</option><option>Envelope</option><option>Caixa pequena</option><option>Caixa grande</option><option>Mercado/Delivery</option><option>Documento</option></select></label></div>
             <label><span>Observações</span><textarea name="notes" rows="3"></textarea></label>
             <button class="btn btn--primary" type="submit">Registrar encomenda</button>
             <p class="form-hint" data-package-message></p>

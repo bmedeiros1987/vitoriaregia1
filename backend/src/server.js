@@ -145,8 +145,28 @@ function normalizeStore(raw = {}) {
   };
 }
 
+
+function stripFileDataForStorage(value) {
+  if (Array.isArray(value)) return value.map(stripFileDataForStorage);
+  if (!value || typeof value !== 'object') return value;
+  const out = {};
+  for (const [key, raw] of Object.entries(value)) {
+    if (key === 'dataUrl') continue;
+    if (key === 'photo' && typeof raw === 'string' && raw.startsWith('data:')) {
+      out.photo = null;
+      out.photoRemovedFromDatabase = true;
+      continue;
+    }
+    if (typeof raw === 'string' && raw.startsWith('data:') && raw.length > 500) {
+      out[key] = '[arquivo não armazenado no banco]';
+      continue;
+    }
+    out[key] = stripFileDataForStorage(raw);
+  }
+  return out;
+}
 function toJson(value) {
-  return JSON.stringify(value || {});
+  return JSON.stringify(stripFileDataForStorage(value || {}));
 }
 
 function fromJson(value, fallback) {
@@ -193,7 +213,7 @@ async function mirrorStateToTables(client, state) {
   await replaceTableFromState(client, 'visitors', state.visitors, (c, item) => c.query(
     `insert into visitors (id, name, document, phone, apartment, type, photo, payload, created_at, updated_at)
      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,now())`,
-    [item.id || `visitor-${Date.now()}`, item.name || 'Visitante', item.document || null, item.phone || null, item.apartment || null, item.type || null, item.photo || null, toJson(item), isoOrNow(item.createdAt)]
+    [item.id || `visitor-${Date.now()}`, item.name || 'Visitante', item.document || null, item.phone || null, item.apartment || null, item.type || null, (typeof item.photo === 'string' && item.photo.startsWith('data:')) ? null : (item.photo || null), toJson(item), isoOrNow(item.createdAt)]
   ));
 
   await replaceTableFromState(client, 'packages', state.packages, (c, item) => c.query(
