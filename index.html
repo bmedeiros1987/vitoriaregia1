@@ -33,6 +33,17 @@
         </div>
       </div>
 
+      <div class="android-download-box" aria-label="Aplicativos Android">
+        <div>
+          <strong>Apps Android</strong>
+          <span>Portaria e Moradores com acesso rápido pelo celular.</span>
+        </div>
+        <div class="mini-actions">
+          <a class="btn btn--outline btn--sm" href="https://github.com/bmedeiros1987/vitoriaregia1/releases/download/android-portaria-latest/vitoria-regia-portaria.apk" target="_blank" rel="noopener">Portaria</a>
+          <a class="btn btn--outline btn--sm" href="https://github.com/bmedeiros1987/vitoriaregia1/releases/download/android-morador-latest/vitoria-regia-morador.apk" target="_blank" rel="noopener">Morador</a>
+        </div>
+      </div>
+
       <div class="login-tabs" role="tablist" aria-label="Acesso">
         <button class="login-tab is-active" type="button" data-auth-tab="login">Entrar</button>
         <button class="login-tab" type="button" data-auth-tab="signup">Solicitar cadastro</button>
@@ -58,25 +69,35 @@
         </label>
 
         <label>
-          <span>Nome ou identificação</span>
-          <input name="name" placeholder="Ex.: Bruno Saraiva" />
+          <span>E-mail / usuário</span>
+          <input name="email" type="email" required placeholder="seu@email.com" autocomplete="username" />
         </label>
 
         <label>
-          <span>E-mail</span>
-          <input name="email" type="email" placeholder="seu@email.com" />
+          <span>Senha</span>
+          <input name="password" type="password" required placeholder="Digite sua senha" autocomplete="current-password" />
         </label>
 
         <label data-bootstrap-password-wrap style="display:none">
-          <span>Senha temporária de implantação</span>
-          <input name="password" type="password" placeholder="Somente para o usuário temporário" autocomplete="current-password" />
+          <span>Usuário temporário</span>
+          <small>Para o acesso inicial do síndico, use o e-mail e a senha temporária configurados no Render.</small>
         </label>
 
         <div class="split-buttons">
           <button class="btn btn--primary" type="submit">Acessar</button>
-          <a class="btn btn--outline" data-google-login href="/auth/google?role=morador">Entrar com Google</a>
         </div>
-        <p class="form-hint" data-login-message>O botão Google funciona quando o backend Node estiver publicado e configurado com OAuth.</p>
+        <button class="link-button" type="button" data-show-forgot>Esqueci minha senha</button>
+        <p class="form-hint" data-login-message>Informe e-mail e senha. O acesso é feito exclusivamente por e-mail e senha cadastrados/aprovados no sistema.</p>
+      </form>
+
+      <form class="auth-form is-hidden" data-forgot-form autocomplete="off">
+        <span class="eyebrow">Recuperação de acesso</span>
+        <h1>Receber senha temporária por e-mail.</h1>
+        <p>Informe o e-mail cadastrado. Se o usuário estiver aprovado/ativo, o sistema enviará uma senha temporária para troca no próximo acesso.</p>
+        <label><span>Perfil</span><select name="role"><option value="morador">Morador</option><option value="sindico">Síndico / Administração</option><option value="portaria">Portaria</option></select></label>
+        <label><span>E-mail cadastrado</span><input name="email" type="email" required autocomplete="username" /></label>
+        <div class="split-buttons"><button class="btn btn--primary" type="submit">Enviar senha temporária</button><button class="btn btn--outline" type="button" data-back-login>Voltar ao login</button></div>
+        <p class="form-hint" data-forgot-message></p>
       </form>
 
       <form class="auth-form is-hidden" data-signup-form autocomplete="off">
@@ -90,8 +111,12 @@
         </label>
         <label>
           <span>E-mail</span>
-          <input name="email" type="email" required placeholder="morador@email.com" />
+          <input name="email" type="email" required placeholder="morador@email.com" autocomplete="username" />
         </label>
+        <div class="form-row">
+          <label><span>Criar senha</span><input name="password" type="password" required minlength="6" autocomplete="new-password" placeholder="Mínimo 6 caracteres" /></label>
+          <label><span>Confirmar senha</span><input name="passwordConfirm" type="password" required minlength="6" autocomplete="new-password" /></label>
+        </div>
         <label>
           <span>Telefone / WhatsApp</span>
           <input name="whatsapp" type="tel" required placeholder="(61) 99999-9999" />
@@ -115,6 +140,10 @@
             <input type="checkbox" name="unitRented" />
             <span>Unidade alugada</span>
           </label>
+        </div>
+        <div class="form-row">
+          <label><span>Grau de parentesco / relação</span><select name="relationship"><option>Responsável</option><option>Filho(a)</option><option>Esposo(a)</option><option>Companheiro(a)</option><option>Pai/Mãe</option><option>Irmão(ã)</option><option>Familiar</option><option>Inquilino(a)</option><option>Outro</option></select></label>
+          <label class="checkline checkline--boxed"><input type="checkbox" name="hasPet" /><span>Possui pet</span></label>
         </div>
         <label>
           <span>Apartamento</span>
@@ -152,9 +181,11 @@
         <a href="#servicos" data-nav data-roles="morador,sindico"><span>🛒</span> Serviços</a>
         <a href="#contato" data-nav data-roles="morador,sindico"><span>✉️</span> Contato</a>
         <a href="#portaria" data-nav data-roles="sindico,portaria"><span>🛡️</span> Portaria</a>
-        <a href="#encomendas" data-nav data-roles="sindico,portaria"><span>📦</span> Encomendas</a>
+        <a href="#visitantes-recorrentes" data-nav data-roles="morador,sindico,portaria"><span>🔁</span> Visitantes recorrentes</a>
+        <a href="#encomendas" data-nav data-roles="morador,sindico,portaria"><span>📦</span> Encomendas</a>
         <a href="#atividades-portaria" data-nav data-roles="sindico"><span>🧾</span> Logs da portaria</a>
         <a href="#comunicados" data-nav data-roles="morador,sindico,portaria"><span>📣</span> Comunicados</a>
+        <a href="#app-android" data-nav data-roles="morador,sindico,portaria"><span>📱</span> App Android</a>
         <a href="#configuracoes" data-nav data-roles="sindico"><span>⚙️</span> Configurações</a>
       </nav>
       <div class="sidebar-profile">
@@ -168,6 +199,7 @@
     <main class="main">
       <header class="topbar">
         <button class="icon-btn menu-btn" type="button" data-menu-open aria-label="Abrir menu">☰</button>
+        <button class="icon-btn collapse-btn" type="button" data-sidebar-toggle aria-label="Recolher menu lateral" title="Recolher/expandir menu">⇤</button>
         <div>
           <small data-current-date></small>
           <h1 data-page-title>Dashboard</h1>
@@ -211,6 +243,18 @@
             <div class="panel-header"><div><span class="eyebrow">Comunicados</span><h2>Últimas publicações</h2></div><a href="#comunicados" data-shortcut="comunicados" class="text-link">Ver todos</a></div>
             <div data-dashboard-notices class="list compact-list"></div>
           </article>
+          <article class="panel" data-roles="sindico,portaria">
+            <div class="panel-header"><div><span class="eyebrow">Pendências operacionais</span><h2>Ações pendentes</h2></div></div>
+            <div data-pending-actions-list class="list compact-list"></div>
+          </article>
+          <article class="panel" data-roles="morador">
+            <div class="panel-header"><div><span class="eyebrow">Minha unidade</span><h2>Encomendas e avisos rápidos</h2></div><a href="#encomendas" data-shortcut="encomendas" class="text-link">Abrir</a></div>
+            <div data-resident-quick-packages class="list compact-list"></div>
+          </article>
+          <article class="panel" data-roles="morador">
+            <div class="panel-header"><div><span class="eyebrow">Portaria</span><h2>Últimos acessos registrados</h2></div></div>
+            <div data-resident-recent-visitors class="list compact-list"></div>
+          </article>
         </div>
       </section>
 
@@ -236,6 +280,10 @@
             <div class="form-row">
               <label><span>Apartamento</span><select name="apartment" required data-resident-apartment></select></label>
               <label><span>Vínculo</span><select name="residentType"><option>Proprietário</option><option>Inquilino</option><option>Familiar</option><option>Responsável financeiro</option><option>Outro morador</option></select></label>
+            </div>
+            <div class="form-row">
+              <label><span>Grau de parentesco / relação</span><select name="relationship"><option>Responsável</option><option>Filho(a)</option><option>Esposo(a)</option><option>Companheiro(a)</option><option>Pai/Mãe</option><option>Irmão(ã)</option><option>Familiar</option><option>Inquilino(a)</option><option>Outro</option></select></label>
+              <label class="checkline checkline--boxed"><input type="checkbox" name="hasPet" /><span>Possui pet</span></label>
             </div>
             <label class="checkline checkline--boxed"><input type="checkbox" name="primaryBilling" /><span>Morador principal para recebimento de boletos desta unidade</span></label>
             <label class="checkline checkline--boxed"><input type="checkbox" name="unitRented" /><span>Designar unidade como alugada</span></label>
@@ -334,6 +382,10 @@
             <label><span>WhatsApp</span><input name="whatsapp" type="tel" required /></label>
             <label><span>CPF/CNPJ do responsável</span><input name="cpfCnpj" inputmode="numeric" /></label>
             <label><span>Vínculo com a unidade</span><select name="residentType"><option>Proprietário</option><option>Inquilino</option><option>Familiar</option><option>Responsável financeiro</option><option>Outro morador</option></select></label>
+            <div class="form-row">
+              <label><span>Grau de parentesco / relação</span><select name="relationship"><option>Responsável</option><option>Filho(a)</option><option>Esposo(a)</option><option>Companheiro(a)</option><option>Pai/Mãe</option><option>Irmão(ã)</option><option>Familiar</option><option>Inquilino(a)</option><option>Outro</option></select></label>
+              <label class="checkline checkline--boxed"><input type="checkbox" name="hasPet" /><span>Possui pet</span></label>
+            </div>
             <label class="checkline checkline--boxed"><input type="checkbox" name="primaryBilling" /><span>Sou o morador principal para recebimento de boletos desta unidade</span></label>
             <label class="checkline checkline--boxed"><input type="checkbox" name="unitRented" /><span>Unidade alugada</span></label>
             <label><span>Observações</span><textarea name="notes" rows="3"></textarea></label>
@@ -412,20 +464,55 @@ João Souza - CPF ***.000.***-**"></textarea></label>
 
       <section id="financeiro" class="section" data-section data-roles="morador,sindico">
         <div class="section-head">
-          <div><span class="eyebrow">Cobranças</span><h2>Boletos de reserva</h2><p>O síndico define a taxa, gera cobrança de reserva e controla pagamento/validação.</p></div>
+          <div><span class="eyebrow">Financeiro</span><h2>Boletos, despesas e prestação de contas</h2><p>O síndico controla cobranças, gastos fixos, gastos casuais, reservas financeiras e notas. Pode tornar lançamentos públicos aos moradores.</p></div>
         </div>
-        <div class="content-grid">
+        <div class="finance-summary-grid">
+          <article class="kpi"><span>💳</span><small>Boletos/reservas</small><strong data-finance-bookings-total>R$ 0,00</strong><em>cobranças de reserva</em></article>
+          <article class="kpi"><span>📌</span><small>Gastos fixos</small><strong data-finance-fixed-total>R$ 0,00</strong><em>mensais/recorrentes</em></article>
+          <article class="kpi"><span>🧾</span><small>Gastos casuais</small><strong data-finance-casual-total>R$ 0,00</strong><em>lançamentos avulsos</em></article>
+          <article class="kpi"><span>🏦</span><small>Reserva financeira</small><strong data-finance-reserve-total>R$ 0,00</strong><em>saldo de reserva</em></article>
+        </div>
+        <div class="content-grid content-grid--two">
           <article class="panel">
-            <div class="panel-header"><div><span class="eyebrow">Gerador</span><h2>Reservas aguardando cobrança</h2></div></div>
+            <div class="panel-header"><div><span class="eyebrow">Cobranças</span><h2>Reservas aguardando cobrança</h2></div></div>
             <div data-finance-list class="list"></div>
           </article>
           <article class="panel">
             <div class="panel-header"><div><span class="eyebrow">Documento</span><h2>Cobrança de reserva</h2></div><button class="btn btn--outline btn--sm" data-print-boleto type="button">Imprimir</button></div>
-            <div class="boleto-preview" data-boleto-preview>
-              <div class="empty-state">Selecione uma reserva para gerar o cobrança de reserva.</div>
-            </div>
+            <div class="boleto-preview" data-boleto-preview><div class="empty-state">Selecione uma reserva para gerar a cobrança de reserva.</div></div>
           </article>
         </div>
+        <div class="content-grid content-grid--two" data-roles="sindico">
+          <form class="panel form-card" data-finance-record-form autocomplete="off">
+            <div class="panel-header"><div><span class="eyebrow">Controle do síndico</span><h2>Novo lançamento financeiro</h2></div></div>
+            <label><span>Descrição</span><input name="description" required placeholder="Ex.: Conta de energia, compra de lâmpadas, fundo de reserva" /></label>
+            <div class="form-row"><label><span>Tipo</span><select name="type" required><option value="fixed">Gasto fixo</option><option value="casual">Gasto casual</option><option value="reserve_in">Reserva financeira — entrada</option><option value="reserve_out">Reserva financeira — saída</option></select></label><label><span>Valor</span><input name="amount" type="number" min="0" step="0.01" required /></label></div>
+            <div class="form-row"><label><span>Data</span><input name="date" type="date" required /></label><label><span>Fornecedor / favorecido</span><input name="vendor" placeholder="Empresa, loja ou prestador" /></label></div>
+            <label><span>Categoria</span><input name="category" placeholder="Água, energia, manutenção, limpeza, segurança..." /></label>
+            <div class="scan-box scan-box--smart">
+              <div class="scan-actions">
+                <label class="btn btn--outline"><input name="invoiceImage" type="file" accept="image/*,.pdf" capture="environment" hidden data-finance-invoice-image />Ler nota por OCR no celular</label>
+                <button class="btn btn--outline" type="button" data-parse-finance-invoice>Preencher pelo texto</button>
+                <button class="btn btn--ghost" type="button" data-clear-finance-invoice>Limpar leitura</button>
+              </div>
+              <label class="scan-text"><span>Texto da nota / cupom / NF</span><textarea name="invoiceText" rows="4" data-finance-invoice-text placeholder="Cole aqui o texto da nota fiscal ou fotografe pelo celular para tentar preencher fornecedor, data e valor automaticamente."></textarea></label>
+              <div class="scan-result" data-finance-invoice-result hidden></div>
+              <p class="form-hint" data-finance-invoice-message>A imagem da nota não é salva no banco. O sistema usa OCR apenas para extrair texto e preencher os campos.</p>
+            </div>
+            <label><span>Observações</span><textarea name="notes" rows="3"></textarea></label>
+            <label class="checkline checkline--boxed"><input type="checkbox" name="public" /><span>Tornar este lançamento público para os moradores</span></label>
+            <button class="btn btn--primary" type="submit">Salvar lançamento</button>
+            <p class="form-hint" data-finance-record-message></p>
+          </form>
+          <article class="panel">
+            <div class="panel-header"><div><span class="eyebrow">Filtros</span><h2>Lançamentos financeiros</h2></div><select data-finance-filter><option value="all">Todos</option><option value="public">Públicos</option><option value="fixed">Gastos fixos</option><option value="casual">Gastos casuais</option><option value="reserve">Reserva financeira</option></select></div>
+            <div data-finance-records-list class="list"></div>
+          </article>
+        </div>
+        <article class="panel" data-roles="morador">
+          <div class="panel-header"><div><span class="eyebrow">Transparência</span><h2>Prestação de contas pública</h2><p>Somente aparecem os lançamentos que o síndico marcou como públicos.</p></div></div>
+          <div data-finance-public-list class="list"></div>
+        </article>
       </section>
 
       <section id="servicos" class="section" data-section data-roles="morador,sindico">
@@ -499,11 +586,66 @@ João Souza - CPF ***.000.***-**"></textarea></label>
         </div>
       </section>
 
-      <section id="encomendas" class="section" data-section data-roles="sindico,portaria">
-        <div class="section-head"><div><span class="eyebrow">Portaria</span><h2>Encomendas</h2><p>Registro e aviso ao morador via WhatsApp ou e-mail.</p></div></div>
+
+
+      <section id="visitantes-recorrentes" class="section" data-section data-roles="morador,sindico,portaria">
+        <div class="section-head">
+          <div>
+            <span class="eyebrow">Entrada recorrente</span>
+            <h2>Visitantes e prestadores recorrentes</h2>
+            <p>Moradores podem pré-cadastrar prestadores de serviço. A portaria consulta rapidamente e registra a entrada, inclusive quando houver pré-autorização sem interfone.</p>
+          </div>
+        </div>
         <div class="content-grid content-grid--two">
-          <form class="panel form-card" data-package-form autocomplete="off">
-            <div class="panel-header"><div><span class="eyebrow">Leitura móvel</span><h2>Cadastrar encomenda</h2><p>Use a câmera do celular para ler QR/código de barras da etiqueta ou cole o texto da etiqueta para preencher automaticamente.</p></div></div>
+          <form class="panel form-card" data-recurring-visitor-form autocomplete="off">
+            <div class="panel-header"><div><span class="eyebrow">Cadastro</span><h2>Novo visitante recorrente</h2></div></div>
+            <div class="photo-uploader">
+              <div class="photo-preview" data-recurring-visitor-photo-preview><span>Sem foto</span></div>
+              <label class="btn btn--outline"><input name="photo" type="file" accept="image/*" capture="environment" hidden data-recurring-visitor-photo />Adicionar foto de referência</label>
+            </div>
+            <p class="form-hint">A foto é usada apenas para conferência visual pela portaria. Não é feita identificação facial automática e a imagem não é salva em base64 no banco.</p>
+            <label><span>Nome</span><input name="name" required placeholder="Nome da pessoa autorizada" /></label>
+            <div class="form-row"><label><span>Documento</span><input name="document" placeholder="CPF/RG, se houver" /></label><label><span>Telefone</span><input name="phone" type="tel" /></label></div>
+            <div class="form-row"><label><span>Apartamento</span><select name="apartment" required data-recurring-visitor-apartment></select></label><label><span>Categoria</span><select name="visitorCategory"><option value="prestador">Prestador de serviço</option><option value="familiar">Familiar</option><option value="outro">Outro autorizado</option></select></label></div>
+            <div class="form-row"><label><span>Tipo de serviço / vínculo</span><select name="serviceType"><option>Faxineira</option><option>Diarista</option><option>Eletricista</option><option>Pedreiro</option><option>Encanador</option><option>Pintor</option><option>Técnico de internet/TV</option><option>Cuidador</option><option>Babá</option><option>Prestador de serviço</option><option>Visita familiar</option><option>Familiar</option><option>Outro</option></select></label><label><span>Filtro da portaria</span><select data-recurring-unit-filter><option value="">Todas as unidades</option></select></label></div>
+            <label><span>Outro tipo/descrição</span><input name="customService" placeholder="Ex.: manutenção de ar-condicionado, mãe do morador, irmão, etc." /></label>
+            <label><span>Autorizado até</span><input name="validUntil" type="date" /></label>
+            <div class="weekdays-box">
+              <span>Dias autorizados</span>
+              <label><input type="checkbox" name="weekdays" value="1" /> Seg</label>
+              <label><input type="checkbox" name="weekdays" value="2" /> Ter</label>
+              <label><input type="checkbox" name="weekdays" value="3" /> Qua</label>
+              <label><input type="checkbox" name="weekdays" value="4" /> Qui</label>
+              <label><input type="checkbox" name="weekdays" value="5" /> Sex</label>
+              <label><input type="checkbox" name="weekdays" value="6" /> Sáb</label>
+              <label><input type="checkbox" name="weekdays" value="0" /> Dom</label>
+            </div>
+            <label class="checkline checkline--boxed"><input type="checkbox" name="preAuthorized" /> <span>Pré-autorizar entrada sem interfone enquanto estiver válido.</span></label>
+            <label class="checkline checkline--boxed"><input type="checkbox" name="active" checked /> <span>Cadastro ativo.</span></label>
+            <label><span>Observações para a portaria</span><textarea name="notes" rows="3" placeholder="Ex.: entra toda segunda, retirar chave, empresa, restrições..."></textarea></label>
+            <button class="btn btn--primary" type="submit">Salvar visitante recorrente</button>
+            <p class="form-hint" data-recurring-visitor-message></p>
+          </form>
+          <article class="panel">
+            <div class="panel-header"><div><span class="eyebrow">Unidades</span><h2>Visitantes por unidade</h2><p>Clique em uma unidade para visualizar todos os recorrentes com foto/metadados, dias autorizados e categoria.</p></div></div>
+            <div data-recurring-units-grid class="unit-browser"></div>
+            <div class="panel-divider"></div>
+            <div class="panel-header"><div><span class="eyebrow">Busca rápida</span><h2>Consulta da portaria</h2></div></div>
+            <div class="scan-box">
+              <label class="btn btn--outline"><input type="file" accept="image/*" capture="environment" hidden data-recurring-photo-check />Conferir foto pelo celular</label>
+              <div data-recurring-photo-check-result></div>
+            </div>
+            <input class="search" data-recurring-visitor-search placeholder="Buscar por nome, documento, unidade ou serviço" />
+            <div data-recurring-visitors-list class="list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="encomendas" class="section" data-section data-roles="morador,sindico,portaria">
+        <div class="section-head"><div><span class="eyebrow">Portaria</span><h2>Encomendas</h2><p>Portaria registra e notifica; moradores visualizam apenas encomendas da própria unidade.</p></div></div>
+        <div class="content-grid content-grid--two">
+          <form class="panel form-card" data-package-form data-roles="sindico,portaria" autocomplete="off">
+            <div class="panel-header"><div><span class="eyebrow">Leitura móvel</span><h2>Cadastrar encomenda</h2><p>Use a câmera do celular para ler diferentes modelos de etiqueta, inclusive Jadlog, Correios, transportadoras privadas, QR Code, código de barras e texto impresso.</p></div></div>
             <div class="scan-box scan-box--smart">
               <div class="scan-actions">
                 <label class="btn btn--primary"><input name="labelImage" type="file" accept="image/*" capture="environment" hidden data-package-label-image />Fotografar/ler etiqueta</label>
@@ -516,7 +658,7 @@ João Souza - CPF ***.000.***-**"></textarea></label>
               </label>
               <label class="scan-text"><span>Texto/QR da etiqueta</span><textarea name="labelText" rows="4" data-package-label-text placeholder="Cole aqui o texto da etiqueta, QR Code, código de rastreio, destinatário, unidade/apartamento..."></textarea></label>
               <div class="scan-result" data-package-scan-result hidden></div>
-              <p class="form-hint" data-package-scan-message>Em celulares compatíveis, fotografe a etiqueta. O sistema tentará ler código de barras/QR e, se necessário, extrair o texto por OCR no próprio navegador.</p>
+              <p class="form-hint" data-package-scan-message>Em celulares compatíveis, fotografe a etiqueta inteira, de frente, com boa luz e sem reflexo no plástico. O sistema usa leitura reforçada de QR/código de barras, OCR em várias regiões da foto e histórico de destinatários para preencher apartamento, destinatário, transportadora e código.</p>
             </div>
             <label><span>Apartamento</span><select name="apartment" required data-package-apartment></select></label>
             <label><span>Destinatário</span><input name="recipient" required /></label>
@@ -526,7 +668,7 @@ João Souza - CPF ***.000.***-**"></textarea></label>
             <button class="btn btn--primary" type="submit">Registrar encomenda</button>
             <p class="form-hint" data-package-message></p>
           </form>
-          <article class="panel"><div class="panel-header"><div><span class="eyebrow">Lista</span><h2>Encomendas pendentes</h2></div></div><div data-packages-list class="list"></div></article>
+          <article class="panel packages-panel"><div class="panel-header"><div><span class="eyebrow">Lista</span><h2 data-packages-title>Encomendas pendentes</h2></div></div><div data-packages-list class="list packages-scroll-list"></div></article>
         </div>
       </section>
 
@@ -553,11 +695,53 @@ João Souza - CPF ***.000.***-**"></textarea></label>
         <div class="content-grid content-grid--two">
           <form class="panel form-card" data-notice-form data-roles="sindico" autocomplete="off">
             <label><span>Título</span><input name="title" required /></label>
-            <label><span>Categoria</span><select name="category"><option>Geral</option><option>Manutenção</option><option>Segurança</option><option>Financeiro</option><option>Reservas</option></select></label>
+            <label><span>Categoria</span><select name="category"><option>Geral</option><option>Manutenção</option><option>Segurança</option><option>Financeiro</option><option>Reservas</option><option>Pets</option></select></label>
+            <div class="form-row">
+              <label><span>Destinatários</span><select name="target" data-notice-target><option value="all">Todos os moradores e portaria</option><option value="pets">Somente moradores com pet</option><option value="apartment">Unidade específica</option><option value="rented">Unidades alugadas</option><option value="owners">Proprietários/responsáveis</option><option value="tenants">Inquilinos</option></select></label>
+              <label><span>Unidade específica</span><select name="targetApartment" data-notice-apartment><option value="">Selecione se necessário</option></select></label>
+            </div>
             <label><span>Mensagem</span><textarea name="message" required rows="5"></textarea></label>
-            <button class="btn btn--primary" type="submit">Publicar comunicado</button>
+            <p class="form-hint">O comunicado aparecerá apenas para os destinatários selecionados. O síndico sempre visualiza todos.</p>
+            <button class="btn btn--primary" type="submit">Publicar comunicado filtrado</button>
           </form>
           <article class="panel"><div class="panel-header"><div><span class="eyebrow">Últimos</span><h2>Comunicados publicados</h2></div></div><div data-notices-list class="list"></div></article>
+        </div>
+      </section>
+
+      <section id="app-android" class="section" data-section data-roles="morador,sindico,portaria">
+        <div class="section-head">
+          <div>
+            <span class="eyebrow">Aplicativo</span>
+            <h2>Apps Android</h2>
+            <p>Instale os aplicativos Android da Portaria e dos Moradores. Ambos continuam usando o backend, o banco e as regras de login do sistema.</p>
+          </div>
+        </div>
+
+        <div class="content-grid content-grid--two">
+          <article class="panel app-download-panel">
+            <div class="app-download-hero"><div class="app-phone-icon">🛡️</div><div><span class="eyebrow">Android</span><h2>Vitória Régia Portaria</h2><p>App para porteiros: visitantes, visitantes recorrentes, encomendas, câmera e leitura de etiquetas.</p></div></div>
+            <div class="app-download-actions"><a class="btn btn--primary" href="https://github.com/bmedeiros1987/vitoriaregia1/releases/download/android-portaria-latest/vitoria-regia-portaria.apk" target="_blank" rel="noopener">Baixar APK Portaria</a><a class="btn btn--ghost" href="downloads/vitoria-regia-portaria-android-project.zip" download>Projeto Android</a></div>
+          </article>
+          <article class="panel app-download-panel">
+            <div class="app-download-hero"><div class="app-phone-icon">🏠</div><div><span class="eyebrow">Android</span><h2>Vitória Régia Morador</h2><p>App para moradores: acesso rápido a encomendas, notificações, comunicados, reservas, serviços e últimos visitantes da unidade.</p></div></div>
+            <div class="app-download-actions"><a class="btn btn--primary" href="https://github.com/bmedeiros1987/vitoriaregia1/releases/download/android-morador-latest/vitoria-regia-morador.apk" target="_blank" rel="noopener">Baixar APK Morador</a><a class="btn btn--ghost" href="downloads/vitoria-regia-morador-android-project.zip" download>Projeto Android</a></div>
+            <p class="form-hint">Execute o workflow <strong>Build Android APKs</strong> para publicar os dois APKs em releases separadas.</p>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <span class="eyebrow">Instalação</span>
+                <h2>Como instalar no Android</h2>
+              </div>
+            </div>
+            <div class="install-steps">
+              <div><strong>1.</strong><span>Baixe o arquivo <b>vitoria-regia-portaria.apk</b> ou <b>vitoria-regia-morador.apk</b> no celular Android.</span></div>
+              <div><strong>2.</strong><span>Abra o arquivo baixado e permita instalação de apps desconhecidos, se o Android solicitar.</span></div>
+              <div><strong>3.</strong><span>Abra o app e faça login com usuário e senha da portaria. O app não deve liberar acesso sem autenticação.</span></div>
+              <div><strong>4.</strong><span>Portaria usa a câmera para visitantes/encomendas; moradores acessam rapidamente encomendas, avisos e visitantes recentes da própria unidade.</span></div>
+            </div>
+          </article>
         </div>
       </section>
 
@@ -622,7 +806,7 @@ João Souza - CPF ***.000.***-**"></textarea></label>
             <div class="integration-card">
               <h3>WhatsApp automático</h3>
               <label class="checkline"><input type="checkbox" name="whatsappEnabled" /> <span>Ativar envio automático por WhatsApp.</span></label>
-              <label><span>Provedor de WhatsApp</span><select name="whatsappProvider"><option value="meta">Meta WhatsApp Cloud API</option><option value="evolution">Evolution API</option></select></label>
+              <label><span>Provedor de WhatsApp</span><select name="whatsappProvider"><option value="meta">Meta WhatsApp Cloud API</option><option value="evolution">Evolution API</option><option value="periskope">Periskope API</option></select></label>
 
               <div class="integration-subcard">
                 <h4>Evolution API</h4>
@@ -630,6 +814,14 @@ João Souza - CPF ***.000.***-**"></textarea></label>
                 <div class="form-row"><label><span>Nome da instância</span><input name="evolutionInstanceName" placeholder="minha-instancia" /></label><label><span>API Key Evolution</span><input name="evolutionApiKey" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter a chave salva" /></label></div>
                 <div class="form-row"><label><span>Código do país</span><input name="evolutionCountryCode" placeholder="55" /></label><label class="checkline checkline--inside"><input type="checkbox" name="evolutionLinkPreview" /> <span>Ativar prévia de links</span></label></div>
                 <p class="form-hint">Use a instância conectada na Evolution API. A API Key deve ficar apenas no Render ou salva pelo painel do síndico.</p>
+              </div>
+
+              <div class="integration-subcard">
+                <h4>Periskope API</h4>
+                <div class="form-row"><label><span>Base URL</span><input name="periskopeBaseUrl" placeholder="https://api.periskope.app/v1" /></label><label><span>Telefone conectado ao Periskope</span><input name="periskopePhone" placeholder="5561999999999" /></label></div>
+                <label><span>API Key Periskope</span><input name="periskopeApiKey" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter a chave salva" /></label>
+                <div class="form-row"><label><span>Código do país</span><input name="periskopeCountryCode" placeholder="55" /></label><label class="checkline checkline--inside"><input type="checkbox" name="periskopeHideUrlPreview" /> <span>Ocultar prévia de links</span></label></div>
+                <p class="form-hint">Informe o número conectado no Periskope no formato com DDI e DDD, sem espaços. A API Key deve ficar apenas no Render ou salva pelo painel do síndico.</p>
               </div>
 
               <div class="integration-subcard">
@@ -651,6 +843,23 @@ João Souza - CPF ***.000.***-**"></textarea></label>
               <div class="form-row"><label><span>Multa após vencimento (%)</span><input name="asaasFine" type="number" min="0" step="0.01" placeholder="2" /></label><label><span>Juros ao mês (%)</span><input name="asaasInterest" type="number" min="0" step="0.01" placeholder="1" /></label></div>
               <p class="form-hint">O boleto será registrado no Asaas usando CPF/CNPJ do morador. A API Key deve ficar apenas no Render, nunca no GitHub.</p>
               <button class="btn btn--outline" type="button" data-test-asaas>Testar conexão Asaas</button>
+            </div>
+
+
+            <div class="integration-card">
+              <h3>Armazenamento externo</h3>
+              <p class="form-hint">Use para guardar fotos e documentos fora do banco de dados. O banco salvará apenas metadados e caminho externo.</p>
+              <label class="checkline"><input type="checkbox" name="storageEnabled" /> <span>Ativar armazenamento externo.</span></label>
+              <label><span>Provedor</span><select name="storageProvider"><option value="terabox">TeraBox Open Platform</option><option value="metadata-only">Somente metadados</option></select></label>
+              <div class="integration-subcard">
+                <h4>TeraBox</h4>
+                <label><span>Base URL</span><input name="teraboxBaseUrl" placeholder="https://www.terabox.com" /></label>
+                <label><span>Upload Base URL opcional</span><input name="teraboxUploadBaseUrl" placeholder="https://c-jp.terabox.com" /></label>
+                <label><span>Access Token TeraBox</span><input name="teraboxAccessToken" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter o token salvo" /></label>
+                <div class="form-row"><label><span>Pasta raiz</span><input name="teraboxFolder" placeholder="/vitoria-regia" /></label><label><span>Limite MB</span><input name="storageMaxUploadMb" type="number" min="1" max="50" /></label></div>
+                <p class="form-hint">Use um access_token oficial da TeraBox Open Platform. Não salve esse token no GitHub.</p>
+              </div>
+              <button class="btn btn--outline" type="button" data-test-storage>Testar storage</button>
             </div>
 
             <button class="btn btn--primary" type="submit">Salvar integrações</button>

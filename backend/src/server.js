@@ -20,7 +20,7 @@ const APP_URL = process.env.APP_URL || `http://localhost:${PORT}`;
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 const GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL || `${APP_URL.replace(/\/$/, '')}/auth/google/callback`;
-const GOOGLE_AUTH_ENABLED = String(process.env.GOOGLE_AUTH_ENABLED || 'true').toLowerCase() !== 'false';
+const GOOGLE_AUTH_ENABLED = String(process.env.GOOGLE_AUTH_ENABLED || 'false').toLowerCase() === 'true';
 const DATA_FILE = process.env.DATA_FILE || path.join(os.tmpdir(), 'vitoria-regia-state.json');
 const FRONTEND_DIR = process.env.FRONTEND_DIR
   ? path.resolve(process.env.FRONTEND_DIR)
@@ -42,15 +42,20 @@ const DEFAULT_STATE = {
   residents: [],
   bookings: [],
   packages: [],
+  packageLabelMemory: [],
   visitors: [],
+  recurringVisitors: [],
   notices: [],
   staff: [],
   staffSchedules: [],
   services: [],
   serviceRequests: [],
   contactMessages: [],
+  financeRecords: [],
   settings: null,
 };
+
+const ALLOWED_STATE_KEYS = new Set(Object.keys(DEFAULT_STATE).filter((key) => key !== 'session'));
 
 const DEFAULT_NOTIFICATION_CONFIG = {
   email: {
@@ -73,12 +78,12 @@ const DEFAULT_NOTIFICATION_CONFIG = {
   },
   whatsapp: {
     enabled: String(process.env.WHATSAPP_ENABLED || 'false').toLowerCase() === 'true',
-    provider: process.env.WHATSAPP_PROVIDER || (process.env.EVOLUTION_API_KEY ? 'evolution' : 'meta'),
+    provider: process.env.WHATSAPP_PROVIDER || (process.env.PERISKOPE_API_KEY ? 'periskope' : (process.env.EVOLUTION_API_KEY ? 'evolution' : 'meta')),
     apiVersion: process.env.WHATSAPP_API_VERSION || 'v20.0',
     token: process.env.WHATSAPP_TOKEN || '',
     phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
     countryCode: process.env.WHATSAPP_COUNTRY_CODE || '55',
-    testTo: process.env.WHATSAPP_TEST_TO || process.env.EVOLUTION_TEST_TO || '',
+    testTo: process.env.WHATSAPP_TEST_TO || process.env.EVOLUTION_TEST_TO || process.env.PERISKOPE_TEST_TO || '',
     evolution: {
       serverUrl: process.env.EVOLUTION_API_URL || process.env.EVOLUTION_SERVER_URL || '',
       apiKey: process.env.EVOLUTION_API_KEY || '',
@@ -86,6 +91,14 @@ const DEFAULT_NOTIFICATION_CONFIG = {
       countryCode: process.env.EVOLUTION_COUNTRY_CODE || process.env.WHATSAPP_COUNTRY_CODE || '55',
       testTo: process.env.EVOLUTION_TEST_TO || process.env.WHATSAPP_TEST_TO || '',
       linkPreview: String(process.env.EVOLUTION_LINK_PREVIEW || 'false').toLowerCase() === 'true',
+    },
+    periskope: {
+      baseUrl: process.env.PERISKOPE_BASE_URL || 'https://api.periskope.app/v1',
+      apiKey: process.env.PERISKOPE_API_KEY || '',
+      phone: process.env.PERISKOPE_PHONE || process.env.WHATSAPP_SENDER_PHONE || '',
+      countryCode: process.env.PERISKOPE_COUNTRY_CODE || process.env.WHATSAPP_COUNTRY_CODE || '55',
+      testTo: process.env.PERISKOPE_TEST_TO || process.env.WHATSAPP_TEST_TO || '',
+      hideUrlPreview: String(process.env.PERISKOPE_HIDE_URL_PREVIEW || 'true').toLowerCase() !== 'false',
     },
   },
 };
@@ -98,6 +111,20 @@ const DEFAULT_ASAAS_CONFIG = {
   fineValue: Number(process.env.ASAAS_FINE_VALUE || 2),
   interestValue: Number(process.env.ASAAS_INTEREST_VALUE || 1),
   notificationEnabled: String(process.env.ASAAS_NOTIFICATION_ENABLED || 'true').toLowerCase() === 'true',
+};
+
+const DEFAULT_STORAGE_CONFIG = {
+  enabled: String(process.env.STORAGE_ENABLED || process.env.TERABOX_ENABLED || 'false').toLowerCase() === 'true',
+  provider: process.env.STORAGE_PROVIDER || (process.env.TERABOX_ACCESS_TOKEN ? 'terabox' : 'metadata-only'),
+  maxUploadMb: Number(process.env.STORAGE_MAX_UPLOAD_MB || process.env.UPLOAD_MAX_MB || 10),
+  terabox: {
+    baseUrl: process.env.TERABOX_BASE_URL || 'https://www.terabox.com',
+    uploadBaseUrl: process.env.TERABOX_UPLOAD_BASE_URL || '',
+    accessToken: process.env.TERABOX_ACCESS_TOKEN || '',
+    accessTokenParam: process.env.TERABOX_ACCESS_TOKEN_PARAM || 'access_tokens',
+    folder: process.env.TERABOX_FOLDER || '/vitoria-regia',
+    rtype: Number(process.env.TERABOX_RTYPE || 1),
+  },
 };
 
 function deepMerge(baseValue, patchValue) {
@@ -116,7 +143,7 @@ function ensureDir(filePath) {
 function readJsonFileFallback() {
   try {
     if (!fs.existsSync(DATA_FILE)) {
-      return { state: DEFAULT_STATE, notificationConfig: DEFAULT_NOTIFICATION_CONFIG, asaasConfig: DEFAULT_ASAAS_CONFIG, notificationLogs: [] };
+      return { state: DEFAULT_STATE, notificationConfig: DEFAULT_NOTIFICATION_CONFIG, asaasConfig: DEFAULT_ASAAS_CONFIG, storageConfig: DEFAULT_STORAGE_CONFIG, notificationLogs: [] };
     }
     const parsed = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
     return {
@@ -124,10 +151,11 @@ function readJsonFileFallback() {
       notificationConfig: deepMerge(DEFAULT_NOTIFICATION_CONFIG, parsed.notificationConfig || {}),
       asaasConfig: deepMerge(DEFAULT_ASAAS_CONFIG, parsed.asaasConfig || {}),
       notificationLogs: Array.isArray(parsed.notificationLogs) ? parsed.notificationLogs : [],
+      storageConfig: deepMerge(DEFAULT_STORAGE_CONFIG, parsed.storageConfig || {}),
     };
   } catch (error) {
     console.warn('Não foi possível ler arquivo local, usando estado vazio:', error.message);
-    return { state: DEFAULT_STATE, notificationConfig: DEFAULT_NOTIFICATION_CONFIG, asaasConfig: DEFAULT_ASAAS_CONFIG, notificationLogs: [] };
+    return { state: DEFAULT_STATE, notificationConfig: DEFAULT_NOTIFICATION_CONFIG, asaasConfig: DEFAULT_ASAAS_CONFIG, storageConfig: DEFAULT_STORAGE_CONFIG, notificationLogs: [] };
   }
 }
 
@@ -141,6 +169,7 @@ function normalizeStore(raw = {}) {
     state: { ...DEFAULT_STATE, ...(raw.state || {}) },
     notificationConfig: deepMerge(DEFAULT_NOTIFICATION_CONFIG, raw.notificationConfig || {}),
     asaasConfig: deepMerge(DEFAULT_ASAAS_CONFIG, raw.asaasConfig || {}),
+    storageConfig: deepMerge(DEFAULT_STORAGE_CONFIG, raw.storageConfig || {}),
     notificationLogs: Array.isArray(raw.notificationLogs) ? raw.notificationLogs : [],
   };
 }
@@ -274,6 +303,11 @@ async function saveStoreToDatabase(nextStore) {
        on duplicate key update config = values(config), updated_at = now()`,
       [toJson(nextStore.asaasConfig || DEFAULT_ASAAS_CONFIG)]
     );
+    await client.query(
+      `insert into app_meta (` + "`key`" + `, value, updated_at) values ('storage_config', ?, now())
+       on duplicate key update value = values(value), updated_at = now()`,
+      [toJson(nextStore.storageConfig || DEFAULT_STORAGE_CONFIG)]
+    );
     await mirrorStateToTables(client, nextStore.state || DEFAULT_STATE);
     await client.query('commit');
   } catch (error) {
@@ -288,6 +322,7 @@ async function loadStoreFromDatabase() {
   const stateResult = await query(`select value from app_meta where ` + "`key`" + ` = 'state'`);
   const configResult = await query(`select config from notification_config where id = 1`);
   const asaasConfigResult = await query(`select config from asaas_config where id = 1`);
+  const storageConfigResult = await query(`select value from app_meta where ` + "`key`" + ` = 'storage_config'`);
   const logsResult = await query(`
     select id, channel, recipient, subject, message, status, error, provider_response as "providerResponse", created_at as "createdAt"
     from notification_logs
@@ -299,6 +334,7 @@ async function loadStoreFromDatabase() {
     state: fromJson(rowsOf(stateResult)[0]?.value, DEFAULT_STATE),
     notificationConfig: fromJson(rowsOf(configResult)[0]?.config, DEFAULT_NOTIFICATION_CONFIG),
     asaasConfig: fromJson(rowsOf(asaasConfigResult)[0]?.config, DEFAULT_ASAAS_CONFIG),
+    storageConfig: fromJson(rowsOf(storageConfigResult)[0]?.value, DEFAULT_STORAGE_CONFIG),
     notificationLogs: rowsOf(logsResult),
   });
 }
@@ -339,6 +375,11 @@ async function saveStore(nextStore) {
   writeJsonFileFallback(nextStore);
 }
 
+async function freshStoreForWrite() {
+  if (databaseReady) return await loadStoreFromDatabase();
+  return store;
+}
+
 let store = normalizeStore({});
 
 function normalizeEmail(value = '') {
@@ -357,6 +398,19 @@ function portariaEmails() {
     .split(',')
     .map((item) => normalizeEmail(item))
     .filter(Boolean);
+}
+
+
+function staffAvailable(person, dateISO = new Date().toISOString().slice(0, 10)) {
+  if (!person || person.active === false) return false;
+  const status = String(person.status || 'disponivel').toLowerCase();
+  if (!['disponivel', 'disponível', 'ativo', 'available', ''].includes(status)) {
+    const from = String(person.awayFrom || '').slice(0, 10);
+    const to = String(person.awayTo || '').slice(0, 10);
+    if (!from && !to) return false;
+    if ((!from || dateISO >= from) && (!to || dateISO <= to)) return false;
+  }
+  return true;
 }
 
 function activeStaffByEmail(email) {
@@ -384,6 +438,92 @@ function bootstrapAdminAvailable() {
   return true;
 }
 
+
+
+function passwordPolicy(password = '') {
+  const value = String(password || '');
+  if (value.length < 6) return 'A senha precisa ter pelo menos 6 caracteres.';
+  return '';
+}
+
+function makePasswordHash(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(String(password || ''), salt, 64).toString('hex');
+  return `scrypt:${salt}:${hash}`;
+}
+
+function verifyPassword(password, storedHash = '') {
+  const parts = String(storedHash || '').split(':');
+  if (parts.length !== 3 || parts[0] !== 'scrypt') return false;
+  const [, salt, hash] = parts;
+  const expected = Buffer.from(hash, 'hex');
+  const actual = crypto.scryptSync(String(password || ''), salt, expected.length);
+  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+}
+
+function temporaryPassword() {
+  const a = crypto.randomBytes(3).toString('hex').toUpperCase();
+  const b = crypto.randomBytes(3).toString('hex').toUpperCase();
+  return `VR-${a}-${b}`;
+}
+
+async function authAccountByEmail(email) {
+  if (!databaseReady) return null;
+  const normalized = normalizeEmail(email);
+  if (!normalized) return null;
+  const result = await query(`select email, role, resident_id as "residentId", staff_id as "staffId", password_hash as "passwordHash", must_change_password as "mustChangePassword", active, last_login_at as "lastLoginAt", metadata from auth_accounts where email = ? limit 1`, [normalized]);
+  return rowsOf(result)[0] || null;
+}
+
+async function upsertAuthAccount({ email, role = 'morador', residentId = null, staffId = null, password, passwordHash, active = false, mustChangePassword = false, metadata = {} }) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) throw new Error('E-mail obrigatório para criar acesso.');
+  const finalHash = passwordHash || makePasswordHash(password || temporaryPassword());
+  await query(
+    `insert into auth_accounts (email, role, resident_id, staff_id, password_hash, must_change_password, active, metadata, created_at, updated_at)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,now(),now())
+     on duplicate key update role=values(role), resident_id=values(resident_id), staff_id=values(staff_id), password_hash=values(password_hash), must_change_password=values(must_change_password), active=values(active), metadata=values(metadata), updated_at=now()`,
+    [normalized, role, residentId || null, staffId || null, finalHash, Boolean(mustChangePassword), Boolean(active), toJson(metadata || {})]
+  );
+  return authAccountByEmail(normalized);
+}
+
+async function touchAuthLogin(email) {
+  try { await query(`update auth_accounts set last_login_at=now(), updated_at=now() where email = ?`, [normalizeEmail(email)]); } catch (_) {}
+}
+
+function staffRoleToAppRole(role = '') {
+  const value = String(role || '').toLowerCase();
+  if (['sindico', 'subsindico'].includes(value)) return 'sindico';
+  if (value === 'porteiro') return 'portaria';
+  return 'morador';
+}
+
+function findResidentByEmail(email) {
+  const normalized = normalizeEmail(email);
+  return (store.state?.residents || []).find((resident) => normalizeEmail(resident.email || '') === normalized && (resident.status || 'approved') === 'approved') || null;
+}
+
+function findStaffByEmail(email) {
+  const normalized = normalizeEmail(email);
+  return (store.state?.staff || []).find((person) => normalizeEmail(person.email || '') === normalized && person.active !== false) || null;
+}
+
+function resolveAccountTarget(email, requestedRole = '') {
+  const staff = findStaffByEmail(email);
+  if (staff) return { role: staffRoleToAppRole(staff.role), staff, resident: null, active: staffAvailable(staff) };
+  const resident = findResidentByEmail(email);
+  if (resident) return { role: 'morador', staff: null, resident, active: true };
+  return { role: requestedRole || 'morador', staff: null, resident: null, active: false };
+}
+
+async function sendTemporaryPassword(email, temp, name = 'usuário') {
+  return sendEmailNotification({
+    to: email,
+    subject: 'Senha temporária — Condomínio Vitória Régia',
+    message: `Olá, ${name}.\n\nFoi gerada uma senha temporária para acesso ao Sistema do Condomínio Vitória Régia.\n\nSenha temporária: ${temp}\n\nApós entrar, o sistema solicitará a criação de uma nova senha.\n\nSe você não solicitou esta alteração, informe imediatamente a administração do condomínio.`,
+  });
+}
 
 function googleOAuthConfigured() {
   return Boolean(GOOGLE_AUTH_ENABLED && GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET && GOOGLE_CALLBACK_URL);
@@ -527,6 +667,180 @@ function findApprovedResident(requested = {}) {
   });
 }
 
+
+function effectiveStorageConfig(config) {
+  const saved = config || store.storageConfig || {};
+  const savedTeraBox = saved.terabox || {};
+  const envEnabled = String(process.env.STORAGE_ENABLED || process.env.TERABOX_ENABLED || '').toLowerCase() === 'true';
+  const accessToken = savedTeraBox.accessToken || process.env.TERABOX_ACCESS_TOKEN || '';
+  const provider = String(saved.provider || process.env.STORAGE_PROVIDER || (accessToken ? 'terabox' : 'metadata-only')).toLowerCase();
+  return {
+    ...saved,
+    enabled: Boolean(saved.enabled || (envEnabled && provider === 'terabox' && accessToken)),
+    provider,
+    maxUploadMb: Number(saved.maxUploadMb || process.env.STORAGE_MAX_UPLOAD_MB || process.env.UPLOAD_MAX_MB || 10),
+    terabox: {
+      ...savedTeraBox,
+      baseUrl: savedTeraBox.baseUrl || process.env.TERABOX_BASE_URL || 'https://www.terabox.com',
+      uploadBaseUrl: savedTeraBox.uploadBaseUrl || process.env.TERABOX_UPLOAD_BASE_URL || '',
+      accessToken,
+      accessTokenSource: savedTeraBox.accessToken ? 'saved' : (process.env.TERABOX_ACCESS_TOKEN ? 'env' : 'none'),
+      accessTokenParam: savedTeraBox.accessTokenParam || process.env.TERABOX_ACCESS_TOKEN_PARAM || 'access_tokens',
+      folder: savedTeraBox.folder || process.env.TERABOX_FOLDER || '/vitoria-regia',
+      rtype: Number(savedTeraBox.rtype || process.env.TERABOX_RTYPE || 1),
+    },
+  };
+}
+
+function sanitizeStorageConfig(config) {
+  const effective = effectiveStorageConfig(config || {});
+  const terabox = effective.terabox || {};
+  return {
+    ...effective,
+    terabox: {
+      ...terabox,
+      accessToken: '',
+      accessTokenSaved: Boolean(terabox.accessToken),
+      accessTokenSource: terabox.accessTokenSource || 'none',
+    },
+  };
+}
+
+function storageDiagnostics(config) {
+  const effective = effectiveStorageConfig(config || store.storageConfig || {});
+  const problems = [];
+  if (!effective.enabled) problems.push('Armazenamento externo desativado.');
+  if (effective.provider !== 'terabox') problems.push('Provedor diferente de TeraBox.');
+  if (effective.provider === 'terabox') {
+    if (!effective.terabox?.accessToken) problems.push('TERABOX_ACCESS_TOKEN ausente.');
+    if (!effective.terabox?.baseUrl) problems.push('TERABOX_BASE_URL ausente.');
+    if (!effective.terabox?.folder) problems.push('TERABOX_FOLDER ausente.');
+  }
+  return { ok: problems.length === 0, provider: effective.provider, enabled: effective.enabled, problems, config: sanitizeStorageConfig(effective) };
+}
+
+async function saveStorageConfig(input = {}) {
+  const current = store.storageConfig || DEFAULT_STORAGE_CONFIG;
+  const currentTeraBox = current.terabox || {};
+  const nextTeraBox = input.terabox || {};
+  const config = deepMerge(current, {
+    enabled: Boolean(input.enabled),
+    provider: input.provider || current.provider || 'terabox',
+    maxUploadMb: Number(input.maxUploadMb || current.maxUploadMb || 10),
+    terabox: {
+      baseUrl: nextTeraBox.baseUrl || currentTeraBox.baseUrl || 'https://www.terabox.com',
+      uploadBaseUrl: nextTeraBox.uploadBaseUrl || currentTeraBox.uploadBaseUrl || '',
+      accessToken: nextTeraBox.accessToken || currentTeraBox.accessToken || '',
+      accessTokenParam: nextTeraBox.accessTokenParam || currentTeraBox.accessTokenParam || 'access_tokens',
+      folder: nextTeraBox.folder || currentTeraBox.folder || '/vitoria-regia',
+      rtype: Number(nextTeraBox.rtype || currentTeraBox.rtype || 1),
+    },
+  });
+  store.storageConfig = config;
+  await saveStore(store);
+  return effectiveStorageConfig(config);
+}
+
+function safeCloudFileName(name = 'arquivo') {
+  const base = path.basename(String(name || 'arquivo')).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return base.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/-+/g, '-').slice(0, 120) || `arquivo-${Date.now()}`;
+}
+
+function normalizeCloudFolder(folder = '/vitoria-regia') {
+  let value = String(folder || '/vitoria-regia').trim().replace(/\\/g, '/');
+  if (!value.startsWith('/')) value = `/${value}`;
+  return value.replace(/\/+/g, '/').replace(/\/$/, '') || '/vitoria-regia';
+}
+
+function bufferFromDataUrl(dataUrl = '') {
+  const raw = String(dataUrl || '');
+  const match = raw.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) throw new Error('Arquivo inválido. Envie como dataUrl base64.');
+  return { contentType: match[1], buffer: Buffer.from(match[2], 'base64') };
+}
+
+function appendTokenParam(url, paramName, token) {
+  const parsed = new URL(url);
+  parsed.searchParams.set(paramName || 'access_tokens', token);
+  return parsed.toString();
+}
+
+async function teraboxApiForm(url, body) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams(body),
+  });
+  const raw = await response.text().catch(() => '');
+  let payload = {};
+  try { payload = raw ? JSON.parse(raw) : {}; } catch (_) { payload = { raw }; }
+  if (!response.ok || (payload.errno && Number(payload.errno) !== 0)) {
+    throw new Error(payload.errmsg || payload.error_msg || payload.message || `Erro TeraBox HTTP ${response.status}`);
+  }
+  return payload;
+}
+
+async function uploadToTeraBox({ filename, contentType, buffer, purpose = 'arquivos' }) {
+  const config = effectiveStorageConfig(store.storageConfig || {});
+  const tb = config.terabox || {};
+  if (!config.enabled || config.provider !== 'terabox') throw new Error('Armazenamento TeraBox desativado.');
+  if (!tb.accessToken) throw new Error('TERABOX_ACCESS_TOKEN não configurado.');
+
+  const md5 = crypto.createHash('md5').update(buffer).digest('hex');
+  const month = new Date().toISOString().slice(0, 7);
+  const safePurpose = safeCloudFileName(purpose || 'arquivos').replace(/\./g, '-');
+  const remotePath = `${normalizeCloudFolder(tb.folder)}/${safePurpose}/${month}/${Date.now()}-${safeCloudFileName(filename)}`;
+  const blockList = JSON.stringify([md5]);
+  const baseUrl = String(tb.baseUrl || 'https://www.terabox.com').replace(/\/+$/, '');
+  const tokenParam = tb.accessTokenParam || 'access_tokens';
+
+  const precreateUrl = appendTokenParam(`${baseUrl}/openapi/api/precreate`, tokenParam, tb.accessToken);
+  const pre = await teraboxApiForm(precreateUrl, {
+    path: remotePath,
+    size: String(buffer.length),
+    autoinit: '1',
+    block_list: blockList,
+    rtype: String(tb.rtype || 1),
+  });
+
+  const uploadBase = String(tb.uploadBaseUrl || baseUrl.replace('www.terabox.com', 'c-jp.terabox.com')).replace(/\/+$/, '');
+  const uploadUrl = appendTokenParam(`${uploadBase}/rest/2.0/pcs/superfile2?method=upload&type=tmpfile&path=${encodeURIComponent(remotePath)}&uploadid=${encodeURIComponent(pre.uploadid || '')}&partseq=0`, tokenParam, tb.accessToken);
+  const form = new FormData();
+  form.append('file', new Blob([buffer], { type: contentType || 'application/octet-stream' }), safeCloudFileName(filename));
+  const uploadResponse = await fetch(uploadUrl, { method: 'POST', body: form });
+  const uploadRaw = await uploadResponse.text().catch(() => '');
+  let uploadPayload = {};
+  try { uploadPayload = uploadRaw ? JSON.parse(uploadRaw) : {}; } catch (_) { uploadPayload = { raw: uploadRaw }; }
+  if (!uploadResponse.ok || (uploadPayload.errno && Number(uploadPayload.errno) !== 0)) {
+    throw new Error(uploadPayload.errmsg || uploadPayload.error_msg || uploadPayload.message || `Erro TeraBox upload HTTP ${uploadResponse.status}`);
+  }
+
+  const finalBlockList = JSON.stringify([uploadPayload.md5 || md5]);
+  const createUrl = appendTokenParam(`${baseUrl}/openapi/api/create`, tokenParam, tb.accessToken);
+  const created = await teraboxApiForm(createUrl, {
+    path: remotePath,
+    size: String(buffer.length),
+    isdir: '0',
+    rtype: String(tb.rtype || 1),
+    uploadid: pre.uploadid || '',
+    block_list: finalBlockList,
+  });
+
+  return {
+    storage: 'terabox',
+    provider: 'terabox',
+    name: filename,
+    type: contentType,
+    size: buffer.length,
+    path: created.path || remotePath,
+    fsId: created.fs_id || null,
+    md5: created.md5 || uploadPayload.md5 || md5,
+    uploadedAt: new Date().toISOString(),
+    note: 'Arquivo enviado para TeraBox; o banco salva apenas metadados e caminho externo.',
+    providerResponse: { precreate: { uploadid: pre.uploadid, return_type: pre.return_type }, create: created },
+  };
+}
+
 function sanitizeConfig(config) {
   const effective = effectiveNotificationConfig(config || {});
   const email = effective.email || {};
@@ -555,6 +869,12 @@ function sanitizeConfig(config) {
         apiKeySaved: Boolean(whatsapp.evolution?.apiKey),
         apiKeySource: whatsapp.evolution?.apiKeySource || 'none',
       },
+      periskope: {
+        ...(whatsapp.periskope || {}),
+        apiKey: '',
+        apiKeySaved: Boolean(whatsapp.periskope?.apiKey),
+        apiKeySource: whatsapp.periskope?.apiKeySource || 'none',
+      },
     },
   };
 }
@@ -562,34 +882,47 @@ function sanitizeConfig(config) {
 function effectiveWhatsAppConfig(merged = {}) {
   const saved = merged.whatsapp || {};
   const savedEvolution = saved.evolution || {};
+  const savedPeriskope = saved.periskope || {};
   const envMetaToken = process.env.WHATSAPP_TOKEN || '';
   const envMetaPhoneId = process.env.WHATSAPP_PHONE_NUMBER_ID || '';
   const envEvolutionKey = process.env.EVOLUTION_API_KEY || '';
   const envEvolutionUrl = process.env.EVOLUTION_API_URL || process.env.EVOLUTION_SERVER_URL || '';
   const envEvolutionInstance = process.env.EVOLUTION_INSTANCE || process.env.EVOLUTION_INSTANCE_NAME || '';
+  const envPeriskopeKey = process.env.PERISKOPE_API_KEY || '';
+  const envPeriskopePhone = process.env.PERISKOPE_PHONE || process.env.WHATSAPP_SENDER_PHONE || '';
+  const envPeriskopeBaseUrl = process.env.PERISKOPE_BASE_URL || 'https://api.periskope.app/v1';
 
   let provider = String(saved.provider || process.env.WHATSAPP_PROVIDER || '').toLowerCase();
-  if (!['meta', 'evolution'].includes(provider)) provider = (savedEvolution.apiKey || envEvolutionKey) ? 'evolution' : 'meta';
+  if (!['meta', 'evolution', 'periskope'].includes(provider)) {
+    if (savedPeriskope.apiKey || envPeriskopeKey) provider = 'periskope';
+    else if (savedEvolution.apiKey || envEvolutionKey) provider = 'evolution';
+    else provider = 'meta';
+  }
 
   const metaToken = saved.token || envMetaToken;
   const metaPhoneId = saved.phoneNumberId || envMetaPhoneId;
   const evolutionApiKey = savedEvolution.apiKey || envEvolutionKey;
   const evolutionServerUrl = savedEvolution.serverUrl || envEvolutionUrl;
   const evolutionInstanceName = savedEvolution.instanceName || envEvolutionInstance;
+  const periskopeApiKey = cleanBearerToken(savedPeriskope.apiKey || envPeriskopeKey);
+  const periskopePhone = savedPeriskope.phone || envPeriskopePhone;
+  const periskopeBaseUrl = savedPeriskope.baseUrl || envPeriskopeBaseUrl;
   const envEnabled = String(process.env.WHATSAPP_ENABLED || '').toLowerCase() === 'true';
   const evolutionConfigured = Boolean(evolutionApiKey && evolutionServerUrl && evolutionInstanceName);
+  const periskopeConfigured = Boolean(periskopeApiKey && periskopePhone && periskopeBaseUrl);
   const metaConfigured = Boolean(metaToken && metaPhoneId);
+  const providerConfigured = provider === 'periskope' ? periskopeConfigured : (provider === 'evolution' ? evolutionConfigured : metaConfigured);
 
   return {
     ...saved,
     provider,
-    enabled: Boolean(saved.enabled || (envEnabled && (provider === 'evolution' ? evolutionConfigured : metaConfigured))),
+    enabled: Boolean(saved.enabled || (envEnabled && providerConfigured)),
     apiVersion: saved.apiVersion || process.env.WHATSAPP_API_VERSION || 'v20.0',
     token: metaToken,
     tokenSource: saved.token ? 'saved' : (envMetaToken ? 'env' : 'none'),
     phoneNumberId: metaPhoneId,
     countryCode: saved.countryCode || process.env.WHATSAPP_COUNTRY_CODE || '55',
-    testTo: saved.testTo || process.env.WHATSAPP_TEST_TO || process.env.EVOLUTION_TEST_TO || '',
+    testTo: saved.testTo || process.env.WHATSAPP_TEST_TO || process.env.EVOLUTION_TEST_TO || process.env.PERISKOPE_TEST_TO || '',
     evolution: {
       ...savedEvolution,
       serverUrl: evolutionServerUrl,
@@ -599,6 +932,16 @@ function effectiveWhatsAppConfig(merged = {}) {
       countryCode: savedEvolution.countryCode || process.env.EVOLUTION_COUNTRY_CODE || saved.countryCode || process.env.WHATSAPP_COUNTRY_CODE || '55',
       testTo: savedEvolution.testTo || process.env.EVOLUTION_TEST_TO || saved.testTo || process.env.WHATSAPP_TEST_TO || '',
       linkPreview: typeof savedEvolution.linkPreview === 'boolean' ? savedEvolution.linkPreview : String(process.env.EVOLUTION_LINK_PREVIEW || 'false').toLowerCase() === 'true',
+    },
+    periskope: {
+      ...savedPeriskope,
+      baseUrl: String(periskopeBaseUrl || 'https://api.periskope.app/v1').replace(/\/+$/, ''),
+      apiKey: periskopeApiKey,
+      apiKeySource: savedPeriskope.apiKey ? 'saved' : (envPeriskopeKey ? 'env' : 'none'),
+      phone: normalizePeriskopePhoneHeader(periskopePhone, savedPeriskope.countryCode || process.env.PERISKOPE_COUNTRY_CODE || saved.countryCode || process.env.WHATSAPP_COUNTRY_CODE || '55'),
+      countryCode: savedPeriskope.countryCode || process.env.PERISKOPE_COUNTRY_CODE || saved.countryCode || process.env.WHATSAPP_COUNTRY_CODE || '55',
+      testTo: savedPeriskope.testTo || process.env.PERISKOPE_TEST_TO || saved.testTo || process.env.WHATSAPP_TEST_TO || '',
+      hideUrlPreview: typeof savedPeriskope.hideUrlPreview === 'boolean' ? savedPeriskope.hideUrlPreview : String(process.env.PERISKOPE_HIDE_URL_PREVIEW || 'true').toLowerCase() !== 'false',
     },
   };
 }
@@ -666,6 +1009,11 @@ function whatsappDiagnostics(config = effectiveNotificationConfig()) {
     if (!evolution.serverUrl) problems.push('EVOLUTION_API_URL não configurado.');
     if (!evolution.instanceName) problems.push('EVOLUTION_INSTANCE não configurado.');
     if (!evolution.apiKey) problems.push('EVOLUTION_API_KEY não configurado.');
+  } else if (provider === 'periskope') {
+    const periskope = whatsapp.periskope || {};
+    if (!periskope.baseUrl) problems.push('PERISKOPE_BASE_URL não configurado.');
+    if (!periskope.apiKey) problems.push('PERISKOPE_API_KEY não configurado.');
+    if (!periskope.phone) problems.push('PERISKOPE_PHONE não configurado. Informe o número conectado ao Periskope no formato 55DDDNUMERO.');
   } else {
     if (!whatsapp.token) problems.push('WHATSAPP_TOKEN não configurado para Meta Cloud API.');
     if (!whatsapp.phoneNumberId) problems.push('WHATSAPP_PHONE_NUMBER_ID não configurado para Meta Cloud API.');
@@ -676,8 +1024,8 @@ function whatsappDiagnostics(config = effectiveNotificationConfig()) {
     config: {
       enabled: Boolean(whatsapp.enabled),
       provider,
-      countryCode: provider === 'evolution' ? (whatsapp.evolution?.countryCode || whatsapp.countryCode || '55') : (whatsapp.countryCode || '55'),
-      testTo: provider === 'evolution' ? (whatsapp.evolution?.testTo || whatsapp.testTo || '') : (whatsapp.testTo || ''),
+      countryCode: provider === 'evolution' ? (whatsapp.evolution?.countryCode || whatsapp.countryCode || '55') : (provider === 'periskope' ? (whatsapp.periskope?.countryCode || whatsapp.countryCode || '55') : (whatsapp.countryCode || '55')),
+      testTo: provider === 'evolution' ? (whatsapp.evolution?.testTo || whatsapp.testTo || '') : (provider === 'periskope' ? (whatsapp.periskope?.testTo || whatsapp.testTo || '') : (whatsapp.testTo || '')),
       metaTokenSaved: Boolean(whatsapp.token),
       metaTokenSource: whatsapp.tokenSource || 'none',
       metaPhoneNumberIdConfigured: Boolean(whatsapp.phoneNumberId),
@@ -685,6 +1033,12 @@ function whatsappDiagnostics(config = effectiveNotificationConfig()) {
       evolutionInstanceName: whatsapp.evolution?.instanceName || null,
       evolutionApiKeySaved: Boolean(whatsapp.evolution?.apiKey),
       evolutionApiKeySource: whatsapp.evolution?.apiKeySource || 'none',
+      periskopeBaseUrl: whatsapp.periskope?.baseUrl || null,
+      periskopePhone: whatsapp.periskope?.phone || null,
+      periskopeApiKeySaved: Boolean(whatsapp.periskope?.apiKey),
+      periskopeApiKeySource: whatsapp.periskope?.apiKeySource || 'none',
+      periskopeApiKeyLength: whatsapp.periskope?.apiKey ? cleanBearerToken(whatsapp.periskope.apiKey).length : 0,
+      periskopeEndpoint: whatsapp.periskope?.baseUrl ? `${String(whatsapp.periskope.baseUrl).replace(/\/+$/, '')}/messages` : null,
     },
   };
 }
@@ -928,14 +1282,19 @@ async function saveNotificationConfig(incoming = {}) {
   }
   if (!clean.whatsapp) clean.whatsapp = {};
   if (!clean.whatsapp.evolution) clean.whatsapp.evolution = {};
+  if (!clean.whatsapp.periskope) clean.whatsapp.periskope = {};
   if (!incoming.whatsapp || incoming.whatsapp.token === '') clean.whatsapp.token = existing.whatsapp?.token || DEFAULT_NOTIFICATION_CONFIG.whatsapp.token || '';
   if (!incoming.whatsapp?.evolution || incoming.whatsapp.evolution.apiKey === '') {
     clean.whatsapp.evolution.apiKey = existing.whatsapp?.evolution?.apiKey || DEFAULT_NOTIFICATION_CONFIG.whatsapp.evolution.apiKey || '';
+  }
+  if (!incoming.whatsapp?.periskope || incoming.whatsapp.periskope.apiKey === '') {
+    clean.whatsapp.periskope.apiKey = existing.whatsapp?.periskope?.apiKey || DEFAULT_NOTIFICATION_CONFIG.whatsapp.periskope.apiKey || '';
   }
   if (incoming.email?.clearPassword) clean.email.password = '';
   if (incoming.email?.mailersend?.clearApiKey) clean.email.mailersend.apiKey = '';
   if (incoming.whatsapp?.clearToken) clean.whatsapp.token = '';
   if (incoming.whatsapp?.evolution?.clearApiKey) clean.whatsapp.evolution.apiKey = '';
+  if (incoming.whatsapp?.periskope?.clearApiKey) clean.whatsapp.periskope.apiKey = '';
 
   clean.email.enabled = Boolean(clean.email.enabled);
   clean.email.provider = ['smtp', 'mailersend'].includes(String(clean.email.provider || '').toLowerCase()) ? String(clean.email.provider).toLowerCase() : 'smtp';
@@ -946,14 +1305,19 @@ async function saveNotificationConfig(incoming = {}) {
   clean.email.mailersend.fromEmail = clean.email.mailersend.fromEmail || process.env.MAILERSEND_FROM_EMAIL || clean.email.fromEmail || '';
   clean.email.mailersend.testTo = clean.email.mailersend.testTo || clean.email.testTo || process.env.MAILERSEND_TEST_TO || '';
   clean.whatsapp.enabled = Boolean(clean.whatsapp.enabled);
-  clean.whatsapp.provider = ['meta', 'evolution'].includes(String(clean.whatsapp.provider || '').toLowerCase()) ? String(clean.whatsapp.provider).toLowerCase() : 'meta';
+  clean.whatsapp.provider = ['meta', 'evolution', 'periskope'].includes(String(clean.whatsapp.provider || '').toLowerCase()) ? String(clean.whatsapp.provider).toLowerCase() : 'meta';
   clean.whatsapp.countryCode = clean.whatsapp.countryCode || '55';
-  clean.whatsapp.testTo = clean.whatsapp.testTo || clean.whatsapp.evolution.testTo || process.env.WHATSAPP_TEST_TO || process.env.EVOLUTION_TEST_TO || '';
+  clean.whatsapp.testTo = clean.whatsapp.testTo || clean.whatsapp.evolution.testTo || clean.whatsapp.periskope.testTo || process.env.WHATSAPP_TEST_TO || process.env.EVOLUTION_TEST_TO || process.env.PERISKOPE_TEST_TO || '';
   clean.whatsapp.evolution.serverUrl = String(clean.whatsapp.evolution.serverUrl || '').replace(/\/+$/, '');
   clean.whatsapp.evolution.instanceName = String(clean.whatsapp.evolution.instanceName || '').trim();
   clean.whatsapp.evolution.countryCode = clean.whatsapp.evolution.countryCode || clean.whatsapp.countryCode || '55';
   clean.whatsapp.evolution.testTo = clean.whatsapp.evolution.testTo || clean.whatsapp.testTo || '';
   clean.whatsapp.evolution.linkPreview = Boolean(clean.whatsapp.evolution.linkPreview);
+  clean.whatsapp.periskope.baseUrl = String(clean.whatsapp.periskope.baseUrl || 'https://api.periskope.app/v1').replace(/\/+$/, '');
+  clean.whatsapp.periskope.phone = normalizePeriskopePhoneHeader(clean.whatsapp.periskope.phone || '', clean.whatsapp.periskope.countryCode || clean.whatsapp.countryCode || '55');
+  clean.whatsapp.periskope.countryCode = clean.whatsapp.periskope.countryCode || clean.whatsapp.countryCode || '55';
+  clean.whatsapp.periskope.testTo = clean.whatsapp.periskope.testTo || clean.whatsapp.testTo || '';
+  clean.whatsapp.periskope.hideUrlPreview = Boolean(clean.whatsapp.periskope.hideUrlPreview);
 
   store.notificationConfig = clean;
   await saveStore(store);
@@ -1100,6 +1464,23 @@ function normalizePhoneForWhatsApp(value = '', countryCode = '55') {
   return `${countryCode}${digits}`;
 }
 
+function normalizePeriskopePhoneHeader(value = '', countryCode = '55') {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  // A Periskope aceita tanto telefone no formato 55DDDNUMERO quanto phone_id.
+  if (/^phone-[A-Za-z0-9_-]+$/.test(raw)) return raw;
+  return normalizePhoneForWhatsApp(raw, countryCode);
+}
+
+function cleanBearerToken(value = '') {
+  return String(value || '').trim().replace(/^Bearer\s+/i, '').trim();
+}
+
+function parseProviderPayload(responseText) {
+  if (!responseText) return {};
+  try { return JSON.parse(responseText); } catch (_) { return { raw: responseText }; }
+}
+
 async function sendWhatsAppNotification({ to, message }) {
   const config = effectiveNotificationConfig(store.notificationConfig || DEFAULT_NOTIFICATION_CONFIG);
   const whatsapp = config.whatsapp || {};
@@ -1134,6 +1515,56 @@ async function sendWhatsAppNotification({ to, message }) {
 
     await logNotification({ channel: 'whatsapp', recipient: number, message, status: 'sent', providerResponse: payload });
     return { ok: true, provider: 'evolution-api', response: payload };
+  }
+
+  if (provider === 'periskope') {
+    const periskope = whatsapp.periskope || {};
+    const number = normalizePhoneForWhatsApp(to || periskope.testTo || whatsapp.testTo, periskope.countryCode || whatsapp.countryCode || '55');
+    const token = cleanBearerToken(periskope.apiKey);
+    const phoneHeader = normalizePeriskopePhoneHeader(periskope.phone, periskope.countryCode || whatsapp.countryCode || '55');
+    if (!number) throw new Error('Número de WhatsApp inválido.');
+    if (!periskope.baseUrl || !token || !phoneHeader) throw new Error('Periskope API incompleta. Configure Base URL, API Key e telefone conectado.');
+
+    const baseUrl = String(periskope.baseUrl || 'https://api.periskope.app/v1').replace(/\/+$/, '');
+    const endpoint = `${baseUrl}/messages`;
+    const chatId = number.endsWith('@c.us') || number.endsWith('@g.us') ? number : `${number}@c.us`;
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: {
+        // A documentação da Periskope exige Authorization: Bearer <apiKey> e x-phone.
+        // Mantemos os headers em lowercase para evitar proxies sensíveis a capitalização.
+        authorization: `Bearer ${token}`,
+        'x-phone': phoneHeader,
+        'content-type': 'application/json',
+        accept: 'application/json',
+      },
+      body: JSON.stringify({
+        chat_id: chatId,
+        message: message || 'Teste automático do Sistema Vitória Régia.',
+        options: { hide_url_preview: Boolean(periskope.hideUrlPreview) },
+      }),
+    });
+
+    const responseText = await response.text().catch(() => '');
+    const payload = parseProviderPayload(responseText);
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location') || '';
+      const redirectError = `A Periskope redirecionou a chamada para ${location || 'outra URL'}. Confira PERISKOPE_BASE_URL. Use exatamente https://api.periskope.app/v1`;
+      await logNotification({ channel: 'whatsapp', recipient: number, message, status: 'error', providerResponse: { redirectTo: location, endpoint }, error: redirectError });
+      throw new Error(redirectError);
+    }
+    if (!response.ok) {
+      let errorMessage = payload?.message || payload?.error || payload?.detail || payload?.raw || response.statusText;
+      if (/authorization header is missing/i.test(String(errorMessage))) {
+        errorMessage = 'Periskope informou que o header Authorization está ausente. Confira se PERISKOPE_API_KEY foi salvo no Render ou no painel, sem aspas, sem quebras de linha e sem repetir a palavra Bearer. Depois faça Manual Deploy no Render.';
+      }
+      await logNotification({ channel: 'whatsapp', recipient: number, message, status: 'error', providerResponse: { ...payload, endpoint, hasAuthorizationHeader: Boolean(token), hasXPhoneHeader: Boolean(phoneHeader) }, error: errorMessage });
+      throw new Error(errorMessage || `Erro Periskope API HTTP ${response.status}`);
+    }
+
+    await logNotification({ channel: 'whatsapp', recipient: number, message, status: 'queued', providerResponse: payload });
+    return { ok: true, provider: 'periskope-api', response: payload };
   }
 
   if (!whatsapp.token || !whatsapp.phoneNumberId) throw new Error('WhatsApp Cloud API incompleto. Configure token e Phone Number ID.');
@@ -1221,7 +1652,21 @@ app.get('/api/db/status', async (req, res) => {
     mode: databaseReady ? 'mysql' : 'unavailable',
   };
   if (hasDatabaseConfig()) {
-    try { result.connection = await testConnection(); }
+    try {
+      result.connection = await testConnection();
+      if (databaseReady) {
+        const counts = {};
+        for (const table of ['residents','pending_residents','bookings','packages','visitors','recurring_visitors','notices','staff','staff_schedules','services','service_requests','contact_messages','finance_records','activity_logs','notification_logs']) {
+          try {
+            const r = await query(`select count(*) as total from ${table}`);
+            counts[table] = Number(rowsOf(r)[0]?.total || 0);
+          } catch (_) { /* tabela opcional ainda não existe */ }
+        }
+        const meta = await query(`select updated_at as updatedAt from app_meta where ` + "`key`" + ` = 'state'`);
+        result.persistedStateUpdatedAt = rowsOf(meta)[0]?.updatedAt || null;
+        result.counts = counts;
+      }
+    }
     catch (error) { result.error = error.message; }
   }
   res.json({ ok: databaseReady, database: result });
@@ -1280,11 +1725,13 @@ async function recordActivityLog(entry = {}, user = {}) {
   return { id, actorName, actorEmail, actorRole, action, entityType, entityId, apartment, summary, details, createdAt: new Date().toISOString() };
 }
 
-function handleLogin(req, res) {
+async function handleLogin(req, res) {
   const requested = req.body || {};
   const requestedRole = requested.role || 'morador';
+  const email = normalizeEmail(requested.email || '');
+  const password = String(requested.password || '');
 
-  if (requestedRole === 'sindico' && matchesBootstrapAdmin(requested.email, requested.password)) {
+  if (requestedRole === 'sindico' && matchesBootstrapAdmin(email, password)) {
     const user = {
       id: 'bootstrap-admin',
       role: 'sindico',
@@ -1299,61 +1746,169 @@ function handleLogin(req, res) {
     return res.json({ user, bootstrap: { active: true, message: 'Acesso temporário liberado. Cadastre o síndico oficial em Equipe para desativar este usuário automaticamente.' } });
   }
 
-  const role = allowedRole(requested.email, requestedRole);
+  if (!email || !password) return res.status(400).send('Informe e-mail e senha para acessar o sistema.');
 
-  if (requestedRole === 'sindico' && role !== 'sindico') {
-    return res.status(403).send('E-mail não autorizado para acesso de síndico/administração. Caso esteja usando o usuário temporário, informe a senha temporária configurada no Render.');
+  const account = await authAccountByEmail(email);
+  if (!account || !account.active) {
+    return res.status(403).send('Usuário sem senha ativa ou ainda não aprovado. Use “Esqueci minha senha” ou peça ao síndico para gerar uma senha temporária.');
   }
-  if (requestedRole === 'portaria' && role !== 'portaria') {
-    return res.status(403).send('E-mail não autorizado para acesso de portaria.');
-  }
+  if (!verifyPassword(password, account.passwordHash)) return res.status(401).send('E-mail ou senha inválidos.');
 
-  let resident = null;
-  if (role === 'morador' && REQUIRE_APPROVED_RESIDENT) {
-    resident = findApprovedResident(requested);
-    if (!resident) return res.status(403).send('Cadastro de morador não aprovado ou não localizado para esta unidade.');
-  }
+  const target = resolveAccountTarget(email, requestedRole);
+  const role = target.role || account.role || allowedRole(email, requestedRole);
+  if (requestedRole === 'sindico' && role !== 'sindico') return res.status(403).send('E-mail não autorizado para acesso de síndico/administração.');
+  if (requestedRole === 'portaria' && role !== 'portaria') return res.status(403).send('E-mail não autorizado para acesso de portaria.');
+  if (role === 'morador' && REQUIRE_APPROVED_RESIDENT && !target.resident) return res.status(403).send('Cadastro de morador não aprovado ou não localizado para este e-mail.');
+  if (target.staff && !staffAvailable(target.staff)) return res.status(403).send('Usuário de equipe indisponível, afastado, ausente ou de férias. O acesso/mensagens estão bloqueados enquanto durar a indisponibilidade.');
 
-  const staff = activeStaffByEmail(requested.email);
   const user = {
-    id: requested.id || resident?.id || staff?.id || `user-${Date.now()}`,
+    id: target.resident?.id || target.staff?.id || `user-${Date.now()}`,
     role,
-    name: resident?.name || staff?.name || requested.name || role,
-    email: resident?.email || staff?.email || requested.email || '',
-    apartment: resident?.apartment || requested.apartment || '',
-    residentId: resident?.id || requested.residentId || null,
-    staffId: staff?.id || null,
+    name: target.resident?.name || target.staff?.name || requested.name || email,
+    email,
+    apartment: target.resident?.apartment || '',
+    residentId: target.resident?.id || account.residentId || null,
+    staffId: target.staff?.id || account.staffId || null,
+    mustChangePassword: Boolean(account.mustChangePassword),
     bootstrap: false,
     demo: false,
   };
+  await touchAuthLogin(email);
   req.session.user = user;
   res.json({ user });
 }
 
-app.get('/auth/google', requireDatabaseReady, (req, res) => {
+
+app.post('/auth/signup', requireDatabaseReady, async (req, res) => {
   try {
-    if (!googleOAuthConfigured()) {
-      return redirectWithAuthError(res, 'Login Google não configurado. Informe GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET e GOOGLE_CALLBACK_URL no Render.');
+    const data = req.body || {};
+    const name = String(data.name || '').trim();
+    const email = normalizeEmail(data.email || '');
+    const whatsapp = String(data.whatsapp || '').trim();
+    const apartment = String(data.apartment || '').trim();
+    const password = String(data.password || '');
+    const confirm = String(data.passwordConfirm || data.confirmPassword || '');
+    if (!name || !email || !whatsapp || !apartment) return res.status(400).send('Nome, e-mail, WhatsApp e apartamento são obrigatórios.');
+    const policy = passwordPolicy(password);
+    if (policy) return res.status(400).send(policy);
+    if (password !== confirm) return res.status(400).send('A confirmação de senha não confere.');
+    const alreadyResident = (store.state?.residents || []).some((item) => normalizeEmail(item.email || '') === email && String(item.apartment || '') === apartment);
+    const alreadyPending = (store.state?.pendingResidents || []).some((item) => normalizeEmail(item.email || '') === email && String(item.apartment || '') === apartment && item.status === 'pending');
+    if (alreadyResident) return res.status(409).send('Este e-mail já consta como aprovado para a unidade.');
+    if (alreadyPending) return res.status(409).send('Já existe solicitação pendente para este e-mail nesta unidade.');
+    const pending = {
+      id: data.id || `pending-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
+      name,
+      email,
+      whatsapp,
+      cpfCnpj: onlyDigits(data.cpfCnpj || ''),
+      apartment,
+      residentType: data.residentType || 'Morador',
+      relationship: data.relationship || data.relationshipDegree || '',
+      hasPet: Boolean(data.hasPet),
+      unitRented: Boolean(data.unitRented),
+      primaryBilling: false,
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      authAccountCreated: true,
+    };
+    store.state.pendingResidents = [pending, ...(store.state.pendingResidents || [])];
+    await upsertAuthAccount({ email, role: 'morador', residentId: pending.id, password, active: false, mustChangePassword: false, metadata: { pendingId: pending.id, apartment, source: 'signup' } });
+    await saveStore(store);
+    res.json({ ok: true, pending: { ...pending, authAccountCreated: true } });
+  } catch (error) { res.status(400).send(error.message); }
+});
+
+app.post('/auth/accounts/approve-resident', requireDatabaseReady, requireSyndicUser, async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email || '');
+    const residentId = String(req.body?.residentId || '').trim();
+    const apartment = String(req.body?.apartment || '').trim();
+    if (!email || !residentId) return res.status(400).send('E-mail e ID do morador são obrigatórios.');
+    const account = await authAccountByEmail(email);
+    if (account) {
+      await query(`update auth_accounts set role='morador', resident_id=?, active=true, updated_at=now(), metadata=json_set(coalesce(metadata, json_object()), '$.apartment', ?) where email=?`, [residentId, apartment, email]);
+    } else {
+      const temp = temporaryPassword();
+      await upsertAuthAccount({ email, role: 'morador', residentId, password: temp, active: true, mustChangePassword: true, metadata: { residentId, apartment, source: 'admin-approval-temp' } });
+      const resident = findResidentByEmail(email) || { name: req.body?.name || 'morador' };
+      try { await sendTemporaryPassword(email, temp, resident.name); } catch (error) { console.warn('Não foi possível enviar senha temporária:', error.message); }
     }
-    const requestedRole = ['morador', 'sindico', 'portaria'].includes(String(req.query.role || 'morador')) ? String(req.query.role || 'morador') : 'morador';
-    const apartment = String(req.query.apartment || '').trim();
-    const state = makeOAuthState(req, { role: requestedRole, apartment });
-    const params = new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID,
-      redirect_uri: GOOGLE_CALLBACK_URL,
-      response_type: 'code',
-      scope: 'openid email profile',
-      access_type: 'offline',
-      prompt: 'select_account',
-      state,
+    res.json({ ok: true });
+  } catch (error) { res.status(400).send(error.message); }
+});
+
+app.post('/auth/password/admin-reset', requireDatabaseReady, requireSyndicUser, async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email || '');
+    if (!email) return res.status(400).send('Informe o e-mail do usuário.');
+    const target = resolveAccountTarget(email, req.body?.role || '');
+    if (!target.resident && !target.staff) return res.status(404).send('Usuário não encontrado em moradores aprovados ou equipe ativa.');
+    const role = target.role;
+    const temp = temporaryPassword();
+    await upsertAuthAccount({
+      email,
+      role,
+      residentId: target.resident?.id || null,
+      staffId: target.staff?.id || null,
+      password: temp,
+      active: true,
+      mustChangePassword: true,
+      metadata: { source: 'admin-reset', resetBy: req.session.user?.email || '', at: new Date().toISOString() },
     });
-    return res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
-  } catch (error) {
-    return redirectWithAuthError(res, error.message);
-  }
+    let emailSent = false, emailError = '';
+    try { await sendTemporaryPassword(email, temp, target.resident?.name || target.staff?.name || 'usuário'); emailSent = true; }
+    catch (error) { emailError = error.message; }
+    res.json({ ok: true, email, role, temporaryPassword: temp, emailSent, emailError });
+  } catch (error) { res.status(400).send(error.message); }
+});
+
+app.post('/auth/password/forgot', requireDatabaseReady, async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email || '');
+    if (!email) return res.status(400).send('Informe o e-mail cadastrado.');
+    const target = resolveAccountTarget(email, req.body?.role || '');
+    if (!target.resident && !target.staff) return res.json({ ok: true, message: 'Se o e-mail estiver cadastrado e aprovado, enviaremos uma senha temporária.' });
+    const temp = temporaryPassword();
+    await upsertAuthAccount({
+      email,
+      role: target.role,
+      residentId: target.resident?.id || null,
+      staffId: target.staff?.id || null,
+      password: temp,
+      active: true,
+      mustChangePassword: true,
+      metadata: { source: 'forgot-password', at: new Date().toISOString() },
+    });
+    await sendTemporaryPassword(email, temp, target.resident?.name || target.staff?.name || 'usuário');
+    res.json({ ok: true, message: 'Senha temporária enviada para o e-mail cadastrado.' });
+  } catch (error) { res.status(400).send(error.message); }
+});
+
+app.post('/auth/password/change', requireDatabaseReady, async (req, res) => {
+  try {
+    const user = req.session?.user;
+    if (!user?.email) return res.status(401).send('Faça login para alterar a senha.');
+    const newPassword = String(req.body?.newPassword || '');
+    const confirm = String(req.body?.confirmPassword || '');
+    const policy = passwordPolicy(newPassword);
+    if (policy) return res.status(400).send(policy);
+    if (newPassword !== confirm) return res.status(400).send('A confirmação de senha não confere.');
+    const account = await authAccountByEmail(user.email);
+    if (!account) return res.status(404).send('Conta de acesso não encontrada.');
+    if (!user.mustChangePassword && req.body?.currentPassword && !verifyPassword(req.body.currentPassword, account.passwordHash)) return res.status(401).send('Senha atual inválida.');
+    await upsertAuthAccount({ email: user.email, role: account.role, residentId: account.residentId, staffId: account.staffId, password: newPassword, active: true, mustChangePassword: false, metadata: { ...(account.metadata || {}), passwordChangedAt: new Date().toISOString() } });
+    req.session.user = { ...user, mustChangePassword: false };
+    res.json({ ok: true });
+  } catch (error) { res.status(400).send(error.message); }
+});
+
+app.get('/auth/google', requireDatabaseReady, (req, res) => {
+  return res.status(404).send('Login Google removido. Use e-mail e senha.');
 });
 
 app.get('/auth/google/callback', requireDatabaseReady, async (req, res) => {
+  return res.status(404).send('Login Google removido. Use e-mail e senha.');
   try {
     if (req.query.error) return redirectWithAuthError(res, `Google recusou o login: ${req.query.error}`);
     const oauthState = readOAuthState(req, req.query.state);
@@ -1372,7 +1927,7 @@ app.get('/auth/google/callback', requireDatabaseReady, async (req, res) => {
   }
 });
 
-app.post('/auth/login', requireDatabaseReady, handleLogin);
+app.post('/auth/login', requireDatabaseReady, (req, res) => handleLogin(req, res).catch((error) => res.status(400).send(error.message)));
 app.post('/auth/demo', (req, res) => {
   if (!ALLOW_LEGACY_DEMO_LOGIN) return res.status(410).send('Login demo desativado nesta versão operacional. Use /auth/login.');
   return requireDatabaseReady(req, res, () => handleLogin(req, res));
@@ -1393,7 +1948,14 @@ app.get('/api/state', requireDatabaseReady, async (req, res) => {
 app.post('/api/state/bulk', requireDatabaseReady, async (req, res) => {
   try {
     const incoming = req.body?.state || {};
-    store.state = { ...DEFAULT_STATE, ...incoming };
+    const latest = await freshStoreForWrite();
+    // Nunca substitui o banco inteiro por localStorage vazio/antigo.
+    // Mescla apenas as chaves operacionais permitidas que vierem no payload.
+    const nextState = { ...DEFAULT_STATE, ...(latest.state || {}) };
+    for (const key of Object.keys(incoming)) {
+      if (ALLOWED_STATE_KEYS.has(key)) nextState[key] = incoming[key];
+    }
+    store = normalizeStore({ ...latest, state: nextState });
     await saveStore(store);
     res.json({ ok: true, database: { ready: databaseReady }, state: store.state });
   } catch (error) {
@@ -1404,12 +1966,61 @@ app.post('/api/state/bulk', requireDatabaseReady, async (req, res) => {
 app.post('/api/state/:key', requireDatabaseReady, async (req, res) => {
   try {
     const key = req.params.key;
-    store.state = { ...DEFAULT_STATE, ...(store.state || {}) };
-    store.state[key] = req.body?.value;
+    if (!ALLOWED_STATE_KEYS.has(key)) return res.status(400).send(`Chave de estado inválida: ${key}`);
+    const latest = await freshStoreForWrite();
+    const nextState = { ...DEFAULT_STATE, ...(latest.state || {}) };
+    nextState[key] = req.body?.value;
+    store = normalizeStore({ ...latest, state: nextState });
     await saveStore(store);
-    res.json({ ok: true, key, value: store.state[key] });
+    res.json({ ok: true, database: { ready: databaseReady }, key, value: store.state[key] });
   } catch (error) {
     res.status(500).send(`Erro ao salvar item: ${error.message}`);
+  }
+});
+
+
+app.get('/api/integrations/storage', (req, res) => {
+  store.storageConfig = deepMerge(DEFAULT_STORAGE_CONFIG, store.storageConfig || {});
+  res.json({ ok: true, config: sanitizeStorageConfig(store.storageConfig) });
+});
+
+app.get('/api/integrations/storage/debug', (req, res) => {
+  res.json({ ok: true, storage: storageDiagnostics(), database: { configured: hasDatabaseConfig(), ready: databaseReady } });
+});
+
+app.post('/api/integrations/storage', requireDatabaseReady, requireSyndicUser, async (req, res) => {
+  try {
+    const config = await saveStorageConfig(req.body || {});
+    res.json({ ok: true, config: sanitizeStorageConfig(config) });
+  } catch (error) {
+    res.status(400).send(error.message);
+  }
+});
+
+app.post('/api/storage/upload', requireDatabaseReady, async (req, res) => {
+  try {
+    const config = effectiveStorageConfig(store.storageConfig || {});
+    const { filename, dataUrl, purpose, entityId } = req.body || {};
+    if (!filename || !dataUrl) throw new Error('Informe filename e dataUrl.');
+    const parsed = bufferFromDataUrl(dataUrl);
+    const limit = Number(config.maxUploadMb || 10) * 1024 * 1024;
+    if (parsed.buffer.length > limit) throw new Error(`Arquivo maior que o limite de ${config.maxUploadMb || 10} MB.`);
+    let result;
+    if (config.provider === 'terabox') {
+      result = await uploadToTeraBox({ filename, contentType: parsed.contentType, buffer: parsed.buffer, purpose });
+    } else {
+      result = { storage: 'metadata-only', name: filename, type: parsed.contentType, size: parsed.buffer.length, uploadedAt: new Date().toISOString(), note: 'Armazenamento externo desativado; arquivo não foi salvo.' };
+    }
+    await recordActivityLog({
+      action: 'Upload de arquivo externo',
+      entityType: 'storage',
+      entityId: entityId || result.path || filename,
+      summary: `${filename} enviado para ${result.storage}`,
+      details: { purpose, storage: result.storage, path: result.path, size: result.size },
+    }, req.session?.user || {});
+    res.json({ ok: true, file: result });
+  } catch (error) {
+    res.status(400).send(error.message);
   }
 });
 

@@ -1152,3 +1152,408 @@ body.no-scroll { overflow: hidden; }
   .scan-actions,
   .scan-result__grid { grid-template-columns: 1fr; }
 }
+
+.link-button{border:0;background:transparent;color:#0b4a7a;text-decoration:underline;font-weight:700;cursor:pointer;padding:.35rem 0;text-align:left}
+.link-button:hover{color:#062a45}
+.login-card small{display:block;color:var(--muted);font-size:.78rem;line-height:1.35;margin-top:.25rem}
+
+
+.weekdays-box{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:8px 0 12px;padding:12px;border:1px solid var(--border);border-radius:16px;background:#fff}
+.weekdays-box>span{grid-column:1/-1;font-size:.84rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.weekdays-box label{display:flex;align-items:center;gap:6px;font-size:.9rem;color:var(--text)}
+.pending-action{border-left:4px solid var(--gold)}
+.recurring-card .badge{margin-left:6px}
+@media (max-width: 720px){.weekdays-box{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+
+/* Melhorias: visitantes recorrentes, público de comunicados e dados familiares */
+.unit-browser { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.unit-chip { border: 1px solid rgba(42, 70, 120, .16); background: rgba(255,255,255,.88); border-radius: 16px; padding: 10px; display: flex; flex-direction: column; gap: 3px; cursor: pointer; text-align: left; box-shadow: 0 8px 20px rgba(15, 30, 60, .06); }
+.unit-chip:hover, .unit-chip.is-active { border-color: var(--gold); transform: translateY(-1px); }
+.unit-chip strong { font-size: 1rem; color: var(--blue-900); }
+.unit-chip span { font-size: .78rem; color: var(--muted); }
+.panel-divider { height: 1px; background: rgba(42, 70, 120, .12); margin: 14px 0; }
+.recurring-card--detailed { display: grid; grid-template-columns: 92px 1fr; gap: 14px; align-items: start; }
+.recurring-card__content { min-width: 0; }
+.visitor-avatar { width: 82px; min-height: 92px; border-radius: 18px; border: 1px solid rgba(42, 70, 120, .16); background: linear-gradient(145deg, rgba(239,244,255,.95), rgba(255,255,255,.95)); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--blue-900); text-align: center; }
+.visitor-avatar span { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; background: rgba(25, 67, 130, .12); font-weight: 800; }
+.visitor-avatar small { font-size: .68rem; color: var(--muted); padding: 0 5px; }
+.visitor-avatar--has-file { border-color: rgba(198, 156, 77, .58); background: linear-gradient(145deg, rgba(255, 248, 232, .9), rgba(255,255,255,.96)); }
+@media (max-width: 720px) { .recurring-card--detailed { grid-template-columns: 1fr; } .visitor-avatar { width: 100%; min-height: 76px; flex-direction: row; justify-content: flex-start; padding: 10px; } }
+
+/* App Android */
+.android-download-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 20px 0 0;
+  padding: 14px 16px;
+  border: 1px solid rgba(15, 122, 184, .16);
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(15,122,184,.08), rgba(198,154,67,.10));
+}
+.android-download-box strong { display: block; color: var(--primary); font-weight: 900; }
+.android-download-box span { display: block; color: var(--muted); font-size: .84rem; margin-top: 3px; }
+.app-download-panel { overflow: hidden; position: relative; }
+.app-download-panel::after {
+  content: "";
+  position: absolute;
+  width: 180px;
+  height: 180px;
+  right: -60px;
+  top: -70px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(198,154,67,.18), transparent 65%);
+  pointer-events: none;
+}
+.app-download-hero {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 18px;
+  align-items: center;
+}
+.app-download-hero h2 { margin: 7px 0 8px; color: var(--primary); letter-spacing: -.035em; }
+.app-download-hero p { margin: 0; color: var(--muted); line-height: 1.58; }
+.app-phone-icon {
+  width: 74px;
+  height: 74px;
+  border-radius: 24px;
+  display: grid;
+  place-items: center;
+  font-size: 2.1rem;
+  color: #fff;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  box-shadow: var(--shadow-soft);
+}
+.app-download-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 22px 0 12px;
+}
+.install-steps { display: grid; gap: 12px; }
+.install-steps div {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+}
+.install-steps strong {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+}
+.install-steps span { color: var(--muted); line-height: 1.5; }
+@media (max-width: 640px) {
+  .android-download-box { align-items: stretch; flex-direction: column; }
+  .android-download-box .btn { width: 100%; }
+  .app-download-hero { grid-template-columns: 1fr; }
+  .app-download-actions .btn { width: 100%; }
+}
+
+
+/* APKs, painel financeiro e melhorias mobile */
+.mini-actions { display:flex; gap:.5rem; flex-wrap:wrap; justify-content:flex-end; }
+.finance-summary-grid { display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:1rem; margin-bottom:1rem; }
+.scan-result__grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:.75rem; }
+.scan-result__grid div { background: rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); border-radius:14px; padding:.75rem; }
+.scan-result__grid small { display:block; opacity:.75; font-size:.75rem; margin-bottom:.25rem; }
+.item-actions button:disabled { opacity:.45; cursor:not-allowed; filter:grayscale(1); }
+@media (max-width: 920px) {
+  .finance-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .finance-summary-grid { grid-template-columns: 1fr; }
+  .mini-actions { justify-content:flex-start; }
+}
+
+/* =========================================================
+   Correção de layout — Encomendas v1.1
+   Evita que o cadastro/lista de encomendas ultrapasse a página,
+   principalmente em notebook, tablet, celular e WebView do APK.
+   ========================================================= */
+#encomendas {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+#encomendas .content-grid--two {
+  width: 100%;
+  max-width: 100%;
+  grid-template-columns: minmax(280px, 430px) minmax(0, 1fr) !important;
+  align-items: start;
+}
+
+#encomendas .panel,
+#encomendas .form-card,
+#encomendas .list,
+#encomendas .item,
+#encomendas .item-row,
+#encomendas .item-actions,
+#encomendas .scan-box,
+#encomendas .scan-result,
+#encomendas .scan-result__grid,
+#encomendas label,
+#encomendas input,
+#encomendas select,
+#encomendas textarea,
+#encomendas button,
+#encomendas a.btn {
+  max-width: 100%;
+  min-width: 0;
+}
+
+#encomendas .panel,
+#encomendas .item,
+#encomendas .scan-box,
+#encomendas .scan-result {
+  overflow: hidden;
+}
+
+#encomendas .scan-actions {
+  grid-template-columns: repeat(auto-fit, minmax(142px, 1fr)) !important;
+}
+
+#encomendas .scan-actions .btn,
+#encomendas .item-actions .btn,
+#encomendas .item-actions a.btn {
+  width: 100%;
+  white-space: normal;
+  line-height: 1.25;
+  text-align: center;
+  min-height: 42px;
+}
+
+#encomendas .item-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+#encomendas .item-row > div {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+#encomendas .item-title,
+#encomendas .item-sub,
+#encomendas .form-hint,
+#encomendas .scan-warning,
+#encomendas .scan-result__grid strong,
+#encomendas .scan-candidates,
+#encomendas textarea {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+#encomendas .item-sub {
+  line-height: 1.48;
+}
+
+#encomendas .status {
+  flex: 0 1 auto;
+  max-width: 170px;
+  white-space: normal;
+  text-align: center;
+  justify-content: center;
+}
+
+#encomendas .item-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  justify-content: stretch;
+}
+
+#encomendas .form-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 1280px) {
+  #encomendas .content-grid--two {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 720px) {
+  #encomendas .section-head,
+  #encomendas .panel-header,
+  #encomendas .item-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #encomendas .panel {
+    padding: 16px;
+    border-radius: 20px;
+  }
+
+  #encomendas .form-row,
+  #encomendas .scan-actions,
+  #encomendas .scan-result__grid,
+  #encomendas .item-actions {
+    grid-template-columns: 1fr !important;
+  }
+
+  #encomendas .status {
+    max-width: 100%;
+    align-self: flex-start;
+  }
+}
+
+
+/* =========================================================
+   Correção de layout — Encomendas v2.0 + menu recolhível
+   - Encomendas pendentes deixa de sobrepor o cadastro.
+   - Lista ganha rolagem interna quando houver muitos registros.
+   - Menu lateral pode ficar apenas com ícones no desktop.
+   ========================================================= */
+:root { --sidebar-collapsed: 84px; }
+
+.collapse-btn { display: inline-grid; place-items: center; }
+
+body.sidebar-collapsed .app {
+  grid-template-columns: var(--sidebar-collapsed) minmax(0, 1fr) !important;
+}
+
+body.sidebar-collapsed .sidebar {
+  width: var(--sidebar-collapsed) !important;
+  min-width: var(--sidebar-collapsed) !important;
+  padding: 22px 10px !important;
+  overflow-x: hidden;
+}
+
+body.sidebar-collapsed .brand-block {
+  display: grid;
+  justify-items: center;
+  padding: 8px 0 22px !important;
+}
+body.sidebar-collapsed .brand-block img { width: 46px; max-width: 46px; }
+body.sidebar-collapsed .brand-block > div,
+body.sidebar-collapsed .sidebar-profile small,
+body.sidebar-collapsed .sidebar-profile strong,
+body.sidebar-collapsed .sidebar-profile span { display: none !important; }
+
+body.sidebar-collapsed .nav a {
+  justify-content: center !important;
+  padding: 13px 0 !important;
+  gap: 0 !important;
+  font-size: 0 !important;
+  white-space: nowrap;
+}
+body.sidebar-collapsed .nav a span {
+  width: 100% !important;
+  font-size: 1.28rem !important;
+  line-height: 1 !important;
+}
+body.sidebar-collapsed .sidebar-profile {
+  min-height: 48px;
+  padding: 12px !important;
+  border-radius: 18px !important;
+}
+body.sidebar-collapsed .sidebar-profile::before {
+  content: "👤";
+  display: grid;
+  place-items: center;
+  font-size: 1.2rem;
+}
+body.sidebar-collapsed .collapse-btn { transform: rotate(180deg); }
+
+#encomendas .content-grid--two {
+  display: grid !important;
+  grid-template-columns: minmax(340px, .92fr) minmax(360px, 1.08fr) !important;
+  gap: clamp(16px, 2vw, 24px) !important;
+  align-items: start !important;
+  width: 100% !important;
+}
+
+#encomendas .content-grid--two > * {
+  min-width: 0 !important;
+  width: 100% !important;
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+#encomendas .packages-panel {
+  align-self: start;
+  overflow: hidden !important;
+}
+
+#encomendas .packages-scroll-list {
+  max-height: min(72vh, 780px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+  scrollbar-width: thin;
+}
+
+#encomendas .packages-scroll-list .item {
+  contain: layout paint;
+}
+
+#encomendas .item-actions {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)) !important;
+  gap: 8px !important;
+}
+
+#encomendas .item-actions .btn,
+#encomendas .item-actions a.btn {
+  width: 100% !important;
+  min-width: 0 !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+}
+
+#encomendas .item-row {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start !important;
+}
+
+#encomendas .item-row .status {
+  max-width: 160px;
+}
+
+@media (max-width: 1180px) {
+  #encomendas .content-grid--two {
+    grid-template-columns: 1fr !important;
+  }
+  #encomendas .packages-scroll-list {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+}
+
+@media (max-width: 920px) {
+  .collapse-btn { display: none !important; }
+  body.sidebar-collapsed .app { grid-template-columns: 1fr !important; }
+  body.sidebar-collapsed .sidebar {
+    width: min(86vw, var(--sidebar)) !important;
+    min-width: 0 !important;
+  }
+}
+
+@media (max-width: 640px) {
+  #encomendas .item-row {
+    grid-template-columns: 1fr !important;
+  }
+  #encomendas .item-row .status {
+    max-width: 100% !important;
+    justify-self: start;
+  }
+  #encomendas .item-actions {
+    grid-template-columns: 1fr !important;
+  }
+}

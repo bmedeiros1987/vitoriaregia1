@@ -220,6 +220,22 @@ async function initDatabase() {
     )
   `);
 
+  await run(`
+    create table if not exists auth_accounts (
+      email varchar(255) primary key,
+      role varchar(40) not null default 'morador',
+      resident_id varchar(120),
+      staff_id varchar(120),
+      password_hash varchar(255) not null,
+      must_change_password boolean not null default false,
+      active boolean not null default false,
+      last_login_at timestamp null,
+      metadata json,
+      created_at timestamp not null default current_timestamp,
+      updated_at timestamp not null default current_timestamp on update current_timestamp
+    )
+  `);
+
   await createIndex('residents', 'idx_residents_apartment', 'apartment');
   await createIndex('pending_residents', 'idx_pending_residents_status', 'status');
   await createIndex('bookings', 'idx_bookings_date_period', 'date, period');
@@ -235,6 +251,9 @@ async function initDatabase() {
   await createIndex('activity_logs', 'idx_activity_logs_created', 'created_at');
   await createIndex('activity_logs', 'idx_activity_logs_actor', 'actor_email, created_at');
   await createIndex('activity_logs', 'idx_activity_logs_entity', 'entity_type, entity_id');
+  await createIndex('auth_accounts', 'idx_auth_accounts_role_active', 'role, active');
+  await createIndex('auth_accounts', 'idx_auth_accounts_resident', 'resident_id');
+  await createIndex('auth_accounts', 'idx_auth_accounts_staff', 'staff_id');
 }
 
 async function createIndex(table, name, columns) {

@@ -5,13 +5,16 @@ const keys = {
   residents: `${STORE_PREFIX}residents`,
   bookings: `${STORE_PREFIX}bookings`,
   packages: `${STORE_PREFIX}packages`,
+  packageLabelMemory: `${STORE_PREFIX}packageLabelMemory`,
   visitors: `${STORE_PREFIX}visitors`,
+  recurringVisitors: `${STORE_PREFIX}recurringVisitors`,
   notices: `${STORE_PREFIX}notices`,
   staff: `${STORE_PREFIX}staff`,
   staffSchedules: `${STORE_PREFIX}staffSchedules`,
   services: `${STORE_PREFIX}services`,
   serviceRequests: `${STORE_PREFIX}serviceRequests`,
   contactMessages: `${STORE_PREFIX}contactMessages`,
+  financeRecords: `${STORE_PREFIX}financeRecords`,
   settings: `${STORE_PREFIX}settings`,
 };
 
@@ -67,6 +70,8 @@ let notificationConfig = null;
 let notificationConfigLoading = false;
 let asaasConfig = null;
 let asaasConfigLoading = false;
+let storageConfig = null;
+let storageConfigLoading = false;
 let activityLogsCache = [];
 let activityLogsLoading = false;
 let scheduleFilterDate = new Date().toISOString().slice(0, 10);
@@ -85,12 +90,27 @@ function safeParse(value, fallback) {
   try { return value ? JSON.parse(value) : fallback; } catch { return fallback; }
 }
 function read(key, fallback) { return safeParse(localStorage.getItem(key), fallback); }
+function stateNameFromStorageKey(storageKey) {
+  return Object.entries(keys).find(([, value]) => value === storageKey)?.[0] || null;
+}
+function persistSingleStateKey(storageKey, value) {
+  if (!backendAvailable || suppressBackendSync) return;
+  const name = stateNameFromStorageKey(storageKey);
+  if (!name || name === 'session') return;
+  apiRequest(`/api/state/${encodeURIComponent(name)}`, {
+    method: 'POST',
+    body: JSON.stringify({ value }),
+  }).catch((error) => {
+    console.warn(`Não foi possível salvar ${name} no banco:`, error.message);
+    showBackendRequiredBanner();
+  });
+}
 function showBackendRequiredBanner() {
   if ($('[data-backend-required-banner]')) return;
   const banner = document.createElement('div');
   banner.setAttribute('data-backend-required-banner', 'true');
   banner.className = 'backend-required-banner';
-  banner.innerHTML = '<strong>Banco de dados indisponível.</strong> Este sistema está em modo operacional e exige backend PostgreSQL ativo no Render. Verifique /api/health e /api/db/status.';
+  banner.innerHTML = '<strong>Banco de dados indisponível.</strong> Este sistema está em modo operacional e exige backend e banco MySQL ativos no Render. Verifique /api/health e /api/db/status.';
   document.body.prepend(banner);
 }
 function clearAppLocalCache() {
@@ -104,7 +124,9 @@ function write(key, value) {
     return;
   }
   localStorage.setItem(key, JSON.stringify(value));
-  queueBackendSync();
+  // Persistência operacional: salva a chave alterada diretamente no banco.
+  // Isso evita perda de dados por debounce, troca de tela, refresh ou estado local antigo.
+  persistSingleStateKey(key, value);
 }
 function remove(key) {
   if (REQUIRE_BACKEND && !backendAvailable && !suppressBackendSync) {
@@ -113,7 +135,8 @@ function remove(key) {
     return;
   }
   localStorage.removeItem(key);
-  queueBackendSync();
+  const name = stateNameFromStorageKey(key);
+  if (name && name !== 'session') persistSingleStateKey(key, name === 'settings' ? defaultSettings : []);
 }
 function stateSnapshot() {
   const state = {};
@@ -198,6 +221,45 @@ async function loadAsaasConfig() {
   }
 }
 
+
+async function loadStorageConfig() {
+  if (!backendAvailable || !isSyndic() || storageConfigLoading) return storageConfig;
+  storageConfigLoading = true;
+  try {
+    const data = await apiRequest('/api/integrations/storage');
+    storageConfig = data.config || null;
+    renderNotificationSettings();
+    return storageConfig;
+  } catch (error) {
+    storageConfig = null;
+    const status = $('[data-integration-status]');
+    if (status) status.innerHTML += `<div class="empty-state">Não foi possível carregar storage: ${escapeHTML(error.message)}</div>`;
+    return null;
+  } finally {
+    storageConfigLoading = false;
+  }
+}
+
+async function saveStorageConfigFromForm(form) {
+  const data = formDataOf(form, '[data-notification-settings-form]');
+  const payload = {
+    enabled: Boolean(data.get('storageEnabled')),
+    provider: data.get('storageProvider') || 'terabox',
+    maxUploadMb: Number(data.get('storageMaxUploadMb') || 10),
+    terabox: {
+      baseUrl: data.get('teraboxBaseUrl')?.trim() || 'https://www.terabox.com',
+      uploadBaseUrl: data.get('teraboxUploadBaseUrl')?.trim() || '',
+      accessToken: data.get('teraboxAccessToken') || '',
+      folder: data.get('teraboxFolder')?.trim() || '/vitoria-regia',
+      accessTokenParam: 'access_tokens',
+    },
+  };
+  const response = await apiRequest('/api/integrations/storage', { method: 'POST', body: JSON.stringify(payload) });
+  storageConfig = response.config;
+  renderNotificationSettings();
+  return response;
+}
+
 async function saveAsaasConfigFromForm(form) {
   const data = formDataOf(form, '[data-notification-settings-form]');
   const payload = {
@@ -253,6 +315,14 @@ async function saveNotificationConfigFromForm(form) {
         countryCode: data.get('evolutionCountryCode')?.trim() || data.get('whatsappCountryCode')?.trim() || '55',
         testTo: data.get('testWhatsappTo')?.trim() || '',
         linkPreview: Boolean(data.get('evolutionLinkPreview')),
+      },
+      periskope: {
+        baseUrl: data.get('periskopeBaseUrl')?.trim() || 'https://api.periskope.app/v1',
+        phone: data.get('periskopePhone')?.trim() || '',
+        apiKey: data.get('periskopeApiKey') || '',
+        countryCode: data.get('periskopeCountryCode')?.trim() || data.get('whatsappCountryCode')?.trim() || '55',
+        testTo: data.get('testWhatsappTo')?.trim() || '',
+        hideUrlPreview: Boolean(data.get('periskopeHideUrlPreview')),
       },
     },
   };
@@ -311,19 +381,35 @@ async function loadBackendState() {
   }
 }
 function queueBackendSync() {
-  if (suppressBackendSync || !backendAvailable) return;
-  clearTimeout(stateSyncTimer);
-  stateSyncTimer = setTimeout(async () => {
-    try {
-      await apiRequest('/api/state/bulk', { method: 'POST', body: JSON.stringify({ state: stateSnapshot() }) });
-    } catch (error) {
-      console.warn('Não foi possível sincronizar com o banco agora:', error.message);
-    }
-  }, 350);
+  // Versões anteriores sincronizavam todo o localStorage em lote.
+  // Em produção isso podia sobrescrever o banco com estado local antigo.
+  // Agora cada alteração é enviada imediatamente por /api/state/:key.
+  return;
 }
 async function createBackendSession(payload) {
   if (!backendAvailable) throw new Error('Backend indisponível. O sistema operacional exige banco de dados ativo.');
   return apiRequest('/auth/login', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+async function requestResidentSignup(payload) {
+  if (!backendAvailable) throw new Error('Backend indisponível. O cadastro exige banco de dados ativo.');
+  return apiRequest('/auth/signup', { method: 'POST', body: JSON.stringify(payload) });
+}
+async function requestPasswordReset(payload) {
+  if (!backendAvailable) throw new Error('Backend indisponível. A recuperação de senha exige backend ativo.');
+  return apiRequest('/auth/password/forgot', { method: 'POST', body: JSON.stringify(payload) });
+}
+async function changeOwnPassword(payload) {
+  if (!backendAvailable) throw new Error('Backend indisponível.');
+  return apiRequest('/auth/password/change', { method: 'POST', body: JSON.stringify(payload) });
+}
+async function approveBackendResidentAccount(payload) {
+  if (!backendAvailable) return null;
+  return apiRequest('/auth/accounts/approve-resident', { method: 'POST', body: JSON.stringify(payload) });
+}
+async function adminResetUserPassword(payload) {
+  if (!backendAvailable) throw new Error('Backend indisponível.');
+  return apiRequest('/auth/password/admin-reset', { method: 'POST', body: JSON.stringify(payload) });
 }
 async function destroyBackendSession() {
   if (!backendAvailable) return;
@@ -391,6 +477,8 @@ function normalizeResidents(list = []) {
   const normalized = (list || []).map((resident) => ({
     ...resident,
     residentType: resident.residentType || 'Morador',
+    relationship: resident.relationship || resident.relationshipDegree || '',
+    hasPet: Boolean(resident.hasPet),
     status: resident.status || 'approved',
     primaryBilling: Boolean(resident.primaryBilling),
     unitRented: Boolean(resident.unitRented),
@@ -416,6 +504,8 @@ function getBookings() { return read(keys.bookings, []); }
 function saveBookings(value) { write(keys.bookings, value); }
 function getVisitors() { return read(keys.visitors, []); }
 function saveVisitors(value) { write(keys.visitors, value); }
+function getRecurringVisitors() { return read(keys.recurringVisitors, []); }
+function saveRecurringVisitors(value) { write(keys.recurringVisitors, value); }
 function getPackages() { return read(keys.packages, []); }
 function savePackages(value) { write(keys.packages, value); }
 function getNotices() { return read(keys.notices, []); }
@@ -430,6 +520,8 @@ function getServiceRequests() { return read(keys.serviceRequests, []); }
 function saveServiceRequests(value) { write(keys.serviceRequests, value); }
 function getContactMessages() { return read(keys.contactMessages, []); }
 function saveContactMessages(value) { write(keys.contactMessages, value); }
+function getFinanceRecords() { return read(keys.financeRecords, []); }
+function saveFinanceRecords(value) { write(keys.financeRecords, value); }
 
 function seedDemo() {
   // Modo demo removido. O sistema operacional não popula dados fictícios.
@@ -439,8 +531,18 @@ function seedDemo() {
 
 function fillApartmentSelects() {
   const html = apartments().map((apt) => `<option value="${apt}">${apt}</option>`).join('');
-  $$('[data-login-apartment], [data-signup-apartment], [data-resident-apartment], [data-booking-apartment], [data-visitor-apartment], [data-package-apartment]').forEach((select) => {
+  $$('[data-login-apartment], [data-signup-apartment], [data-resident-apartment], [data-booking-apartment], [data-visitor-apartment], [data-package-apartment], [data-recurring-visitor-apartment]').forEach((select) => {
     select.innerHTML = html;
+  });
+  $$('[data-recurring-unit-filter]').forEach((select) => {
+    const current = select.value || '';
+    select.innerHTML = '<option value="">Todas as unidades</option>' + html;
+    select.value = current;
+  });
+  $$('[data-notice-apartment]').forEach((select) => {
+    const current = select.value || '';
+    select.innerHTML = '<option value="">Selecione se necessário</option>' + html;
+    select.value = current;
   });
 }
 
@@ -574,6 +676,7 @@ function startSession(data) {
   applyPermissions();
   renderAll();
   location.hash = location.hash || '#dashboard';
+  promptPasswordChangeIfNeeded();
 }
 function endSession() {
   session = null;
@@ -583,33 +686,57 @@ function endSession() {
   location.hash = '';
 }
 
+async function promptPasswordChangeIfNeeded() {
+  if (!session?.mustChangePassword) return;
+  setTimeout(async () => {
+    const first = prompt('Você está usando uma senha temporária. Crie uma nova senha com pelo menos 6 caracteres:');
+    if (!first) { alert('A troca de senha é obrigatória. Faça login novamente para continuar.'); await destroyBackendSession(); endSession(); return; }
+    const second = prompt('Confirme a nova senha:');
+    if (first !== second) { alert('As senhas não conferem. Faça login novamente.'); await destroyBackendSession(); endSession(); return; }
+    try {
+      await changeOwnPassword({ newPassword: first, confirmPassword: second });
+      session = { ...session, mustChangePassword: false };
+      write(keys.session, session);
+      alert('Senha alterada com sucesso.');
+    } catch (error) {
+      alert(error.message || 'Não foi possível alterar a senha.');
+      await destroyBackendSession();
+      endSession();
+    }
+  }, 400);
+}
+
 function authSetup() {
   const loginTab = $('[data-auth-tab="login"]');
   const signupTab = $('[data-auth-tab="signup"]');
   const loginForm = $('[data-login-form]');
   const signupForm = $('[data-signup-form]');
+  const forgotForm = $('[data-forgot-form]');
   const roleSelect = $('[data-login-role]');
-  const googleLink = $('[data-google-login]');
   const unitWrap = $('[data-login-unit-wrap]');
   const bootstrapPasswordWrap = $('[data-bootstrap-password-wrap]');
+  const showForgot = $('[data-show-forgot]');
+  const backLogin = $('[data-back-login]');
 
   function setTab(tab) {
     const login = tab === 'login';
+    const signup = tab === 'signup';
+    const forgot = tab === 'forgot';
     loginTab.classList.toggle('is-active', login);
-    signupTab.classList.toggle('is-active', !login);
+    signupTab.classList.toggle('is-active', signup);
     loginForm.classList.toggle('is-hidden', !login);
-    signupForm.classList.toggle('is-hidden', login);
+    signupForm.classList.toggle('is-hidden', !signup);
+    forgotForm?.classList.toggle('is-hidden', !forgot);
   }
   loginTab.addEventListener('click', () => setTab('login'));
   signupTab.addEventListener('click', () => setTab('signup'));
+  showForgot?.addEventListener('click', () => setTab('forgot'));
+  backLogin?.addEventListener('click', () => setTab('login'));
 
   function syncRoleUI() {
     const role = roleSelect.value;
     unitWrap.style.display = role === 'morador' ? 'grid' : 'none';
     if (bootstrapPasswordWrap) bootstrapPasswordWrap.style.display = role === 'sindico' ? 'grid' : 'none';
-    const params = new URLSearchParams({ role });
-    if (role === 'morador') params.set('apartment', $('[data-login-apartment]')?.value || '');
-    googleLink.href = `/auth/google?${params.toString()}`;
   }
   roleSelect.addEventListener('change', syncRoleUI);
   $('[data-login-apartment]')?.addEventListener('change', syncRoleUI);
@@ -625,26 +752,13 @@ function authSetup() {
     }
     const form = new FormData(loginForm);
     const role = form.get('role');
-    const name = form.get('name') || roles[role].label;
     const email = String(form.get('email') || '').trim();
     const password = String(form.get('password') || '');
     const apartment = role === 'morador' ? form.get('apartment') : '';
     try {
-      if (role === 'morador') {
-        const approved = email
-          ? (getResidents().find((resident) => resident.apartment === apartment && resident.email === email && resident.status === 'approved') || getResidents().find((resident) => resident.email === email && resident.status === 'approved'))
-          : null;
-        if (REQUIRE_APPROVED_RESIDENT && !approved) {
-          if (message) message.textContent = 'Cadastro não localizado ou ainda não aprovado pelo síndico para esta unidade.';
-          return;
-        }
-        const payload = { role, name: approved?.name || name, email: approved?.email || email, apartment: approved?.apartment || apartment, residentId: approved?.id || null, demo: false };
-        const result = await createBackendSession(payload);
-        startSession(result?.user || payload);
-        return;
-      }
-      const payload = { role, name, email, password, apartment: '', demo: false };
+      const payload = { role, email, password, apartment, demo: false };
       const result = await createBackendSession(payload);
+      await loadBackendState();
       startSession(result?.user || payload);
       if (message && result?.bootstrap?.active) message.textContent = result.bootstrap.message || 'Acesso temporário liberado.';
     } catch (error) {
@@ -652,7 +766,19 @@ function authSetup() {
     }
   });
 
-  signupForm.addEventListener('submit', (event) => {
+  forgotForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const message = $('[data-forgot-message]');
+    const form = new FormData(forgotForm);
+    try {
+      const result = await requestPasswordReset({ role: form.get('role'), email: String(form.get('email') || '').trim() });
+      message.textContent = result.message || 'Se o usuário estiver cadastrado e aprovado, uma senha temporária será enviada por e-mail.';
+    } catch (error) {
+      message.textContent = error.message || 'Não foi possível enviar a senha temporária.';
+    }
+  });
+
+  signupForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!backendAvailable) {
       showBackendRequiredBanner();
@@ -660,35 +786,37 @@ function authSetup() {
       return;
     }
     const form = new FormData(signupForm);
+    const password = String(form.get('password') || '');
+    const passwordConfirm = String(form.get('passwordConfirm') || '');
+    if (password.length < 6) { $('[data-signup-message]').textContent = 'A senha precisa ter pelo menos 6 caracteres.'; return; }
+    if (password !== passwordConfirm) { $('[data-signup-message]').textContent = 'A confirmação de senha não confere.'; return; }
     const data = {
-      id: uid('pending'),
       name: form.get('name').trim(),
       email: form.get('email').trim(),
       whatsapp: form.get('whatsapp').trim(),
+      password,
+      passwordConfirm,
       cpfCnpj: (form.get('cpfCnpj') || '').replace(/\D/g, ''),
       apartment: form.get('apartment'),
       residentType: form.get('residentType') || 'Morador',
+      relationship: form.get('relationship') || '',
+      hasPet: Boolean(form.get('hasPet')),
       unitRented: Boolean(form.get('unitRented')),
-      primaryBilling: false,
-      status: 'pending',
-      createdAt: nowISO(),
     };
-    const pendings = getPendingResidents();
-    const residents = getResidents();
-    if (pendings.some((item) => item.apartment === data.apartment && item.email === data.email && item.status === 'pending')) {
-      $('[data-signup-message]').textContent = 'Já existe uma solicitação pendente para este e-mail nesta unidade.';
-      return;
+    try {
+      const result = await requestResidentSignup(data);
+      if (result?.pending) {
+        const pendings = getPendingResidents();
+        if (!pendings.some((item) => item.id === result.pending.id)) savePendingResidents([result.pending, ...pendings]);
+      }
+      signupForm.reset();
+      fillApartmentSelects();
+      $('[data-signup-message]').textContent = 'Solicitação enviada e senha cadastrada. O síndico precisa aprovar o acesso.';
+      await loadBackendState();
+      renderAll();
+    } catch (error) {
+      $('[data-signup-message]').textContent = error.message || 'Não foi possível enviar a solicitação.';
     }
-    if (residents.some((item) => item.apartment === data.apartment && item.email === data.email)) {
-      $('[data-signup-message]').textContent = 'Este morador já consta como aprovado para a unidade.';
-      return;
-    }
-    pendings.unshift(data);
-    savePendingResidents(pendings);
-    signupForm.reset();
-    fillApartmentSelects();
-    $('[data-signup-message]').textContent = backendAvailable ? 'Solicitação enviada e salva no banco. O síndico precisa aprovar o cadastro.' : 'Solicitação enviada. O síndico precisa aprovar o cadastro.';
-    renderAll();
   });
 }
 
@@ -704,6 +832,8 @@ function navigationSetup() {
   });
   window.addEventListener('hashchange', updateActiveSection);
   $('[data-menu-open]')?.addEventListener('click', openMenu);
+  $('[data-sidebar-toggle]')?.addEventListener('click', toggleSidebarCollapse);
+  restoreSidebarCollapse();
   $('[data-sidebar-shadow]')?.addEventListener('click', closeMenu);
   $$('[data-logout]').forEach((btn) => btn.addEventListener('click', async () => { await destroyBackendSession(); endSession(); }));
   $('[data-clear-cache]')?.addEventListener('click', async () => {
@@ -717,6 +847,30 @@ function navigationSetup() {
 }
 function openMenu() { $('[data-sidebar]')?.classList.add('is-open'); $('[data-sidebar-shadow]')?.classList.add('is-open'); document.body.classList.add('no-scroll'); }
 function closeMenu() { $('[data-sidebar]')?.classList.remove('is-open'); $('[data-sidebar-shadow]')?.classList.remove('is-open'); document.body.classList.remove('no-scroll'); }
+function sidebarCanCollapse() { return window.matchMedia('(min-width: 921px)').matches; }
+function setSidebarCollapse(collapsed) {
+  if (!sidebarCanCollapse()) collapsed = false;
+  document.body.classList.toggle('sidebar-collapsed', Boolean(collapsed));
+  try { localStorage.setItem('vr_sidebar_collapsed', collapsed ? '1' : '0'); } catch (_) {}
+  const btn = $('[data-sidebar-toggle]');
+  if (btn) {
+    btn.setAttribute('aria-label', collapsed ? 'Expandir menu lateral' : 'Recolher menu lateral');
+    btn.setAttribute('title', collapsed ? 'Expandir menu lateral' : 'Recolher menu lateral');
+    btn.textContent = collapsed ? '⇥' : '⇤';
+  }
+  $$('[data-nav]').forEach((link) => {
+    if (!link.title) link.title = link.textContent.trim().replace(/\s+/g, ' ');
+  });
+}
+function restoreSidebarCollapse() {
+  let collapsed = false;
+  try { collapsed = localStorage.getItem('vr_sidebar_collapsed') === '1'; } catch (_) {}
+  setSidebarCollapse(collapsed);
+  window.addEventListener('resize', () => { if (!sidebarCanCollapse()) setSidebarCollapse(false); });
+}
+function toggleSidebarCollapse() {
+  setSidebarCollapse(!document.body.classList.contains('sidebar-collapsed'));
+}
 function updateActiveSection() {
   if (!session) return;
   let id = (location.hash || '#dashboard').replace('#', '');
@@ -845,7 +999,11 @@ function renderAll() {
   renderBookings();
   renderCalendar();
   renderFinance();
+  renderFinanceRecords();
+  renderResidentQuickAccess();
   renderVisitors();
+  renderRecurringVisitors();
+  renderPendingActions();
   renderPackages();
   renderNotices();
   renderStaff();
@@ -878,8 +1036,32 @@ function renderDashboard() {
     bookingsBox.innerHTML = list.length ? list.map(renderBookingItem).join('') : empty('Nenhuma reserva próxima.');
   }
   if (noticesBox) {
-    const list = getNotices().slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 4);
+    const list = getNotices().filter(noticeVisibleToCurrentUser).slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 4);
     noticesBox.innerHTML = list.length ? list.map(renderNoticeItem).join('') : empty('Nenhum comunicado publicado.');
+  }
+  renderPendingActions();
+}
+
+function residentApartment() { return session?.apartment || currentResidentRecord()?.apartment || ''; }
+function packageVisibleToCurrentUser(pkg = {}) {
+  if (isSyndic() || currentRole() === 'portaria') return true;
+  return String(pkg.apartment || '') === String(residentApartment() || '');
+}
+function visitorVisibleToCurrentUser(visitor = {}) {
+  if (isSyndic() || currentRole() === 'portaria') return true;
+  return String(visitor.apartment || '') === String(residentApartment() || '');
+}
+function renderResidentQuickAccess() {
+  const packagesBox = $('[data-resident-quick-packages]');
+  const visitorsBox = $('[data-resident-recent-visitors]');
+  if (packagesBox) {
+    const title = $('[data-packages-title]'); if (title) title.textContent = isResident() ? 'Minhas encomendas' : 'Encomendas pendentes';
+  const list = getPackages().filter(packageVisibleToCurrentUser).filter((p) => p.status !== 'delivered').sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 4);
+    packagesBox.innerHTML = list.length ? list.map((pkg) => `<div class="item"><div class="item-title">📦 ${escapeHTML(pkg.recipient || 'Encomenda')}</div><div class="item-sub">${escapeHTML(pkg.carrier || 'Transportadora não informada')} • ${escapeHTML(pkg.code || 'sem código')}<br>Cadastro no sistema: ${formatDateTime(pkg.createdAt)}${pkg.notifiedAt ? `<br>Notificado em: ${formatDateTime(pkg.notifiedAt)}` : ''}</div></div>`).join('') : empty('Nenhuma encomenda pendente para sua unidade.');
+  }
+  if (visitorsBox) {
+    const list = getVisitors().filter(visitorVisibleToCurrentUser).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5);
+    visitorsBox.innerHTML = list.length ? list.map((v) => `<div class="item"><div class="item-title">👤 ${escapeHTML(v.name)}</div><div class="item-sub">${escapeHTML(v.type || 'Visitante')} • Unidade ${escapeHTML(v.apartment)}<br>Horário cadastrado no sistema: ${formatDateTime(v.createdAt)}</div></div>`).join('') : empty('Nenhum visitante registrado recentemente para sua unidade.');
   }
 }
 
@@ -929,7 +1111,7 @@ function renderResidents() {
           <div class="item-row">
             <div>
               <div class="item-title">${escapeHTML(resident.name)} ${resident.primaryBilling ? '<span class="badge badge--approved">Principal para boletos</span>' : ''}</div>
-              <div class="item-sub">${escapeHTML(resident.email)} • ${escapeHTML(resident.whatsapp)}${resident.cpfCnpj ? ` • CPF/CNPJ: ${escapeHTML(resident.cpfCnpj)}` : ''}<br>Vínculo: ${escapeHTML(resident.residentType || 'Morador')}${resident.notes ? `<br>${escapeHTML(resident.notes)}` : ''}</div>
+              <div class="item-sub">${escapeHTML(resident.email)} • ${escapeHTML(resident.whatsapp)}${resident.cpfCnpj ? ` • CPF/CNPJ: ${escapeHTML(resident.cpfCnpj)}` : ''}<br>Vínculo: ${escapeHTML(resident.residentType || 'Morador')}${resident.relationship ? ` • Relação: ${escapeHTML(resident.relationship)}` : ''} • ${resident.hasPet ? 'Possui pet' : 'Sem pet informado'}${resident.notes ? `<br>${escapeHTML(resident.notes)}` : ''}</div>
             </div>
             <span class="status status--approved">Aprovado</span>
           </div>
@@ -939,6 +1121,7 @@ function renderResidents() {
             <button class="btn btn--outline btn--sm" data-toggle-rented="${resident.apartment}">${rented ? 'Marcar não alugada' : 'Marcar alugada'}</button>
             <button class="btn btn--success btn--sm" data-auto-resident-whatsapp="${resident.id}">Auto WhatsApp</button>
             <button class="btn btn--success btn--sm" data-auto-resident-email="${resident.id}">Auto e-mail</button>
+            <button class="btn btn--outline btn--sm" data-reset-user-password="resident:${resident.id}">Gerar senha temporária</button>
             <a class="btn btn--outline btn--sm" href="${whatsAppLink(resident.whatsapp, `Olá, ${resident.name}. Mensagem do Condomínio Vitória Régia.`)}" target="_blank" rel="noopener">Manual WhatsApp</a>
             <a class="btn btn--outline btn--sm" href="mailto:${encodeURIComponent(resident.email)}?subject=${encodeURIComponent('Condomínio Vitória Régia')}">Manual e-mail</a>
             <button class="btn btn--danger btn--sm" data-remove-resident="${resident.id}">Remover</button>
@@ -961,7 +1144,9 @@ function setupResidents() {
       cpfCnpj: (data.get('cpfCnpj') || '').replace(/\D/g, ''),
       apartment: data.get('apartment'),
       residentType: data.get('residentType') || 'Morador',
-      primaryBilling: Boolean(data.get('primaryBilling')),
+      relationship: data.get('relationship') || '',
+      hasPet: Boolean(data.get('hasPet')),
+      primaryBilling: Boolean(data.get('primaryBilling')), 
       unitRented: Boolean(data.get('unitRented')),
       notes: data.get('notes').trim(),
       status: 'approved',
@@ -994,6 +1179,7 @@ async function approveResident(id) {
   residents.unshift(approved);
   saveResidents(residents);
   savePendingResidents(pendings.filter((item) => item.id !== id));
+  try { await approveBackendResidentAccount({ email: approved.email, residentId: approved.id, pendingId: pending.id, apartment: approved.apartment, name: approved.name }); } catch (error) { console.warn('Acesso do morador aprovado localmente, mas senha não foi ativada:', error.message); }
   renderAll();
   await maybeNotifyResident(approved, 'residentStatus', 'Cadastro aprovado — Condomínio Vitória Régia', `Olá, ${approved.name}. Seu cadastro da unidade ${approved.apartment} foi aprovado pelo síndico. Você já pode acessar o sistema.`);
 }
@@ -1038,8 +1224,10 @@ function editResident(id) {
   const whatsapp = prompt('WhatsApp:', resident.whatsapp) ?? resident.whatsapp;
   const cpfCnpj = prompt('CPF/CNPJ do responsável:', resident.cpfCnpj || '') ?? resident.cpfCnpj;
   const residentType = prompt('Vínculo (Proprietário, Inquilino, Familiar, Responsável financeiro, Outro morador):', resident.residentType || 'Morador') ?? resident.residentType;
+  const relationship = prompt('Grau de parentesco/relação (Filho(a), Esposo(a), Companheiro(a), Inquilino(a), etc.):', resident.relationship || '') ?? resident.relationship;
+  const hasPet = confirm(`Este cadastro deve ficar marcado como possui pet?\n\nOK = possui pet | Cancelar = sem pet`);
   const notes = prompt('Observações:', resident.notes || '') ?? resident.notes;
-  updateResidentById(id, { name: name.trim(), email: email.trim(), whatsapp: whatsapp.trim(), cpfCnpj: String(cpfCnpj || '').replace(/\D/g, ''), residentType, notes });
+  updateResidentById(id, { name: name.trim(), email: email.trim(), whatsapp: whatsapp.trim(), cpfCnpj: String(cpfCnpj || '').replace(/\D/g, ''), residentType, relationship, hasPet, notes });
   renderAll();
 }
 function currentResidentRecord() {
@@ -1067,6 +1255,8 @@ function renderMyResident() {
       form.elements.whatsapp.value = resident.whatsapp || '';
       form.elements.cpfCnpj.value = resident.cpfCnpj || '';
       form.elements.residentType.value = resident.residentType || 'Morador';
+      if (form.elements.relationship) form.elements.relationship.value = resident.relationship || 'Responsável';
+      if (form.elements.hasPet) form.elements.hasPet.checked = Boolean(resident.hasPet);
       form.elements.primaryBilling.checked = Boolean(resident.primaryBilling);
       form.elements.unitRented.checked = Boolean(resident.unitRented);
       form.elements.notes.value = resident.notes || '';
@@ -1074,7 +1264,7 @@ function renderMyResident() {
   }
   if (listBox) {
     listBox.innerHTML = unitResidents.length ? unitResidents.map((item) => `<div class="item resident-card">
-      <div class="item-row"><div><div class="item-title">${escapeHTML(item.name)} ${item.primaryBilling ? '<span class="badge badge--approved">Principal boletos</span>' : ''}</div><div class="item-sub">${escapeHTML(item.email)} • ${escapeHTML(item.whatsapp)}<br>Vínculo: ${escapeHTML(item.residentType || 'Morador')} • ${item.unitRented ? 'Unidade alugada' : 'Unidade não marcada como alugada'}</div></div><span class="status status--approved">Aprovado</span></div>
+      <div class="item-row"><div><div class="item-title">${escapeHTML(item.name)} ${item.primaryBilling ? '<span class="badge badge--approved">Principal boletos</span>' : ''}</div><div class="item-sub">${escapeHTML(item.email)} • ${escapeHTML(item.whatsapp)}<br>Vínculo: ${escapeHTML(item.residentType || 'Morador')}${item.relationship ? ` • Relação: ${escapeHTML(item.relationship)}` : ''} • ${item.hasPet ? 'Possui pet' : 'Sem pet informado'} • ${item.unitRented ? 'Unidade alugada' : 'Unidade não marcada como alugada'}</div></div><span class="status status--approved">Aprovado</span></div>
     </div>`).join('') : empty('Nenhum morador aprovado nesta unidade.');
   }
 }
@@ -1092,7 +1282,9 @@ function setupMyResident() {
       whatsapp: data.get('whatsapp').trim(),
       cpfCnpj: (data.get('cpfCnpj') || '').replace(/\D/g, ''),
       residentType: data.get('residentType') || 'Morador',
-      primaryBilling: Boolean(data.get('primaryBilling')),
+      relationship: data.get('relationship') || '',
+      hasPet: Boolean(data.get('hasPet')),
+      primaryBilling: Boolean(data.get('primaryBilling')), 
       unitRented: Boolean(data.get('unitRented')),
       notes: data.get('notes').trim(),
     };
@@ -1326,7 +1518,7 @@ function editBooking(id) {
   renderAll();
 }
 async function uploadManagerDocument(id, file) {
-  const managerDocument = await fileMeta(file);
+  const managerDocument = await fileMeta(file, 'arquivos');
   saveBookings(getBookings().map((booking) => booking.id === id ? { ...booking, managerDocument } : booking));
   logActivity('Anexou documento de reserva', { entityId: id, summary: `Documento anexado à reserva ${id}`, document: managerDocument }, 'reserva');
   renderAll();
@@ -1400,6 +1592,145 @@ function renderFinance() {
     </div>`).join('') : empty('Nenhuma cobrança de reserva.');
   if (currentBoletoBookingId) renderBoletoPreview(currentBoletoBookingId);
 }
+
+function financeTypeLabel(type = '') {
+  return { fixed: 'Gasto fixo', casual: 'Gasto casual', reserve_in: 'Reserva — entrada', reserve_out: 'Reserva — saída' }[type] || type || 'Lançamento';
+}
+function financeRecordAmount(record = {}) {
+  const amount = Number(record.amount || 0);
+  return record.type === 'reserve_out' ? -Math.abs(amount) : Math.abs(amount);
+}
+function financeSummary() {
+  const records = getFinanceRecords();
+  return {
+    fixed: records.filter((r) => r.type === 'fixed').reduce((sum, r) => sum + Number(r.amount || 0), 0),
+    casual: records.filter((r) => r.type === 'casual').reduce((sum, r) => sum + Number(r.amount || 0), 0),
+    reserve: records.filter((r) => String(r.type || '').startsWith('reserve')).reduce((sum, r) => sum + financeRecordAmount(r), 0),
+    bookings: getBookings().filter((b) => !['canceled', 'rejected'].includes(b.status)).reduce((sum, b) => sum + Number(b.fee || 0), 0),
+  };
+}
+function parseMoneyFromText(text = '') {
+  const matches = String(text).match(/(?:R\$\s*)?\d{1,3}(?:\.\d{3})*,\d{2}|\d+\.\d{2}/g) || [];
+  if (!matches.length) return '';
+  const nums = matches.map((raw) => Number(raw.replace(/R\$\s*/i, '').replace(/\./g, '').replace(',', '.'))).filter((n) => Number.isFinite(n));
+  return nums.length ? Math.max(...nums).toFixed(2) : '';
+}
+function parseDateFromText(text = '') {
+  const m = String(text).match(/(\d{2})[\/\-](\d{2})[\/\-](\d{4})/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : todayLocalISO();
+}
+function parseInvoiceText(text = '') {
+  const lines = String(text).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const vendor = lines.find((l) => /LTDA|ME\b|S\/A|MERCADO|SUPERMERCADO|COMERCIO|CONDOMINIO|SERVICO|SERVIÇOS/i.test(l)) || lines[0] || '';
+  return { vendor, amount: parseMoneyFromText(text), date: parseDateFromText(text), rawText: text };
+}
+function applyFinanceInvoiceFields(fields = {}) {
+  const form = $('[data-finance-record-form]');
+  const result = $('[data-finance-invoice-result]');
+  if (!form) return;
+  if (fields.vendor && form.vendor) form.vendor.value = fields.vendor;
+  if (fields.amount && form.amount) form.amount.value = fields.amount;
+  if (fields.date && form.date) form.date.value = fields.date;
+  if (result) {
+    result.hidden = false;
+    result.innerHTML = `<div class="scan-result__grid"><div><small>Fornecedor provável</small><strong>${escapeHTML(fields.vendor || '-')}</strong></div><div><small>Valor provável</small><strong>${fields.amount ? money.format(Number(fields.amount)) : '-'}</strong></div><div><small>Data provável</small><strong>${escapeHTML(fields.date || '-')}</strong></div></div>`;
+  }
+}
+async function handleFinanceInvoiceImage(file) {
+  if (!file) return;
+  const msg = $('[data-finance-invoice-message]');
+  try {
+    if (msg) msg.textContent = 'Lendo nota/cupom por OCR local. A imagem não será salva no banco.';
+    const text = await readTextFromImageWithOcr(file, (progress) => { if (msg) msg.textContent = `Lendo nota por OCR: ${progress}`; });
+    const area = $('[data-finance-invoice-text]');
+    if (area) area.value = text;
+    applyFinanceInvoiceFields(parseInvoiceText(text));
+    if (msg) msg.textContent = 'OCR concluído. Confira os campos antes de salvar.';
+  } catch (error) {
+    if (msg) msg.textContent = error.message || 'Não foi possível ler a nota. Cole o texto manualmente.';
+  }
+}
+function setupFinanceRecords() {
+  const form = $('[data-finance-record-form]');
+  if (form) {
+    form.elements.date.value = todayLocalISO();
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const data = new FormData(form);
+      const record = {
+        id: uid('fin'),
+        description: data.get('description').trim(),
+        type: data.get('type'),
+        amount: Number(data.get('amount') || 0),
+        date: data.get('date') || todayLocalISO(),
+        vendor: data.get('vendor')?.trim() || '',
+        category: data.get('category')?.trim() || '',
+        invoiceText: data.get('invoiceText')?.trim() || '',
+        notes: data.get('notes')?.trim() || '',
+        public: data.get('public') === 'on',
+        createdAt: nowISO(),
+        createdBy: session?.email || session?.name || 'sistema',
+      };
+      saveFinanceRecords([record, ...getFinanceRecords()]);
+      logPortariaActivity('Lançamento financeiro cadastrado', { ...record, summary: `${financeTypeLabel(record.type)}: ${record.description}` }, 'financeiro');
+      form.reset(); form.elements.date.value = todayLocalISO();
+      const msg = $('[data-finance-record-message]'); if (msg) msg.textContent = 'Lançamento salvo no banco. Imagem/arquivo da nota não foi salvo, apenas os dados/texto extraído.';
+      renderAll();
+    });
+  }
+  $('[data-finance-invoice-image]')?.addEventListener('change', (event) => handleFinanceInvoiceImage(event.target.files?.[0]));
+  $('[data-parse-finance-invoice]')?.addEventListener('click', () => applyFinanceInvoiceFields(parseInvoiceText($('[data-finance-invoice-text]')?.value || '')));
+  $('[data-clear-finance-invoice]')?.addEventListener('click', () => {
+    const area = $('[data-finance-invoice-text]'); if (area) area.value = '';
+    const result = $('[data-finance-invoice-result]'); if (result) { result.hidden = true; result.innerHTML = ''; }
+    const msg = $('[data-finance-invoice-message]'); if (msg) msg.textContent = 'Leitura limpa. Fotografe a nota ou cole o texto para preencher automaticamente.';
+  });
+  $('[data-finance-filter]')?.addEventListener('change', renderFinanceRecords);
+}
+function financeRecordVisible(record = {}) {
+  if (isSyndic()) return true;
+  return Boolean(record.public);
+}
+function renderFinanceRecords() {
+  const summary = financeSummary();
+  $('[data-finance-bookings-total]') && ($('[data-finance-bookings-total]').textContent = money.format(summary.bookings));
+  $('[data-finance-fixed-total]') && ($('[data-finance-fixed-total]').textContent = money.format(summary.fixed));
+  $('[data-finance-casual-total]') && ($('[data-finance-casual-total]').textContent = money.format(summary.casual));
+  $('[data-finance-reserve-total]') && ($('[data-finance-reserve-total]').textContent = money.format(summary.reserve));
+  const filter = $('[data-finance-filter]')?.value || 'all';
+  const records = getFinanceRecords().filter(financeRecordVisible).filter((record) => {
+    if (filter === 'all') return true;
+    if (filter === 'public') return record.public;
+    if (filter === 'reserve') return String(record.type || '').startsWith('reserve');
+    return record.type === filter;
+  }).sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt));
+  const listBox = $('[data-finance-records-list]');
+  const publicBox = $('[data-finance-public-list]');
+  const html = records.length ? records.map(renderFinanceRecordItem).join('') : empty(isSyndic() ? 'Nenhum lançamento financeiro cadastrado.' : 'Nenhum lançamento público disponível.');
+  if (listBox) listBox.innerHTML = html;
+  if (publicBox) publicBox.innerHTML = html;
+}
+function renderFinanceRecordItem(record = {}) {
+  return `<div class="item">
+    <div class="item-row"><div><div class="item-title">${escapeHTML(record.description)} • ${money.format(Number(record.amount || 0))}</div><div class="item-sub">${escapeHTML(financeTypeLabel(record.type))} • ${escapeHTML(record.category || 'sem categoria')} • ${formatDate(record.date || record.createdAt)}${record.vendor ? ` • ${escapeHTML(record.vendor)}` : ''}${record.public ? '<br>Visível aos moradores' : '<br>Privado do síndico'}</div></div><span class="status status--${record.public ? 'approved' : 'pending'}">${record.public ? 'Público' : 'Privado'}</span></div>
+    ${record.notes ? `<p class="item-sub">${escapeHTML(record.notes)}</p>` : ''}
+    ${isSyndic() ? `<div class="item-actions"><button class="btn btn--outline btn--sm" data-toggle-finance-public="${record.id}">${record.public ? 'Tornar privado' : 'Tornar público'}</button><button class="btn btn--danger btn--sm" data-remove-finance-record="${record.id}">Excluir</button></div>` : ''}
+  </div>`;
+}
+function toggleFinancePublic(id) {
+  saveFinanceRecords(getFinanceRecords().map((record) => record.id === id ? { ...record, public: !record.public, updatedAt: nowISO() } : record));
+  logPortariaActivity('Alterou publicidade de lançamento financeiro', { id, summary: `Lançamento financeiro ${id} teve publicidade alterada` }, 'financeiro');
+  renderAll();
+}
+function removeFinanceRecord(id) {
+  if (!isSyndic()) return;
+  const record = getFinanceRecords().find((r) => r.id === id);
+  if (!record || !confirm(`Excluir lançamento financeiro "${record.description}"?`)) return;
+  saveFinanceRecords(getFinanceRecords().filter((r) => r.id !== id));
+  logPortariaActivity('Excluiu lançamento financeiro', { ...record, summary: `Lançamento financeiro excluído: ${record.description}` }, 'financeiro');
+  renderAll();
+}
+
 async function shouldUseAsaas() {
   if (!backendAvailable || !isSyndic()) return false;
   if (!asaasConfig) await loadAsaasConfig();
@@ -1496,11 +1827,265 @@ async function markPaid(id) {
   }
 }
 
+
+function currentShiftLabel() {
+  const shift = currentShift();
+  return { manha: 'Manhã', tarde: 'Tarde', noite: 'Noite' }[shift] || shift;
+}
+function pendingActionsForCurrentUser() {
+  const actions = [];
+  const now = todayLocalISO();
+  getPackages()
+    .filter((pkg) => pkg.status !== 'delivered')
+    .sort((a, b) => new Date(a.createdAt || nowISO()) - new Date(b.createdAt || nowISO()))
+    .slice(0, 12)
+    .forEach((pkg) => actions.push({
+      id: `package-${pkg.id}`,
+      type: 'Encomenda',
+      priority: 'normal',
+      title: `Encomenda aguardando retirada — Unidade ${pkg.apartment}`,
+      detail: `${pkg.recipient || 'Destinatário não informado'} • ${pkg.carrier || 'Transportadora não informada'} • ${pkg.storageLocation || 'local não informado'}`,
+      href: '#encomendas',
+      createdAt: pkg.createdAt,
+    }));
+  getBookings()
+    .filter((booking) => !['canceled', 'rejected', 'paid'].includes(booking.status))
+    .filter((booking) => isSyndic() || booking.status === 'pending')
+    .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
+    .slice(0, 12)
+    .forEach((booking) => actions.push({
+      id: `booking-${booking.id}`,
+      type: 'Reserva',
+      priority: booking.status === 'pending' ? 'alta' : 'normal',
+      title: `${booking.status === 'pending' ? 'Reserva pré-agendada' : 'Reserva não concluída'} — ${booking.spaceName || 'Espaço'}`,
+      detail: `Unidade ${booking.apartment || '-'} • ${formatDate(booking.date)} • ${booking.period || '-'} • ${statusLabel(booking.status)}`,
+      href: '#reservas',
+      createdAt: booking.createdAt,
+    }));
+  if (isSyndic()) {
+    getPendingResidents().filter((item) => item.status === 'pending').slice(0, 10).forEach((item) => actions.push({
+      id: `resident-${item.id}`,
+      type: 'Cadastro',
+      priority: 'alta',
+      title: `Cadastro de morador aguardando aprovação`,
+      detail: `${item.name || '-'} • Unidade ${item.apartment || '-'} • ${item.email || ''}`,
+      href: '#aprovacoes',
+      createdAt: item.createdAt,
+    }));
+    getServiceRequests().filter((item) => item.status === 'pending').slice(0, 10).forEach((item) => actions.push({
+      id: `service-${item.id}`,
+      type: 'Serviço',
+      priority: 'normal',
+      title: `Solicitação de serviço pendente`,
+      detail: `${item.serviceName || '-'} • Unidade ${item.apartment || '-'} • ${money.format(Number(item.total || item.amount || 0))}`,
+      href: '#servicos',
+      createdAt: item.createdAt,
+    }));
+  }
+  if (currentRole() === 'portaria') {
+    const porteiros = onDutyPorters(now, currentShift());
+    if (!porteiros.length) actions.unshift({
+      id: 'no-porter-shift',
+      type: 'Escala',
+      priority: 'alta',
+      title: `Nenhum porteiro escalado para o turno ${currentShiftLabel()}`,
+      detail: 'Avise o síndico para corrigir a escala da equipe.',
+      href: '#escala',
+      createdAt: nowISO(),
+    });
+  }
+  return actions;
+}
+function renderPendingActions() {
+  const box = $('[data-pending-actions-list]');
+  if (!box) return;
+  const actions = pendingActionsForCurrentUser();
+  box.innerHTML = actions.length ? actions.map((item) => `
+    <div class="item pending-action">
+      <div class="item-row">
+        <div>
+          <div class="item-title">${escapeHTML(item.title)} <span class="badge">${escapeHTML(item.type)}</span></div>
+          <div class="item-sub">${escapeHTML(item.detail || '')}${item.createdAt ? ` • ${formatDateTime(item.createdAt)}` : ''}</div>
+        </div>
+        <span class="status status--${item.priority === 'alta' ? 'pending' : 'approved'}">${item.priority === 'alta' ? 'Atenção' : 'Pendente'}</span>
+      </div>
+      <div class="item-actions"><a class="btn btn--outline btn--sm" href="${item.href}" data-shortcut="${item.href.replace('#','')}">Abrir</a></div>
+    </div>`).join('') : empty('Nenhuma ação pendente no momento.');
+}
+function recurringVisitorVisible(item) {
+  if (isSyndic() || currentRole() === 'portaria') return true;
+  if (isResident()) return item.apartment === session?.apartment;
+  return false;
+}
+function recurringVisitorIsValid(item, date = todayLocalISO()) {
+  if (!item || item.active === false) return false;
+  if (item.validUntil && date > item.validUntil) return false;
+  if (Array.isArray(item.weekdays) && item.weekdays.length) {
+    const weekday = String(new Date(`${date}T12:00:00`).getDay());
+    if (!item.weekdays.includes(weekday)) return false;
+  }
+  return true;
+}
+
+const weekdayNamesShort = { '0': 'Dom', '1': 'Seg', '2': 'Ter', '3': 'Qua', '4': 'Qui', '5': 'Sex', '6': 'Sáb' };
+function weekdayListLabel(days = []) {
+  return Array.isArray(days) && days.length ? days.map((d) => weekdayNamesShort[String(d)] || d).join(', ') : 'Todos os dias';
+}
+function recurringVisitorCategoryLabel(item = {}) {
+  if (item.visitorCategory === 'familiar') return 'Familiar';
+  if (item.visitorCategory === 'prestador') return 'Prestador de serviço';
+  if (normalizeText(item.serviceType || '').includes('familiar') || normalizeText(item.customService || '').includes('familiar')) return 'Familiar';
+  return 'Prestador de serviço';
+}
+function recurringVisitorPhotoHTML(item = {}) {
+  const initials = String(item.name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || '?';
+  return `<div class="visitor-avatar ${item.photoMeta ? 'visitor-avatar--has-file' : ''}"><span>${escapeHTML(initials)}</span><small>${item.photoMeta ? 'Foto cadastrada' : 'Sem foto'}</small></div>`;
+}
+function recurringVisitorsForUnit(apartment) {
+  return getRecurringVisitors().filter(recurringVisitorVisible).filter((item) => !apartment || item.apartment === apartment);
+}
+function renderRecurringUnitBrowser() {
+  const box = $('[data-recurring-units-grid]');
+  if (!box) return;
+  const selected = $('[data-recurring-unit-filter]')?.value || '';
+  const counts = {};
+  getRecurringVisitors().filter(recurringVisitorVisible).forEach((item) => { counts[item.apartment] = (counts[item.apartment] || 0) + 1; });
+  const units = apartments().filter((apt) => counts[apt]);
+  box.innerHTML = units.length ? units.map((apt) => `<button type="button" class="unit-chip ${selected === apt ? 'is-active' : ''}" data-select-recurring-unit="${escapeHTML(apt)}"><strong>${escapeHTML(apt)}</strong><span>${counts[apt]} recorrente(s)</span></button>`).join('') : empty('Nenhuma unidade possui visitante recorrente cadastrado.');
+}
+function setupRecurringVisitors() {
+  const form = $('[data-recurring-visitor-form]');
+  const photoInput = $('[data-recurring-visitor-photo]');
+  photoInput?.addEventListener('change', async () => {
+    const file = photoInput.files?.[0];
+    const meta = await fileMeta(file, 'documentos-reserva', id);
+    const preview = $('[data-recurring-visitor-photo-preview]');
+    if (preview) preview.innerHTML = file ? `<span>Foto selecionada: ${escapeHTML(file.name)}</span>` : '<span>Sem foto</span>';
+    photoInput.dataset.meta = JSON.stringify(meta || null);
+  });
+  form?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    const apartment = isResident() ? session.apartment : data.get('apartment');
+    const item = {
+      id: uid('recurring-visitor'),
+      name: String(data.get('name') || '').trim(),
+      document: String(data.get('document') || '').trim(),
+      phone: String(data.get('phone') || '').trim(),
+      apartment,
+      serviceType: String(data.get('serviceType') || 'Prestador de serviço'),
+      visitorCategory: String(data.get('visitorCategory') || 'prestador'),
+      customService: String(data.get('customService') || '').trim(),
+      preAuthorized: Boolean(data.get('preAuthorized')),
+      active: Boolean(data.get('active')),
+      validUntil: String(data.get('validUntil') || '').trim(),
+      notes: String(data.get('notes') || '').trim(),
+      weekdays: Array.from(form.querySelectorAll('[name="weekdays"]:checked')).map((input) => input.value),
+      photoMeta: safeParse(photoInput?.dataset.meta || '', null),
+      createdBy: session?.email || '',
+      createdByRole: currentRole(),
+      createdAt: nowISO(),
+    };
+    if (!item.name || !item.apartment) { $('[data-recurring-visitor-message]').textContent = 'Informe nome e unidade.'; return; }
+    saveRecurringVisitors([item, ...getRecurringVisitors()]);
+    logActivity('Cadastrou visitante recorrente', { ...item, summary: `Visitante recorrente ${item.name} cadastrado para unidade ${item.apartment}` }, 'visitante-recorrente');
+    form.reset(); fillApartmentSelects();
+    if (form.active) form.active.checked = true;
+    const preview = $('[data-recurring-visitor-photo-preview]');
+    if (preview) preview.innerHTML = '<span>Sem foto</span>';
+    if (photoInput) photoInput.dataset.meta = '';
+    $('[data-recurring-visitor-message]').textContent = item.preAuthorized ? 'Visitante recorrente pré-autorizado salvo.' : 'Visitante recorrente salvo. A portaria deverá interfonar antes da entrada.';
+    renderAll();
+  });
+  $('[data-recurring-visitor-search]')?.addEventListener('input', renderRecurringVisitors);
+  $('[data-recurring-unit-filter]')?.addEventListener('change', renderRecurringVisitors);
+  $('[data-recurring-photo-check]')?.addEventListener('change', async (event) => {
+    const file = event.target.files?.[0];
+    const box = $('[data-recurring-photo-check-result]');
+    if (!box) return;
+    box.innerHTML = file ? `<div class="empty-state">Foto capturada para conferência visual. Por privacidade, o sistema não identifica pessoas automaticamente; use a busca abaixo e compare com a foto cadastrada.</div>` : '';
+  });
+}
+function renderRecurringVisitors() {
+  const box = $('[data-recurring-visitors-list]');
+  if (!box) return;
+  renderRecurringUnitBrowser();
+  const search = normalizeText($('[data-recurring-visitor-search]')?.value || '');
+  const unitFilter = $('[data-recurring-unit-filter]')?.value || '';
+  let list = recurringVisitorsForUnit(unitFilter).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  if (search) list = list.filter((item) => normalizeText(`${item.name} ${item.document} ${item.phone} ${item.apartment} ${item.serviceType} ${item.customService} ${item.notes} ${recurringVisitorCategoryLabel(item)}`).includes(search));
+  box.innerHTML = list.length ? list.map((item) => {
+    const valid = recurringVisitorIsValid(item);
+    const service = item.customService || item.serviceType || 'Prestador de serviço';
+    const category = recurringVisitorCategoryLabel(item);
+    return `<div class="item recurring-card recurring-card--detailed">
+      ${recurringVisitorPhotoHTML(item)}
+      <div class="recurring-card__content">
+        <div class="item-row">
+          <div>
+            <div class="item-title">${escapeHTML(item.name)} • Unidade ${escapeHTML(item.apartment)} <span class="badge">${escapeHTML(category)}</span></div>
+            <div class="item-sub">
+              ${escapeHTML(service)} • Dias: ${escapeHTML(weekdayListLabel(item.weekdays))}<br>
+              ${escapeHTML(item.document || 'sem documento')} • ${escapeHTML(item.phone || 'sem telefone')} • ${item.validUntil ? `válido até ${escapeHTML(item.validUntil)}` : 'sem validade definida'}
+              ${item.photoMeta ? `<br>Foto/metadados: ${escapeHTML(item.photoMeta.name || 'arquivo')}` : ''}
+              ${item.notes ? `<br>${escapeHTML(item.notes)}` : ''}
+            </div>
+          </div>
+          <span class="status status--${item.preAuthorized && valid ? 'approved' : 'pending'}">${item.preAuthorized && valid ? 'Entrada pré-autorizada' : valid ? 'Interfonar' : 'Indisponível'}</span>
+        </div>
+        <div class="item-actions">
+          ${currentRole() === 'portaria' || isSyndic() ? `<button class="btn btn--success btn--sm" data-register-recurring-visitor="${item.id}">Registrar entrada</button>` : ''}
+          ${isSyndic() || (isResident() && item.apartment === session?.apartment) ? `<button class="btn btn--outline btn--sm" data-toggle-recurring-visitor="${item.id}">${item.active === false ? 'Ativar' : 'Inativar'}</button><button class="btn btn--danger btn--sm" data-remove-recurring-visitor="${item.id}">Excluir</button>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('') : empty(unitFilter ? `Nenhum visitante recorrente encontrado para a unidade ${unitFilter}.` : 'Nenhum visitante recorrente encontrado.');
+}
+function registerRecurringVisitorEntry(id) {
+  const item = getRecurringVisitors().find((v) => v.id === id);
+  if (!item) return;
+  const visitor = {
+    id: uid('visitor'),
+    name: item.name,
+    document: item.document || '',
+    phone: item.phone || '',
+    apartment: item.apartment,
+    type: item.customService || item.serviceType || 'Visitante recorrente',
+    notes: `${item.preAuthorized ? 'Entrada pré-autorizada pelo morador. ' : 'Entrada recorrente. Interfonar antes de liberar. '}${item.notes || ''}`.trim(),
+    photo: null,
+    photoMeta: item.photoMeta || null,
+    recurringVisitorId: item.id,
+    preAuthorized: Boolean(item.preAuthorized),
+    createdAt: nowISO(),
+  };
+  if (!recurringVisitorIsValid(item)) {
+    if (!confirm('Este visitante recorrente está vencido/inativo ou fora do dia autorizado. Registrar mesmo assim?')) return;
+  }
+  saveVisitors([visitor, ...getVisitors()]);
+  logPortariaActivity('Registrou entrada de visitante recorrente', { ...visitor, summary: `Entrada recorrente de ${visitor.name} na unidade ${visitor.apartment}` }, 'visitante-recorrente');
+  renderAll();
+}
+function toggleRecurringVisitor(id) {
+  const item = getRecurringVisitors().find((v) => v.id === id);
+  if (!item) return;
+  saveRecurringVisitors(getRecurringVisitors().map((v) => v.id === id ? { ...v, active: v.active === false, updatedAt: nowISO(), updatedBy: session?.email || '' } : v));
+  logActivity(item.active === false ? 'Ativou visitante recorrente' : 'Inativou visitante recorrente', { ...item, summary: `Visitante recorrente ${item.name}` }, 'visitante-recorrente');
+  renderAll();
+}
+function removeRecurringVisitor(id) {
+  const item = getRecurringVisitors().find((v) => v.id === id);
+  if (!item) return;
+  if (!confirm(`Excluir visitante recorrente ${item.name}?`)) return;
+  saveRecurringVisitors(getRecurringVisitors().filter((v) => v.id !== id));
+  logActivity('Excluiu visitante recorrente', { ...item, summary: `Visitante recorrente ${item.name} removido` }, 'visitante-recorrente');
+  renderAll();
+}
+
 function setupVisitors() {
   const photoInput = $('[data-visitor-photo]');
   photoInput?.addEventListener('change', async () => {
     const file = photoInput.files?.[0];
-    currentVisitorPhoto = await fileMeta(file);
+    currentVisitorPhoto = await fileMeta(file, 'arquivos');
     if (currentVisitorPhotoPreview) URL.revokeObjectURL(currentVisitorPhotoPreview);
     currentVisitorPhotoPreview = file ? URL.createObjectURL(file) : '';
     renderPhotoPreview();
@@ -1600,41 +2185,105 @@ function compactLabelText(text = '') {
     .trim();
 }
 
+function labelTextUpper(text = '') {
+  return String(text || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+}
+
+function pushUniqueCode(list, value, score = 0, reason = '') {
+  const clean = String(value || '')
+    .replace(/[|]/g, '')
+    .replace(/^[.:;,#\-\s]+|[.:;,#\-\s]+$/g, '')
+    .replace(/[^A-Z0-9.\-]/gi, '')
+    .toUpperCase();
+  if (!clean || clean.length < 6) return;
+  if (/^0+$/.test(clean)) return;
+  if (/^\d{5}-?\d{3}$/.test(clean)) return; // CEP não é rastreio
+  if (/^7201\d{4,5}$/.test(clean)) return; // CEP local lido sem hífen
+  if (/^\d{1,2}$/.test(clean)) return;
+  const existing = list.find((item) => item.value === clean);
+  if (existing) {
+    existing.score = Math.max(existing.score, score);
+    if (reason && !existing.reason.includes(reason)) existing.reason += `${existing.reason ? ', ' : ''}${reason}`;
+  } else {
+    list.push({ value: clean, score, reason });
+  }
+}
+
 function probableTrackingCodes(text = '') {
-  const joined = String(text || '').replace(/\s+/g, ' ').toUpperCase();
+  const joined = String(text || '').replace(/\s+/g, ' ');
+  const upper = labelTextUpper(joined);
   const candidates = [];
-  const labeled = [...joined.matchAll(/(?:CODIGO|CÓDIGO|RASTREIO|TRACKING|AWB|PEDIDO|OBJETO|REMESSA|NF|NOTA FISCAL|ETIQUETA)[\s:#\-]*([A-Z0-9.\-]{6,48})/gi)].map((m) => m[1]);
-  candidates.push(...labeled);
-  candidates.push(...(joined.match(/\b[A-Z]{2}\d{9}[A-Z]{2}\b/g) || []));
-  candidates.push(...(joined.match(/\b[A-Z0-9]{10,44}\b/g) || []));
-  candidates.push(...(joined.match(/\b\d{8,44}\b/g) || []));
-  return [...new Set(candidates.map((item) => String(item).replace(/[^A-Z0-9.-]/gi, '').toUpperCase()))]
-    .filter((item) => item.length >= 6)
-    .sort((a, b) => {
-      const score = (value) => {
-        let s = 0;
-        if (/^[A-Z]{2}\d{9}[A-Z]{2}$/.test(value)) s += 10;
-        if (/[A-Z]/.test(value) && /\d/.test(value)) s += 4;
-        if (value.length >= 10 && value.length <= 20) s += 3;
-        if (/^\d+$/.test(value) && value.length > 20) s -= 1;
-        return s;
-      };
-      return score(b) - score(a);
-    });
+
+  const labelledPatterns = [
+    { rx: /(?:CODIGO|RASTREIO|TRACKING|AWB|OBJETO|REMESSA|ETIQUETA|VOLUME|VOLUMES?)\s*[:#\-º°]?\s*([A-Z0-9.\-]{6,48})/gi, score: 11, reason: 'campo identificado' },
+    { rx: /(?:PEDIDO|NOTA FISCAL|NF|NFE|NF-E)\s*(?:\/\s*(?:NOTA FISCAL|NF|NFE|NF-E))?\s*[:#\-º°]?\s*([A-Z0-9.\-]{6,48})/gi, score: 5, reason: 'pedido/nota fiscal' },
+    { rx: /\bN[ºO0]?\s*([0-9]{6,14})\b/gi, score: 4, reason: 'número/NF' },
+    { rx: /\bP\s*([0-9]{6,14})\b/gi, score: 10, reason: 'código Jadlog/P' },
+  ];
+  for (const { rx, score, reason } of labelledPatterns) {
+    for (const match of upper.matchAll(rx)) pushUniqueCode(candidates, match[1] || match[0], score, reason);
+  }
+
+  // Correios: duas letras + 9 números + BR.
+  for (const match of upper.matchAll(/\b[A-Z]{2}\d{9}BR\b/g)) pushUniqueCode(candidates, match[0], 18, 'padrão Correios');
+  // Jadlog e etiquetas internas: P7487627, 18239102279469, 3KB-1805-BSB01 etc.
+  for (const match of upper.matchAll(/\bP\d{6,14}\b/g)) pushUniqueCode(candidates, match[0], 14, 'Jadlog');
+  for (const match of upper.matchAll(/\b\d{12,18}\b/g)) pushUniqueCode(candidates, match[0], 9, 'código numérico longo');
+  for (const match of upper.matchAll(/\b[A-Z0-9]{2,5}-\d{3,6}-[A-Z0-9]{2,8}\b/g)) pushUniqueCode(candidates, match[0], 8, 'rota/código interno');
+  for (const match of upper.matchAll(/\b[A-Z0-9]{10,44}\b/g)) pushUniqueCode(candidates, match[0], 4, 'código alfanumérico');
+  for (const match of upper.matchAll(/\b\d{8,11}\b/g)) pushUniqueCode(candidates, match[0], 2, 'número curto');
+
+  return candidates
+    .filter((item) => item.value.length >= 6)
+    .sort((a, b) => b.score - a.score || a.value.length - b.value.length)
+    .map((item) => item.value)
+    .filter((value, index, arr) => arr.indexOf(value) === index)
+    .slice(0, 8);
+}
+
+function apartmentCandidatesFromLabel(text = '') {
+  const joined = String(text || '').replace(/\s+/g, ' ');
+  const apartmentsList = apartments();
+  const candidates = [];
+  const push = (apt, score, source) => {
+    const clean = String(apt || '').replace(/\D/g, '');
+    if (!clean || !apartmentsList.includes(clean)) return;
+    const existing = candidates.find((item) => item.apartment === clean);
+    if (existing) {
+      existing.score = Math.max(existing.score, score);
+      if (source && !existing.source.includes(source)) existing.source += `${existing.source ? ', ' : ''}${source}`;
+    } else {
+      candidates.push({ apartment: clean, score, source });
+    }
+  };
+
+  const explicitPatterns = [
+    /(?:apto|apartamento|unidade|unid\.?|ap\.?|apt\.?|apartment|unit)\s*[:#\-º°]?\s*(\d{3,4})/gi,
+    /(?:apto|apartamento|unidade|unid\.?|ap\.?|apt\.?)\s*(\d{1,2})\s*0?(\d{1,2})/gi,
+    /(?:ed|edificio|condominio|cond\.?|ed\s+vitoria\s+regia|vitoria\s+regia)\s+.*?(\d{3,4})\s*(?:-|–|taguatinga|brasilia|df)/gi,
+  ];
+  for (const rx of explicitPatterns) {
+    for (const m of joined.matchAll(rx)) {
+      const apt = m[2] ? `${m[1]}${String(m[2]).padStart(2, '0')}` : m[1];
+      push(apt, 100, 'campo de apartamento');
+    }
+  }
+
+  // Etiquetas como: "ED VITORIA REGIA EDIFICIO VITORIA REGIA 602 - TAGUATINGA"
+  for (const m of joined.matchAll(/(?:ED|EDIFICIO|CONDOMINIO|COND\.?)\s+(?:VITORIA|VIT[OÓ]RIA)\s+R[ÉE]GIA.{0,90}?\b(\d{3,4})\b/gi)) push(m[1], 92, 'endereço Vitória Régia');
+  for (const m of joined.matchAll(/(?:VITORIA|VIT[OÓ]RIA)\s+R[ÉE]GIA\s*(?:EDIFICIO|ED|COND\.?)?.{0,70}?\b(\d{3,4})\b/gi)) push(m[1], 88, 'endereço do condomínio');
+  for (const m of joined.matchAll(/\b(\d{3,4})\s*[-–]\s*(?:TAGUATINGA|BRASILIA|BRAS[IÍ]LIA|DF)\b/gi)) push(m[1], 70, 'número antes da cidade');
+
+  // Último recurso: número isolado que coincide com uma unidade real, com peso baixo.
+  for (const apt of apartmentsList) if (new RegExp(`(^|\\D)${apt}(\\D|$)`).test(joined)) push(apt, 20, 'número isolado');
+  return candidates.sort((a, b) => b.score - a.score);
 }
 
 function findApartmentInLabel(text = '') {
-  const joined = String(text || '').replace(/\s+/g, ' ');
-  const apartmentsList = apartments();
-  const patterns = [
-    /(?:apto|apartamento|unidade|unid\.?|ap\.?|apt\.?)\s*[:#\-º°]?\s*(\d{3,4})/i,
-    /(?:torre|bloco)?\s*(?:vit[oó]ria\s*r[eé]gia)?\s*(?:apto|apartamento|unidade)?\s*[:#\-º°]?\s*(\d{3,4})/i,
-  ];
-  for (const pattern of patterns) {
-    const match = joined.match(pattern);
-    if (match?.[1] && apartmentsList.includes(match[1])) return match[1];
-  }
-  return apartmentsList.find((apt) => new RegExp(`(^|\\D)${apt}(\\D|$)`).test(joined)) || '';
+  return apartmentCandidatesFromLabel(text)[0]?.apartment || '';
 }
 
 function inferApartmentByRecipientName(recipient = '') {
@@ -1654,17 +2303,117 @@ function inferApartmentByRecipientName(recipient = '') {
   return best?.score >= 4 ? best.resident.apartment : '';
 }
 
-function extractRecipientFromLabel(lines = []) {
-  const ignore = /codigo|código|rastreio|tracking|awb|pedido|nota|nf|cpf|cnpj|cep|endere[cç]o|bairro|cidade|uf|remetente|transportadora|correios|jadlog|loggi|amazon|mercado livre|shopee|total express|destino|origem|declara/i;
-  const labelled = lines.find((line) => /destinat[aá]rio|recebedor|a\/c|aos cuidados|nome/i.test(line));
-  if (labelled) {
-    const clean = labelled.replace(/.*?(destinat[aá]rio|recebedor|a\/c|aos cuidados|nome)\s*[:#\-]?\s*/i, '').trim();
-    if (clean && clean.length > 2) return clean.slice(0, 90);
+
+function normalizePersonKey(value = '') {
+  return normalizeText(value)
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(/\b(de|da|do|das|dos|e)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getPackageLabelMemory() {
+  return read(keys.packageLabelMemory, []);
+}
+
+function savePackageLabelMemory(value) {
+  write(keys.packageLabelMemory, value.slice(0, 500));
+}
+
+function rememberPackageLabelRecipient(recipient = '', apartment = '', meta = {}) {
+  const key = normalizePersonKey(recipient);
+  const apt = String(apartment || '').replace(/\D/g, '');
+  if (!key || key.length < 5 || !apartments().includes(apt)) return;
+  const memory = getPackageLabelMemory();
+  const existing = memory.find((item) => item.key === key);
+  const payload = {
+    key,
+    recipient: String(recipient || '').trim(),
+    apartment: apt,
+    carrier: meta.carrier || '',
+    lastCode: meta.code || '',
+    updatedAt: nowISO(),
+  };
+  if (existing) Object.assign(existing, payload);
+  else memory.unshift(payload);
+  savePackageLabelMemory(memory);
+}
+
+function inferApartmentByLabelMemory(recipient = '') {
+  const key = normalizePersonKey(recipient);
+  if (!key || key.length < 5) return '';
+  const tokens = key.split(' ').filter((t) => t.length >= 3);
+  let best = null;
+  for (const item of getPackageLabelMemory()) {
+    const itemKey = item.key || normalizePersonKey(item.recipient || '');
+    if (!itemKey) continue;
+    let score = 0;
+    if (itemKey === key) score += 100;
+    if (itemKey.includes(key) || key.includes(itemKey)) score += 30;
+    for (const token of tokens) if (itemKey.includes(token)) score += 4;
+    if (!best || score > best.score) best = { score, apartment: item.apartment };
   }
-  const nextToLabelIndex = lines.findIndex((line) => /destinat[aá]rio|recebedor/i.test(line));
-  if (nextToLabelIndex >= 0 && lines[nextToLabelIndex + 1] && !ignore.test(lines[nextToLabelIndex + 1])) return lines[nextToLabelIndex + 1].slice(0, 90);
+  return best?.score >= 10 ? best.apartment : '';
+}
+
+function ocrCleanupText(text = '') {
+  return String(text || '')
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/\bJADLO[CGO0]\b/gi, 'JADLOG')
+    .replace(/\bVIT[O0]RIA\b/gi, 'VITORIA')
+    .replace(/\bREG[1I]A\b/gi, 'REGIA')
+    .replace(/\bTAGUAT[1I]NGA\b/gi, 'TAGUATINGA')
+    .replace(/\bBRAS[1I]LIA\b/gi, 'BRASILIA')
+    .replace(/\bCAZ[1I]LDA\b/gi, 'CAZILDA')
+    .replace(/\bLOG[1I]STICA\b/gi, 'LOGISTICA')
+    .replace(/\bN[O0]TE\b/gi, 'NOTE')
+    .replace(/\bN[O0]TA\b/gi, 'NOTA')
+    .replace(/\bFAGUATINGA\b/gi, 'TAGUATINGA')
+    .replace(/\bG0\b/g, '60')
+    .replace(/\s+([.,:;])/g, '$1');
+}
+
+function cleanRecipientCandidate(value = '') {
+  return String(value || '')
+    .replace(/\b(ED|EDIFICIO|CONDOMINIO|COND\.?|RUA|AV\.?|AVENIDA|QUADRA|Q\.|LOTE|LT\.|APTO|APARTAMENTO|TAGUATINGA|BRASILIA|BRAS[IÍ]LIA|CEP)\b.*$/i, '')
+    .replace(/[^A-Za-zÀ-ÿ\s'.-]/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+    .slice(0, 90);
+}
+
+function extractRecipientFromLabel(lines = []) {
+  const ignore = /codigo|código|rastreio|tracking|awb|pedido|nota|nf|cpf|cnpj|cep|endere[cç]o|bairro|cidade|uf|remetente|transportadora|correios|jadlog|loggi|amazon|mercado livre|shopee|total express|destino|origem|declara|vulcabras|cubagem|rota|volume|vol\b|peso|serie|s[eé]rie|chave de acesso/i;
+  const labelPatterns = [
+    /(?:cliente|destinat[aá]rio|recebedor|entregar\s+a|aos\s+cuidados\s+de|a\/c|nome)\s*[:#\-]?\s*(.+)$/i,
+  ];
+  for (const line of lines) {
+    for (const rx of labelPatterns) {
+      const match = line.match(rx);
+      const clean = cleanRecipientCandidate(match?.[1] || '');
+      if (clean && clean.length > 3 && !ignore.test(clean)) return clean;
+    }
+  }
+
+  const nextToLabelIndex = lines.findIndex((line) => /cliente|destinat[aá]rio|recebedor/i.test(line));
+  if (nextToLabelIndex >= 0 && lines[nextToLabelIndex + 1]) {
+    const clean = cleanRecipientCandidate(lines[nextToLabelIndex + 1]);
+    if (clean && clean.length > 3 && !ignore.test(clean)) return clean;
+  }
+
+  // Formatos compactos: primeira linha é o nome e as linhas seguintes são endereço/rota.
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i].replace(/\s{2,}/g, ' ').trim();
+    const next = `${lines[i + 1] || ''} ${lines[i + 2] || ''}`;
+    if (/\b(ED|EDIFICIO|CONDOMINIO|COND\.?|RUA|AVENIDA|APTO|APARTAMENTO|TAGUATINGA|BRASILIA|DF)\b/i.test(next)) {
+      const clean = cleanRecipientCandidate(line);
+      if (clean && clean.length >= 6 && clean.length <= 90 && !ignore.test(clean) && /[A-Za-zÀ-ÿ]{3,}\s+[A-Za-zÀ-ÿ]{2,}/.test(clean)) return clean;
+    }
+  }
+
   const candidates = lines
-    .map((line) => line.replace(/\s{2,}/g, ' ').trim())
+    .map((line) => cleanRecipientCandidate(line.replace(/\s{2,}/g, ' ').trim()))
     .filter((line) => line.length >= 5 && line.length <= 90)
     .filter((line) => !ignore.test(line))
     .filter((line) => /[A-Za-zÀ-ÿ]{3,}\s+[A-Za-zÀ-ÿ]{2,}/.test(line))
@@ -1672,24 +2421,66 @@ function extractRecipientFromLabel(lines = []) {
   return candidates[0] || '';
 }
 
+function extractExplicitCarrierFromLabel(text = '', code = '') {
+  const raw = String(text || '');
+  const explicit = raw.match(/transportadora\s*[:#\-]?\s*([^\n|]{3,80})/i);
+  if (explicit?.[1]) {
+    const clean = explicit[1].replace(/\s{2,}/g, ' ').trim();
+    if (/jadlog/i.test(clean)) return 'Jadlog Logística S.A.';
+    if (/correios/i.test(clean)) return 'Correios';
+    if (/loggi/i.test(clean)) return 'Loggi';
+    if (/total/i.test(clean)) return 'Total Express';
+    return clean.slice(0, 60);
+  }
+  return detectCarrierFromText(raw, code);
+}
+
+function extractOrderNumberFromLabel(text = '') {
+  const upper = labelTextUpper(text);
+  const patterns = [
+    /(?:PEDIDO\s*\/\s*NOTA\s*FISCAL|PEDIDO|NOTA\s*FISCAL|NF|NFE|NF-E)\s*[:#\-º°]?\s*([A-Z0-9.\-]{6,24})/i,
+    /\bN[ºO0]?\s*([0-9]{6,14})\b/i,
+  ];
+  for (const rx of patterns) {
+    const m = upper.match(rx);
+    if (m?.[1]) return m[1].replace(/[^A-Z0-9.-]/g, '');
+  }
+  return '';
+}
+
+function identifyLabelProfile(text = '') {
+  const normalized = normalizeText(text);
+  if (normalized.includes('jadlog') && normalized.includes('vulcabras')) return 'Jadlog / Vulcabras';
+  if (normalized.includes('jadlog')) return 'Jadlog';
+  if (normalized.includes('correios') || /\b[A-Z]{2}\d{9}BR\b/i.test(text)) return 'Correios';
+  if (normalized.includes('amazon')) return 'Amazon';
+  if (normalized.includes('mercado livre') || normalized.includes('meli')) return 'Mercado Livre';
+  if (normalized.includes('shopee') || normalized.includes('spx')) return 'Shopee';
+  return 'Etiqueta genérica';
+}
+
 function parsePackageLabelText(text = '') {
   const raw = compactLabelText(text);
   const lines = raw.split('\n').map((line) => line.trim()).filter(Boolean);
   const joined = lines.join(' ');
-  const fields = { rawText: raw, confidence: 0, warnings: [] };
+  const fields = { rawText: raw, confidence: 0, warnings: [], labelProfile: identifyLabelProfile(raw) };
 
-  fields.apartment = findApartmentInLabel(joined);
-  if (fields.apartment) fields.confidence += 25;
+  const aptCandidates = apartmentCandidatesFromLabel(joined);
+  fields.apartmentCandidates = aptCandidates.map((item) => item.apartment).slice(0, 4);
+  fields.apartment = aptCandidates[0]?.apartment || '';
+  fields.apartmentSource = aptCandidates[0]?.source || '';
+  if (fields.apartment) fields.confidence += aptCandidates[0].score >= 80 ? 30 : 18;
 
   fields.recipient = extractRecipientFromLabel(lines);
   if (fields.recipient) fields.confidence += 25;
 
   if (!fields.apartment && fields.recipient) {
-    const inferredApt = inferApartmentByRecipientName(fields.recipient);
+    const inferredApt = inferApartmentByRecipientName(fields.recipient) || inferApartmentByLabelMemory(fields.recipient);
     if (inferredApt) {
       fields.apartment = inferredApt;
       fields.apartmentInferred = true;
-      fields.confidence += 15;
+      fields.apartmentSource = fields.apartmentSource || 'cadastro/histórico de etiquetas';
+      fields.confidence += 18;
     }
   }
 
@@ -1703,19 +2494,23 @@ function parsePackageLabelText(text = '') {
   }
 
   const codes = probableTrackingCodes(joined);
-  fields.code = codes[0] || '';
-  fields.codeCandidates = codes.slice(0, 5);
-  if (fields.code) fields.confidence += 25;
+  fields.orderNumber = extractOrderNumberFromLabel(joined);
+  fields.codeCandidates = codes.slice(0, 8);
+  fields.code = codes.find((code) => code !== fields.orderNumber && !String(code).startsWith('N0')) || codes[0] || '';
+  if (fields.code) fields.confidence += 22;
+  if (fields.orderNumber) fields.confidence += 5;
 
-  fields.carrier = detectCarrierFromText(raw, fields.code);
+  fields.carrier = extractExplicitCarrierFromLabel(raw, fields.code);
   if (fields.carrier) fields.confidence += 15;
 
   const cep = joined.match(/\b\d{5}-?\d{3}\b/);
   if (cep) fields.cep = cep[0];
 
-  if (!fields.apartment) fields.warnings.push('Apartamento não identificado.');
+  if (fields.labelProfile && fields.labelProfile !== 'Etiqueta genérica') fields.confidence += 5;
+  if (!fields.apartment) fields.warnings.push('Apartamento não identificado. Se o morador já estiver cadastrado, o sistema tentará sugerir pelo nome.');
   if (!fields.recipient) fields.warnings.push('Destinatário não identificado.');
-  if (!fields.code) fields.warnings.push('Código de rastreio não identificado.');
+  if (!fields.code) fields.warnings.push('Código de rastreio/identificação não identificado.');
+  if (fields.apartmentCandidates?.length > 1) fields.warnings.push(`Mais de uma unidade possível: ${fields.apartmentCandidates.join(', ')}.`);
   fields.confidence = Math.min(100, fields.confidence);
   return fields;
 }
@@ -1724,10 +2519,13 @@ function renderPackageScanResult(fields = {}) {
   const box = $('[data-package-scan-result]');
   if (!box) return;
   const detected = [
-    ['Apartamento', fields.apartment ? `${fields.apartment}${fields.apartmentInferred ? ' (sugerido pelo cadastro)' : ''}` : 'não identificado'],
+    ['Tipo de etiqueta', fields.labelProfile || 'Etiqueta genérica'],
+    ['Apartamento', fields.apartment ? `${fields.apartment}${fields.apartmentInferred ? ' (sugerido pelo cadastro)' : ''}${fields.apartmentSource ? ` — ${fields.apartmentSource}` : ''}` : 'não identificado'],
     ['Destinatário', fields.recipient ? `${fields.recipient}${fields.recipientInferred ? ' (sugerido pelo cadastro)' : ''}` : 'não identificado'],
     ['Transportadora', fields.carrier || 'não identificada'],
-    ['Código', fields.code || 'não identificado'],
+    ['Código principal', fields.code || 'não identificado'],
+    ['Pedido/NF', fields.orderNumber || 'não identificado'],
+    ['CEP', fields.cep || 'não identificado'],
   ];
   const confidence = Number(fields.confidence || 0);
   const className = confidence >= 70 ? 'ok' : confidence >= 40 ? 'warn' : 'low';
@@ -1735,6 +2533,7 @@ function renderPackageScanResult(fields = {}) {
   box.innerHTML = `
     <div class="scan-result__head"><strong>Dados identificados</strong><span class="scan-score scan-score--${className}">${confidence}%</span></div>
     <div class="scan-result__grid">${detected.map(([label, value]) => `<div><small>${label}</small><strong>${escapeHTML(value)}</strong></div>`).join('')}</div>
+    ${fields.apartmentCandidates?.length > 1 ? `<div class="scan-candidates"><small>Unidades possíveis:</small> ${fields.apartmentCandidates.map((apt) => `<button type="button" class="chip-btn" data-use-package-apartment="${escapeHTML(apt)}">${escapeHTML(apt)}</button>`).join('')}</div>` : ''}
     ${fields.codeCandidates?.length > 1 ? `<div class="scan-candidates"><small>Outros códigos encontrados:</small> ${fields.codeCandidates.slice(1).map((code) => `<button type="button" class="chip-btn" data-use-package-code="${escapeHTML(code)}">${escapeHTML(code)}</button>`).join('')}</div>` : ''}
     ${fields.warnings?.length ? `<p class="scan-warning">${escapeHTML(fields.warnings.join(' '))} Confira antes de registrar.</p>` : ''}
   `;
@@ -1748,8 +2547,19 @@ function applyPackageLabelFields(fields = {}) {
   if (fields.carrier && form.carrier) form.carrier.value = fields.carrier;
   if (fields.code && form.code) form.code.value = fields.code;
   if (fields.rawText && form.labelText) form.labelText.value = fields.rawText;
+  if (form.notes) {
+    const extras = [];
+    if (fields.orderNumber) extras.push(`Pedido/NF: ${fields.orderNumber}`);
+    if (fields.cep) extras.push(`CEP etiqueta: ${fields.cep}`);
+    if (fields.labelProfile && fields.labelProfile !== 'Etiqueta genérica') extras.push(`Etiqueta: ${fields.labelProfile}`);
+    if (fields.codeCandidates?.length > 1) extras.push(`Códigos lidos: ${fields.codeCandidates.join(', ')}`);
+    const extraText = extras.join(' | ');
+    if (extraText && !form.notes.value.includes('Pedido/NF:') && !form.notes.value.includes('Códigos lidos:')) {
+      form.notes.value = `${form.notes.value ? `${form.notes.value.trim()}\n` : ''}${extraText}`;
+    }
+  }
   renderPackageScanResult(fields);
-  const filled = ['apartment', 'recipient', 'carrier', 'code'].filter((key) => fields[key]).map((key) => ({ apartment: 'apartamento', recipient: 'destinatário', carrier: 'transportadora', code: 'código' }[key]));
+  const filled = ['apartment', 'recipient', 'carrier', 'code', 'orderNumber'].filter((key) => fields[key]).map((key) => ({ apartment: 'apartamento', recipient: 'destinatário', carrier: 'transportadora', code: 'código', orderNumber: 'pedido/NF' }[key]));
   const msg = $('[data-package-scan-message]');
   if (msg) msg.textContent = filled.length ? `Etiqueta processada. Campos preenchidos: ${filled.join(', ')}. Confira os dados antes de registrar.` : 'Etiqueta processada, mas não encontrei dados suficientes. Preencha manualmente ou fotografe novamente com melhor iluminação.';
 }
@@ -1773,14 +2583,76 @@ function loadTesseract() {
   });
 }
 
+function canvasFromBitmap(bitmap, crop = null, scaleTarget = 1900) {
+  const sx = crop ? Math.round(bitmap.width * crop.x) : 0;
+  const sy = crop ? Math.round(bitmap.height * crop.y) : 0;
+  const sw = crop ? Math.round(bitmap.width * crop.w) : bitmap.width;
+  const sh = crop ? Math.round(bitmap.height * crop.h) : bitmap.height;
+  const scale = Math.min(2.8, Math.max(1.1, scaleTarget / Math.max(sw, sh, 1)));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(sw * scale));
+  canvas.height = Math.max(1, Math.round(sh * scale));
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+function enhanceCanvasForOcr(canvas, mode = 'contrast') {
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const gray = Math.round((data[i] * 0.299) + (data[i + 1] * 0.587) + (data[i + 2] * 0.114));
+    let out = gray;
+    if (mode === 'binary') out = gray > 152 ? 255 : 0;
+    else if (mode === 'strong') out = Math.max(0, Math.min(255, (gray - 128) * 1.95 + 128));
+    else out = Math.max(0, Math.min(255, (gray - 128) * 1.45 + 128));
+    data[i] = data[i + 1] = data[i + 2] = out;
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return canvas;
+}
+
+async function prepareImageVariantsForOcr(file) {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const variants = [];
+    // Foto inteira: útil para etiquetas com dados espalhados.
+    variants.push({ name: 'imagem inteira', image: enhanceCanvasForOcr(canvasFromBitmap(bitmap, null, 2100), 'contrast') });
+    // Recorte central: remove mesa/teclado e melhora OCR em etiquetas Jadlog/Vulcabras.
+    variants.push({ name: 'centro da etiqueta', image: enhanceCanvasForOcr(canvasFromBitmap(bitmap, { x: 0.18, y: 0.03, w: 0.70, h: 0.90 }, 2200), 'strong') });
+    // Faixa esquerda/central: costuma conter destinatário e endereço.
+    variants.push({ name: 'endereço/destinatário', image: enhanceCanvasForOcr(canvasFromBitmap(bitmap, { x: 0.20, y: 0.04, w: 0.58, h: 0.58 }, 2300), 'strong') });
+    // Parte inferior: costuma conter código de barras, transportadora e código principal.
+    variants.push({ name: 'códigos inferiores', image: enhanceCanvasForOcr(canvasFromBitmap(bitmap, { x: 0.18, y: 0.50, w: 0.66, h: 0.45 }, 2300), 'binary') });
+    return variants;
+  } catch (error) {
+    return [{ name: 'imagem original', image: file }];
+  }
+}
+
 async function readTextFromImageWithOcr(file, onProgress) {
   const Tesseract = await loadTesseract();
-  const result = await Tesseract.recognize(file, 'por+eng', {
-    logger: (m) => {
-      if (m.status && typeof m.progress === 'number') onProgress?.(`${m.status} ${Math.round(m.progress * 100)}%`);
-    },
-  });
-  return result?.data?.text || '';
+  const variants = await prepareImageVariantsForOcr(file);
+  const texts = [];
+  for (let i = 0; i < variants.length; i += 1) {
+    const variant = variants[i];
+    onProgress?.(`preparando ${variant.name}`);
+    try {
+      const result = await Tesseract.recognize(variant.image, 'por+eng', {
+        logger: (m) => {
+          if (m.status && typeof m.progress === 'number') onProgress?.(`${variant.name}: ${m.status} ${Math.round(m.progress * 100)}%`);
+        },
+        tessedit_pageseg_mode: i === 0 ? '6' : '11',
+        preserve_interword_spaces: '1',
+      });
+      const text = result?.data?.text || '';
+      if (text.trim()) texts.push(text);
+    } catch (error) {
+      console.warn('OCR falhou em uma variação da etiqueta:', variant.name, error);
+    }
+  }
+  return Array.from(new Set(texts.map((txt) => txt.trim()).filter(Boolean))).join('\n');
 }
 
 async function decodeBarcodeFromImage(file) {
@@ -1789,29 +2661,69 @@ async function decodeBarcodeFromImage(file) {
   const formats = ['qr_code', 'code_128', 'code_39', 'ean_13', 'ean_8', 'itf', 'upc_a', 'upc_e', 'pdf417', 'aztec', 'data_matrix'];
   const detector = new BarcodeDetector({ formats });
   const bitmap = await createImageBitmap(file);
-  const codes = await detector.detect(bitmap);
-  return codes.map((item) => item.rawValue).filter(Boolean).join('\n');
+  const targets = [
+    bitmap,
+    canvasFromBitmap(bitmap, { x: 0.15, y: 0.00, w: 0.80, h: 1.00 }, 1600),
+    canvasFromBitmap(bitmap, { x: 0.35, y: 0.00, w: 0.60, h: 1.00 }, 1600),
+    canvasFromBitmap(bitmap, { x: 0.15, y: 0.50, w: 0.75, h: 0.48 }, 1600),
+  ];
+  const values = [];
+  for (const target of targets) {
+    try {
+      const codes = await detector.detect(target);
+      codes.map((item) => item.rawValue).filter(Boolean).forEach((value) => values.push(value));
+    } catch (error) {
+      console.warn('Leitura de código falhou em uma região:', error);
+    }
+  }
+  return Array.from(new Set(values)).join('\n');
 }
 
 async function handlePackageLabelImage(file) {
   const msg = $('[data-package-scan-message]');
   const useOcr = $('[data-package-ocr-enabled]')?.checked !== false;
-  if (msg) msg.textContent = 'Lendo código de barras/QR da etiqueta...';
+  if (msg) msg.textContent = 'Lendo códigos de barras/QR da etiqueta...';
   try {
-    let decoded = await decodeBarcodeFromImage(file);
-    if (!decoded && useOcr) {
-      if (msg) msg.textContent = 'Nenhum código encontrado. Iniciando OCR local da imagem...';
-      decoded = await readTextFromImageWithOcr(file, (progress) => { if (msg) msg.textContent = `Lendo texto da etiqueta: ${progress}`; });
+    const decoded = await decodeBarcodeFromImage(file).catch(() => '');
+    let ocrText = '';
+    if (useOcr) {
+      if (msg) msg.textContent = decoded ? 'Código encontrado. Lendo também o texto da etiqueta para identificar morador, apartamento e transportadora...' : 'Nenhum código encontrado. Iniciando OCR local da imagem...';
+      ocrText = await readTextFromImageWithOcr(file, (progress) => { if (msg) msg.textContent = `Lendo texto da etiqueta: ${progress}`; });
     }
-    if (!decoded) throw new Error('Não consegui ler a etiqueta. Tente fotografar mais perto, com boa luz, ou cole o texto manualmente.');
+    const combined = [decoded, ocrText].filter(Boolean).join('\n');
+    if (!combined) throw new Error('Não consegui ler a etiqueta. Tente fotografar mais perto, com boa luz, enquadrando a etiqueta inteira, ou cole o texto manualmente.');
     const textArea = $('[data-package-label-text]');
-    if (textArea) textArea.value = decoded;
-    applyPackageLabelFields(parsePackageLabelText(decoded));
+    if (textArea) textArea.value = combined;
+    applyPackageLabelFields(parsePackageLabelText(combined));
   } catch (error) {
     if (msg) msg.textContent = error.message || 'Erro ao ler etiqueta.';
   }
 }
 
+function residentsForPackageNotification(apartment) {
+  const list = residentsByApartment(apartment).filter((resident) => (resident.status || 'approved') === 'approved' && resident.email);
+  const rented = isApartmentRented(apartment);
+  let recipients = rented ? list.filter((resident) => normalizeText(resident.residentType || '').includes('inquilino') || normalizeText(resident.relationship || '').includes('inquilino')) : list;
+  if (!recipients.length) recipients = rented ? list.filter((resident) => resident.primaryBilling) : list;
+  const seen = new Set();
+  return recipients.filter((resident) => {
+    const email = normalizeText(resident.email || '');
+    if (!email || seen.has(email)) return false;
+    seen.add(email);
+    return true;
+  });
+}
+async function notifyPackageRecipients(pkg, channels = ['email']) {
+  const recipients = residentsForPackageNotification(pkg.apartment);
+  if (!pkg || !recipients.length) return { ok: false, results: [{ channel: channels.join('/'), ok: false, error: 'Nenhum destinatário aprovado para a unidade.' }] };
+  const msg = packageMessage(pkg);
+  const responses = [];
+  for (const resident of recipients) {
+    const response = await notifyResidentEntity(resident, 'Encomenda na portaria — Condomínio Vitória Régia', msg, channels);
+    responses.push(...(response?.results || [response]));
+  }
+  return { ok: responses.some((item) => item?.ok), results: responses, recipients: recipients.map((r) => r.email) };
+}
 function packageMessage(pkg) {
   return `Olá. Há uma encomenda na portaria para a unidade ${pkg.apartment}. Destinatário: ${pkg.recipient}. ${pkg.carrier ? `Transportadora: ${pkg.carrier}.` : ''} ${pkg.code ? `Código: ${pkg.code}.` : ''}`;
 }
@@ -1841,10 +2753,17 @@ function setupPackages() {
     if (event.target.value.trim().length >= 8) applyPackageLabelFields(parsePackageLabelText(event.target.value));
   });
   document.addEventListener('click', (event) => {
-    const button = event.target.closest('[data-use-package-code]');
-    if (!button) return;
-    const form = $('[data-package-form]');
-    if (form?.code) form.code.value = button.dataset.usePackageCode || '';
+    const codeButton = event.target.closest('[data-use-package-code]');
+    if (codeButton) {
+      const form = $('[data-package-form]');
+      if (form?.code) form.code.value = codeButton.dataset.usePackageCode || '';
+      return;
+    }
+    const aptButton = event.target.closest('[data-use-package-apartment]');
+    if (aptButton) {
+      const form = $('[data-package-form]');
+      if (form?.apartment) form.apartment.value = aptButton.dataset.usePackageApartment || '';
+    }
   });
   $('[data-package-form]')?.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -1864,59 +2783,118 @@ function setupPackages() {
       createdAt: nowISO(),
     };
     savePackages([pkg, ...getPackages()]);
+    rememberPackageLabelRecipient(pkg.recipient, pkg.apartment, { carrier: pkg.carrier, code: pkg.code });
     logPortariaActivity('Registrou encomenda', { ...pkg, summary: `Encomenda registrada para ${pkg.recipient} na unidade ${pkg.apartment}` }, 'encomenda');
-    const resident = approvedResidentByApartment(pkg.apartment);
+    const recipients = residentsForPackageNotification(pkg.apartment);
     const msg = packageMessage(pkg);
-    $('[data-package-message]').textContent = 'Encomenda registrada.';
+    $('[data-package-message]').textContent = recipients.length ? `Encomenda registrada. E-mail será enviado a ${recipients.length} morador(es) da unidade.` : 'Encomenda registrada. Nenhum e-mail aprovado localizado para a unidade.';
     form.reset(); fillApartmentSelects();
     const result = $('[data-package-scan-result]');
     if (result) { result.hidden = true; result.innerHTML = ''; }
     renderAll();
-    if (resident) maybeNotifyResident(resident, 'package', 'Encomenda na portaria — Condomínio Vitória Régia', msg).then((response) => {
-      if (response) $('[data-package-message]').textContent = `Encomenda registrada. Notificação automática: ${resultSummary(response)}`;
+    if (notificationRules().package && recipients.length) notifyPackageRecipients(pkg, ['email']).then((response) => {
+      const ok = Boolean(response?.ok);
+      const updated = { ...pkg, notificationAttemptedAt: nowISO(), notificationStatus: ok ? 'sent' : 'failed', notifiedAt: ok ? nowISO() : '', notifiedRecipients: response?.recipients || recipients.map((r) => r.email), notificationResult: resultSummary(response) };
+      savePackages(getPackages().map((item) => item.id === pkg.id ? updated : item));
+      renderAll();
+      if (response) $('[data-package-message]').textContent = `Encomenda registrada. E-mail automático: ${resultSummary(response)} • Destinatários: ${recipients.map((r) => r.name).join(', ')}`;
+    }).catch((error) => {
+      savePackages(getPackages().map((item) => item.id === pkg.id ? { ...item, notificationAttemptedAt: nowISO(), notificationStatus: 'failed', notificationResult: error.message } : item));
+      $('[data-package-message]').textContent = `Encomenda registrada, mas o e-mail falhou: ${error.message}`;
+      renderAll();
     });
   });
 }
 function renderPackages() {
   const box = $('[data-packages-list]');
   if (!box) return;
-  const list = getPackages().filter((item) => item.status !== 'delivered').sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const title = $('[data-packages-title]'); if (title) title.textContent = isResident() ? 'Minhas encomendas' : 'Encomendas pendentes';
+  const list = getPackages().filter(packageVisibleToCurrentUser).filter((item) => isResident() ? true : item.status !== 'delivered').sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   box.innerHTML = list.length ? list.map((pkg) => {
+    const recipients = residentsForPackageNotification(pkg.apartment);
     const resident = approvedResidentByApartment(pkg.apartment);
     const msg = packageMessage(pkg);
     return `<div class="item">
-      <div class="item-row"><div><div class="item-title">Unidade ${escapeHTML(pkg.apartment)} • ${escapeHTML(pkg.recipient)}</div><div class="item-sub">${escapeHTML(pkg.packageType || 'Encomenda')} • ${escapeHTML(pkg.carrier || 'Transportadora não informada')} • ${escapeHTML(pkg.code || 'sem código')} • ${formatDateTime(pkg.createdAt)}${pkg.storageLocation ? `<br>Local: ${escapeHTML(pkg.storageLocation)}` : ''}${pkg.notes ? `<br>${escapeHTML(pkg.notes)}` : ''}</div></div><span class="status status--pending">Aguardando retirada</span></div>
-      <div class="item-actions">${resident ? `<button class="btn btn--success btn--sm" data-auto-package-whatsapp="${pkg.id}">Auto WhatsApp</button><button class="btn btn--success btn--sm" data-auto-package-email="${pkg.id}">Auto e-mail</button><a class="btn btn--outline btn--sm" target="_blank" href="${whatsAppLink(resident.whatsapp, msg)}">Manual WhatsApp</a><a class="btn btn--outline btn--sm" href="mailto:${encodeURIComponent(resident.email)}?subject=${encodeURIComponent('Encomenda na portaria')}&body=${encodeURIComponent(msg)}">Manual e-mail</a>` : ''}<button class="btn btn--success btn--sm" data-deliver-package="${pkg.id}">Marcar retirada</button></div>
+      <div class="item-row"><div><div class="item-title">Unidade ${escapeHTML(pkg.apartment)} • ${escapeHTML(pkg.recipient)}</div><div class="item-sub">${escapeHTML(pkg.packageType || 'Encomenda')} • ${escapeHTML(pkg.carrier || 'Transportadora não informada')} • ${escapeHTML(pkg.code || 'sem código')} • Cadastro no sistema: ${formatDateTime(pkg.createdAt)}${pkg.notifiedAt ? `<br>Morador notificado em: ${formatDateTime(pkg.notifiedAt)}` : pkg.notificationStatus === 'failed' ? `<br>Falha ao notificar: ${escapeHTML(pkg.notificationResult || 'verifique e-mail')}` : '<br>Aguardando notificação ao morador'}${pkg.deliveredAt ? `<br>Retirada registrada em: ${formatDateTime(pkg.deliveredAt)}` : ''}${pkg.storageLocation && !isResident() ? `<br>Local: ${escapeHTML(pkg.storageLocation)}` : ''}${pkg.notes ? `<br>${escapeHTML(pkg.notes)}` : ''}</div></div><span class="status status--${pkg.status === 'delivered' ? 'approved' : pkg.notifiedAt ? 'pending' : 'rejected'}">${pkg.status === 'delivered' ? 'Retirada' : pkg.notifiedAt ? 'Aguardando retirada' : 'Aguardando notificação'}</span></div>
+      ${isResident() ? '' : `<div class="item-actions">${recipients.length ? `<button class="btn btn--success btn--sm" data-auto-package-email="${pkg.id}">Auto e-mail (${recipients.length})</button><a class="btn btn--outline btn--sm" href="mailto:${encodeURIComponent(recipients.map((r) => r.email).join(','))}?subject=${encodeURIComponent('Encomenda na portaria')}&body=${encodeURIComponent(msg)}">Manual e-mail (${recipients.length})</a>` : ''}${resident ? `<button class="btn btn--success btn--sm" data-auto-package-whatsapp="${pkg.id}">Auto WhatsApp principal</button><a class="btn btn--outline btn--sm" target="_blank" href="${whatsAppLink(resident.whatsapp, msg)}">Manual WhatsApp principal</a>` : ''}<button class="btn btn--success btn--sm" data-deliver-package="${pkg.id}" ${!pkg.notifiedAt ? 'disabled title="Notifique o morador antes de marcar retirada"' : ''}>Marcar retirada</button></div>`}
     </div>`;
   }).join('') : empty('Nenhuma encomenda pendente.');
 }
 function deliverPackage(id) {
   const original = getPackages().find((item) => item.id === id);
+  if (!original?.notifiedAt) { alert('A encomenda só pode ser marcada como retirada depois de o morador ser notificado pelo sistema. Use Auto e-mail/WhatsApp ou aguarde a notificação automática.'); return; }
   savePackages(getPackages().map((item) => item.id === id ? { ...item, status: 'delivered', deliveredAt: nowISO() } : item));
   if (original) logPortariaActivity('Marcou encomenda como retirada', { ...original, summary: `Encomenda de ${original.recipient} retirada na unidade ${original.apartment}` }, 'encomenda');
   renderAll();
 }
 
+function noticeAudienceLabel(notice = {}) {
+  const target = notice.target || 'all';
+  if (target === 'pets') return 'Moradores com pet';
+  if (target === 'apartment') return `Unidade ${notice.targetApartment || '-'}`;
+  if (target === 'rented') return 'Unidades alugadas';
+  if (target === 'owners') return 'Proprietários/responsáveis';
+  if (target === 'tenants') return 'Inquilinos';
+  return 'Todos';
+}
+function currentResidentForNotice() {
+  if (!isResident()) return null;
+  return currentResidentRecord() || approvedResidentByApartment(session?.apartment);
+}
+function noticeVisibleToCurrentUser(notice = {}) {
+  if (isSyndic()) return true;
+  if (currentRole() === 'portaria') return (notice.target || 'all') === 'all';
+  const resident = currentResidentForNotice();
+  if (!resident) return false;
+  const target = notice.target || 'all';
+  if (target === 'all') return true;
+  if (target === 'pets') return Boolean(resident.hasPet);
+  if (target === 'apartment') return String(resident.apartment) === String(notice.targetApartment || '');
+  if (target === 'rented') return isApartmentRented(resident.apartment);
+  if (target === 'owners') return normalizeText(resident.residentType || '').includes('propriet') || normalizeText(resident.residentType || '').includes('responsavel');
+  if (target === 'tenants') return normalizeText(resident.residentType || '').includes('inquilino') || normalizeText(resident.relationship || '').includes('inquilino');
+  return true;
+}
+function noticeRecipients(notice = {}) {
+  return getResidents().filter((resident) => {
+    const target = notice.target || 'all';
+    if (target === 'all') return true;
+    if (target === 'pets') return Boolean(resident.hasPet);
+    if (target === 'apartment') return String(resident.apartment) === String(notice.targetApartment || '');
+    if (target === 'rented') return isApartmentRented(resident.apartment);
+    if (target === 'owners') return normalizeText(resident.residentType || '').includes('propriet') || normalizeText(resident.residentType || '').includes('responsavel');
+    if (target === 'tenants') return normalizeText(resident.residentType || '').includes('inquilino') || normalizeText(resident.relationship || '').includes('inquilino');
+    return true;
+  });
+}
 function setupNotices() {
+  const targetSelect = $('[data-notice-target]');
+  targetSelect?.addEventListener('change', () => {
+    const apartment = $('[data-notice-apartment]');
+    if (apartment) apartment.closest('label').style.opacity = targetSelect.value === 'apartment' ? '1' : '.55';
+  });
   $('[data-notice-form]')?.addEventListener('submit', (event) => {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
-    const notice = { id: uid('notice'), title: data.get('title').trim(), category: data.get('category'), message: data.get('message').trim(), createdAt: nowISO() };
+    const target = data.get('target') || 'all';
+    const targetApartment = data.get('targetApartment') || '';
+    if (target === 'apartment' && !targetApartment) { alert('Selecione a unidade destinatária do comunicado.'); return; }
+    const notice = { id: uid('notice'), title: data.get('title').trim(), category: data.get('category'), target, targetApartment, audience: noticeAudienceLabel({ target, targetApartment }), message: data.get('message').trim(), createdAt: nowISO() };
     saveNotices([notice, ...getNotices()]);
-    form.reset(); renderAll();
+    form.reset(); fillApartmentSelects(); renderAll();
   });
 }
 function renderNotices() {
   const box = $('[data-notices-list]');
   if (!box) return;
-  const list = getNotices().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  box.innerHTML = list.length ? list.map(renderNoticeItem).join('') : empty('Nenhum comunicado publicado.');
+  const list = getNotices().filter(noticeVisibleToCurrentUser).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  box.innerHTML = list.length ? list.map(renderNoticeItem).join('') : empty('Nenhum comunicado publicado para o seu perfil/unidade.');
 }
 function renderNoticeItem(notice) {
-  return `<div class="item"><div class="item-row"><div><div class="item-title">${escapeHTML(notice.title)}</div><div class="item-sub">${escapeHTML(notice.category)} • ${formatDateTime(notice.createdAt)}</div></div>${isSyndic() ? `<button class="btn btn--danger btn--sm" data-remove-notice="${notice.id}">Remover</button>` : ''}</div><p class="item-sub">${escapeHTML(notice.message)}</p></div>`;
+  const recipients = isSyndic() ? noticeRecipients(notice).length : null;
+  return `<div class="item"><div class="item-row"><div><div class="item-title">${escapeHTML(notice.title)}</div><div class="item-sub">${escapeHTML(notice.category)} • Destinatários: ${escapeHTML(noticeAudienceLabel(notice))}${recipients !== null ? ` • ${recipients} morador(es)` : ''} • ${formatDateTime(notice.createdAt)}</div></div>${isSyndic() ? `<button class="btn btn--danger btn--sm" data-remove-notice="${notice.id}">Remover</button>` : ''}</div><p class="item-sub">${escapeHTML(notice.message)}</p></div>`;
 }
-
 
 function staffStatusLabel(status) {
   return {
@@ -2046,6 +3024,7 @@ function renderStaff() {
       </div>
       <div class="item-actions">
         <button class="btn btn--outline btn--sm" data-edit-staff="${item.id}">Editar</button>
+        <button class="btn btn--outline btn--sm" data-reset-user-password="staff:${item.id}">Gerar senha temporária</button>
         <button class="btn btn--danger btn--sm" data-remove-staff="${item.id}">Excluir</button>
       </div>
     </div>`).join('') : empty('Nenhum síndico, subsíndico ou porteiro cadastrado.');
@@ -2415,6 +3394,7 @@ function setupNotificationForms() {
       const form = asFormElement(event.currentTarget, '[data-notification-settings-form]');
       await saveNotificationConfigFromForm(form);
       await saveAsaasConfigFromForm(form);
+      if (form.storageEnabled) await saveStorageConfigFromForm(form);
       if (msg) { msg.textContent = 'Integrações salvas com segurança no backend.'; msg.style.color = 'var(--green)'; }
     } catch (error) {
       if (msg) { msg.textContent = `Erro ao salvar integrações: ${error.message}`; msg.style.color = 'var(--red)'; } else { alert(`Erro ao salvar integrações: ${error.message}`); }
@@ -2482,6 +3462,23 @@ function setupNotificationForms() {
       msg.style.color = 'var(--red)';
     }
   });
+
+  $('[data-test-storage]')?.addEventListener('click', async () => {
+    const form = $('[data-notification-settings-form]');
+    const msg = $('[data-notification-settings-message]');
+    if (!backendAvailable) { msg.textContent = 'Backend indisponível.'; return; }
+    try {
+      await saveStorageConfigFromForm(form);
+      msg.textContent = 'Verificando armazenamento externo...';
+      const debug = await apiRequest('/api/integrations/storage/debug');
+      const ok = Boolean(debug.storage?.ok);
+      msg.textContent = ok ? 'Storage externo configurado.' : `Storage incompleto: ${(debug.storage?.problems || []).join(' ')}`;
+      msg.style.color = ok ? 'var(--green)' : 'var(--red)';
+    } catch (error) {
+      msg.textContent = `Erro no teste do storage: ${error.message}`;
+      msg.style.color = 'var(--red)';
+    }
+  });
 }
 
 function renderNotificationRules() {
@@ -2504,6 +3501,7 @@ function renderNotificationSettings() {
   const email = notificationConfig.email || {};
   const whatsapp = notificationConfig.whatsapp || {};
   const asaas = asaasConfig || {};
+  const storage = storageConfig || {};
   form.emailEnabled.checked = Boolean(email.enabled);
   if (form.emailProvider) form.emailProvider.value = email.provider || 'smtp';
   form.smtpHost.value = email.host || 'smtp.gmail.com';
@@ -2538,7 +3536,16 @@ function renderNotificationSettings() {
   }
   if (form.evolutionCountryCode) form.evolutionCountryCode.value = evolution.countryCode || whatsapp.countryCode || '55';
   if (form.evolutionLinkPreview) form.evolutionLinkPreview.checked = Boolean(evolution.linkPreview);
-  if (form.testWhatsappTo) form.testWhatsappTo.value = evolution.testTo || whatsapp.testTo || '';
+  const periskope = whatsapp.periskope || {};
+  if (form.periskopeBaseUrl) form.periskopeBaseUrl.value = periskope.baseUrl || 'https://api.periskope.app/v1';
+  if (form.periskopePhone) form.periskopePhone.value = periskope.phone || '';
+  if (form.periskopeApiKey) {
+    form.periskopeApiKey.value = '';
+    form.periskopeApiKey.placeholder = periskope.apiKeySaved ? 'API Key salva — deixe em branco para manter' : 'API Key da Periskope';
+  }
+  if (form.periskopeCountryCode) form.periskopeCountryCode.value = periskope.countryCode || whatsapp.countryCode || '55';
+  if (form.periskopeHideUrlPreview) form.periskopeHideUrlPreview.checked = periskope.hideUrlPreview !== false;
+  if (form.testWhatsappTo) form.testWhatsappTo.value = periskope.testTo || evolution.testTo || whatsapp.testTo || '';
   if (form.asaasEnabled) {
     form.asaasEnabled.checked = Boolean(asaas.enabled);
     form.asaasEnvironment.value = asaas.environment || 'sandbox';
@@ -2548,12 +3555,24 @@ function renderNotificationSettings() {
     form.asaasFine.value = asaas.fineValue ?? 2;
     form.asaasInterest.value = asaas.interestValue ?? 1;
   }
+  if (form.storageEnabled) {
+    form.storageEnabled.checked = Boolean(storage.enabled);
+    form.storageProvider.value = storage.provider || 'terabox';
+    const tb = storage.terabox || {};
+    form.teraboxBaseUrl.value = tb.baseUrl || 'https://www.terabox.com';
+    form.teraboxUploadBaseUrl.value = tb.uploadBaseUrl || '';
+    form.teraboxAccessToken.value = '';
+    form.teraboxAccessToken.placeholder = tb.accessTokenSaved ? 'Token TeraBox salvo — deixe em branco para manter' : 'Access Token TeraBox';
+    form.teraboxFolder.value = tb.folder || '/vitoria-regia';
+    form.storageMaxUploadMb.value = storage.maxUploadMb || 10;
+  }
   const status = $('[data-integration-status]');
   if (status) {
     status.innerHTML = `
       <div><strong>E-mail:</strong> ${email.enabled ? 'ativado' : 'desativado'} • provedor: ${escapeHTML(email.provider || 'smtp')} ${email.provider === 'mailersend' ? (email.mailersend?.apiKeySaved ? '• token MailerSend salvo' : '• token MailerSend não salvo') : (email.passwordSaved ? '• senha SMTP salva' : '• senha SMTP não salva')}</div>
       <div><strong>WhatsApp:</strong> ${whatsapp.enabled ? 'ativado' : 'desativado'} • provedor: ${escapeHTML(whatsapp.provider || 'meta')} ${whatsapp.provider === 'evolution' ? (whatsapp.evolution?.apiKeySaved ? '• API Key Evolution salva' : '• API Key Evolution não salva') : (whatsapp.tokenSaved ? '• token Meta salvo' : '• token Meta não salvo')}</div>
       <div><strong>Asaas:</strong> ${asaas.enabled ? 'ativado' : 'desativado'} • ${escapeHTML(asaas.environment || 'sandbox')} ${asaas.apiKeySaved ? '• API Key salva' : '• API Key não salva'}</div>
+      <div><strong>Storage:</strong> ${storage.enabled ? 'ativado' : 'desativado'} • ${escapeHTML(storage.provider || 'metadata-only')} ${storage.terabox?.accessTokenSaved ? '• token TeraBox salvo' : '• token TeraBox não salvo'}</div>
       <div><small>Para funcionar em produção, o backend precisa estar rodando com banco inicializado e as credenciais corretas.</small></div>`;
   }
 }
@@ -2569,10 +3588,18 @@ async function notifyVisitorById(id, channels) {
 
 async function notifyPackageById(id, channels) {
   const pkg = getPackages().find((item) => item.id === id);
-  const resident = pkg ? approvedResidentByApartment(pkg.apartment) : null;
-  if (!pkg || !resident) { alert('Encomenda ou morador não encontrado.'); return; }
-  const response = await notifyResidentEntity(resident, 'Encomenda na portaria — Condomínio Vitória Régia', packageMessage(pkg), channels);
+  if (!pkg) { alert('Encomenda não encontrada.'); return; }
+  let response;
+  if (channels.includes('email')) response = await notifyPackageRecipients(pkg, ['email']);
+  else {
+    const resident = approvedResidentByApartment(pkg.apartment);
+    if (!resident) { alert('Morador principal não encontrado para WhatsApp.'); return; }
+    response = await notifyResidentEntity(resident, 'Encomenda na portaria — Condomínio Vitória Régia', packageMessage(pkg), channels);
+  }
+  const ok = Boolean(response?.ok);
+  savePackages(getPackages().map((item) => item.id === id ? { ...item, notificationAttemptedAt: nowISO(), notificationStatus: ok ? 'sent' : 'failed', notifiedAt: ok ? nowISO() : item.notifiedAt, notifiedRecipients: response?.recipients || item.notifiedRecipients || [], notificationResult: resultSummary(response) } : item));
   logPortariaActivity(`Enviou aviso de encomenda por ${channels.join('/')}`, { ...pkg, summary: `Aviso de encomenda enviado para unidade ${pkg.apartment}` }, 'encomenda');
+  renderAll();
   alert(`Notificação: ${resultSummary(response)}`);
 }
 
@@ -2610,6 +3637,7 @@ function renderSettings() {
   renderNotificationRules();
   if (isSyndic() && backendAvailable && !notificationConfig) loadNotificationConfig();
   if (isSyndic() && backendAvailable && !asaasConfig) loadAsaasConfig();
+  if (isSyndic() && backendAvailable && !storageConfig) loadStorageConfig();
   renderNotificationSettings();
   const form = $('[data-settings-form]');
   const editor = $('[data-spaces-editor]');
@@ -2637,11 +3665,28 @@ function removeSpace(id) {
 
 async function fileToDataURL(file) {
   if (!file || !file.size) return '';
-  return '';
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Falha ao ler arquivo.'));
+    reader.readAsDataURL(file);
+  });
 }
-async function fileMeta(file) {
+async function fileMeta(file, purpose = 'arquivos', entityId = '') {
   if (!file || !file.size) return null;
-  return { name: file.name, type: file.type, size: file.size, uploadedAt: nowISO(), storage: 'metadata-only', note: 'Arquivo/foto não foi salvo no banco de dados.' };
+  const basic = { name: file.name, type: file.type, size: file.size, uploadedAt: nowISO(), storage: 'metadata-only', note: 'Arquivo/foto não foi salvo no banco de dados.' };
+  if (!backendAvailable) return { ...basic, note: 'Backend indisponível; arquivo não foi enviado ao storage externo.' };
+  try {
+    const dataUrl = await fileToDataURL(file);
+    const response = await apiRequest('/api/storage/upload', {
+      method: 'POST',
+      body: JSON.stringify({ filename: file.name, dataUrl, purpose, entityId }),
+    });
+    return response.file || basic;
+  } catch (error) {
+    console.warn('Falha ao enviar arquivo ao storage externo:', error.message);
+    return { ...basic, uploadError: error.message, note: `Falha ao enviar ao storage externo: ${error.message}` };
+  }
 }
 
 function exportCSV(filename, rows) {
@@ -2654,13 +3699,31 @@ function exportCSV(filename, rows) {
   a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
 }
 
+
+async function resetUserPassword(ref) {
+  if (!isSyndic()) { alert('Apenas o síndico pode gerar senha temporária.'); return; }
+  const [type, id] = String(ref || '').split(':');
+  const item = type === 'staff' ? getStaff().find((p) => p.id === id) : getResidents().find((p) => p.id === id);
+  if (!item?.email) { alert('Usuário sem e-mail cadastrado.'); return; }
+  if (!confirm(`Gerar senha temporária para ${item.name} (${item.email})?`)) return;
+  try {
+    const result = await adminResetUserPassword({ email: item.email, role: type === 'staff' ? item.role : 'morador' });
+    const sent = result.emailSent ? 'A senha também foi enviada por e-mail.' : `Não foi possível enviar por e-mail: ${result.emailError || 'verifique as configurações de e-mail'}.`;
+    alert(`Senha temporária gerada para ${item.email}:\n\n${result.temporaryPassword}\n\n${sent}\nO usuário deverá trocar a senha no próximo acesso.`);
+  } catch (error) {
+    alert(error.message || 'Não foi possível gerar senha temporária.');
+  }
+}
+
 function handleDocumentClick(event) {
   const target = event.target;
   const actionMap = [
     ['data-approve-resident', approveResident], ['data-reject-resident', rejectResident], ['data-remove-resident', removeResident],
-    ['data-edit-resident', editResident], ['data-primary-resident', setPrimaryResident], ['data-toggle-rented', toggleApartmentRented],
+    ['data-edit-resident', editResident], ['data-primary-resident', setPrimaryResident], ['data-toggle-rented', toggleApartmentRented], ['data-reset-user-password', resetUserPassword],
     ['data-approve-booking', approveBooking], ['data-cancel-booking', cancelBooking], ['data-edit-booking', editBooking],
     ['data-boleto-booking', async (id) => { location.hash = '#financeiro'; await renderBoletoPreview(id); }], ['data-mark-paid', markPaid],
+    ['data-select-recurring-unit', (apt) => { const filter = $('[data-recurring-unit-filter]'); if (filter) filter.value = apt; renderRecurringVisitors(); }],
+    ['data-register-recurring-visitor', registerRecurringVisitorEntry], ['data-toggle-recurring-visitor', toggleRecurringVisitor], ['data-remove-recurring-visitor', removeRecurringVisitor],
     ['data-remove-visitor', (id) => { const v = getVisitors().find((item) => item.id === id); saveVisitors(getVisitors().filter((item) => item.id !== id)); if (v) logPortariaActivity('Removeu visitante', { ...v, summary: `Visitante ${v.name} removido da unidade ${v.apartment}` }, 'visitante'); renderAll(); }],
     ['data-deliver-package', deliverPackage], ['data-remove-notice', (id) => { saveNotices(getNotices().filter((item) => item.id !== id)); renderAll(); }],
     ['data-remove-space', removeSpace],
@@ -2673,6 +3736,7 @@ function handleDocumentClick(event) {
     ['data-refresh-activity-logs', async () => { await renderActivityLogs(true); }], ['data-export-activity-logs', exportActivityLogsCSV],
     ['data-print-guests', printGuestList], ['data-export-guests', exportGuestListCSV],
     ['data-export-calendar-google', exportReservationsICS], ['data-export-schedule-google', exportScheduleICS], ['data-download-schedule-template', downloadScheduleTemplate],
+    ['data-toggle-finance-public', toggleFinancePublic], ['data-remove-finance-record', removeFinanceRecord],
   ];
   for (const [attr, fn] of actionMap) {
     const el = target.closest(`[${attr}]`);
@@ -2695,7 +3759,7 @@ async function init() {
   if (!backendAvailable && REQUIRE_BACKEND) {
     clearAppLocalCache();
     showBackendRequiredBanner();
-    console.error('Backend/banco indisponível: o sistema operacional exige Render Web Service com PostgreSQL configurado.');
+    console.error('Backend/banco indisponível: o sistema operacional exige Render Web Service com banco configurado.');
   }
   if (!read(keys.settings, null)) write(keys.settings, defaultSettings);
   fillApartmentSelects();
@@ -2710,12 +3774,14 @@ async function init() {
   setupBookings();
   setupCalendar();
   setupVisitors();
+  setupRecurringVisitors();
   setupPackages();
   setupNotices();
   setupStaff();
   setupStaffSchedules();
   setupContactCenter();
   setupServices();
+  setupFinanceRecords();
   setupSettings();
   if (backendAvailable) { await loadNotificationConfig(); await loadAsaasConfig(); }
   setupPrint();
@@ -2727,20 +3793,14 @@ async function init() {
   const serverUser = await getBackendSession();
   if (backendAvailable && serverUser?.role) {
     cleanAuthQueryParams();
+    await loadBackendState();
     startSession(serverUser);
     return;
   }
-  const saved = read(keys.session, null);
-  if (backendAvailable && saved?.role) {
-    try {
-      const result = await createBackendSession(saved);
-      startSession(result?.user || saved);
-    } catch {
-      endSession();
-    }
-  } else {
-    endSession();
-  }
+  // Segurança: não reabre o aplicativo usando apenas localStorage.
+  // O acesso precisa vir de uma sessão válida no backend ou de novo login com senha.
+  remove(keys.session);
+  endSession();
   if (authError) {
     const message = $('[data-login-message]');
     if (message) message.textContent = authError;
