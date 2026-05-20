@@ -134,6 +134,7 @@ const TAB_LABELS = {
   arquivos: 'Arquivos',
   comunicados: 'Comunicados',
   'app-android': 'App Android',
+  manual: 'Manual do sistema',
   configuracoes: 'Configurações',
 };
 
@@ -983,7 +984,10 @@ function authSetup() {
   function syncRoleUI() {
     const role = roleSelect.value;
     unitWrap.style.display = role === 'morador' ? 'grid' : 'none';
-    if (bootstrapPasswordWrap) bootstrapPasswordWrap.style.display = role === 'sindico' ? 'grid' : 'none';
+    // O acesso temporário de implantação continua aceito no backend apenas enquanto
+    // não existir síndico/administrador válido, mas a tela de login não exibe mais
+    // aviso público sobre usuário temporário.
+    if (bootstrapPasswordWrap) bootstrapPasswordWrap.style.display = 'none';
   }
   roleSelect.addEventListener('change', syncRoleUI);
   $('[data-login-apartment]')?.addEventListener('change', syncRoleUI);
@@ -1007,7 +1011,7 @@ function authSetup() {
       const result = await createBackendSession(payload);
       await loadBackendState();
       startSession(result?.user || payload);
-      if (message && result?.bootstrap?.active) message.textContent = result.bootstrap.message || 'Acesso temporário liberado.';
+      if (message) message.textContent = '';
     } catch (error) {
       if (message) message.textContent = error.message || 'Não foi possível autenticar.';
     }
@@ -3315,7 +3319,7 @@ function editStaff(id) {
   const whatsapp = prompt('WhatsApp:', item.whatsapp || '') ?? item.whatsapp;
   const isAdminAnswer = prompt('Administrador do sistema? (sim/não):', staffIsAdministrator(item) ? 'sim' : 'não') ?? (staffIsAdministrator(item) ? 'sim' : 'não');
   const isAdmin = /^s/i.test(String(isAdminAnswer).trim()) || ['sindico', 'subsindico'].includes(roleKey(role));
-  const tabsAnswer = prompt('Abas permitidas, separadas por vírgula. Deixe em branco para usar o padrão do perfil. Ex.: dashboard, moradores, encomendas, arquivos', normalizeAllowedTabs(item.allowedTabs).join(', ')) ?? normalizeAllowedTabs(item.allowedTabs).join(', ');
+  const tabsAnswer = prompt('Abas permitidas, separadas por vírgula. Deixe em branco para usar o padrão do perfil. Ex.: dashboard, moradores, encomendas, arquivos, manual', normalizeAllowedTabs(item.allowedTabs).join(', ')) ?? normalizeAllowedTabs(item.allowedTabs).join(', ');
   const allowedTabs = normalizeAllowedTabs(tabsAnswer);
   const status = prompt('Situação (disponivel, afastado, ausente ou ferias):', item.status || 'disponivel') ?? item.status;
   const awayFrom = prompt('Início do afastamento/ausência/férias (AAAA-MM-DD), se houver:', item.awayFrom || '') ?? item.awayFrom;

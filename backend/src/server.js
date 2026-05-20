@@ -234,9 +234,18 @@ function fromJson(value, fallback) {
   try { return JSON.parse(value); } catch (_) { return fallback; }
 }
 
-function isoOrNow(value) {
+function mysqlDateTime(value) {
   const date = value ? new Date(value) : new Date();
-  return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
+  const safe = Number.isNaN(date.getTime()) ? new Date() : date;
+  // MySQL TIMESTAMP/DATETIME não aceita ISO com "T", milissegundos e "Z"
+  // em todos os ambientes. Enviamos sempre UTC no formato compatível:
+  // YYYY-MM-DD HH:mm:ss. O valor ISO original continua preservado dentro
+  // do payload JSON quando existir.
+  return safe.toISOString().slice(0, 19).replace('T', ' ');
+}
+
+function isoOrNow(value) {
+  return mysqlDateTime(value);
 }
 
 function nullableDate(value) {
@@ -1730,7 +1739,7 @@ async function logNotification(entry) {
       await query(
         `insert into notification_logs (id, channel, recipient, subject, message, status, error, provider_response, created_at)
          values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)`,
-        [log.id, log.channel || 'sistema', log.recipient || null, log.subject || null, log.message || null, log.status || 'info', log.error || null, toJson(log.providerResponse || {}), log.createdAt]
+        [log.id, log.channel || 'sistema', log.recipient || null, log.subject || null, log.message || null, log.status || 'info', log.error || null, toJson(log.providerResponse || {}), mysqlDateTime(log.createdAt)]
       );
     } catch (error) {
       console.error('Falha ao registrar log no banco:', error.message);
@@ -2197,7 +2206,7 @@ async function handleLogin(req, res) {
       demo: false,
     };
     req.session.user = user;
-    return res.json({ user, bootstrap: { active: true, message: 'Acesso temporário liberado. Cadastre o síndico oficial em Equipe para desativar este usuário automaticamente.' } });
+    return res.json({ user, bootstrap: { active: true } });
   }
 
   if (!email || !password) return res.status(400).send('Informe e-mail e senha para acessar o sistema.');
@@ -2729,6 +2738,20 @@ app.get('/api/calendar', requireDatabaseReady, async (req, res) => {
   try { res.json({ rows: await rowsFromPayload('bookings') }); }
   catch (error) { res.status(500).send(error.message); }
 });
+app.get('/api/admin/manual', requireDatabaseReady, requireSyndicUser, (req, res) => {
+  const manualPath = path.join(__dirname, '..', 'private', 'manual_usuario_sistema_vitoria_regia.pdf');
+  if (!fs.existsSync(manualPath)) return res.status(404).send('Manual não encontrado no servidor.');
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', 'inline; filename="manual_usuario_sistema_vitoria_regia.pdf"');
+  return res.sendFile(manualPath);
+});
+
+app.get('/api/admin/manual/download', requireDatabaseReady, requireSyndicUser, (req, res) => {
+  const manualPath = path.join(__dirname, '..', 'private', 'manual_usuario_sistema_vitoria_regia.pdf');
+  if (!fs.existsSync(manualPath)) return res.status(404).send('Manual não encontrado no servidor.');
+  return res.download(manualPath, 'manual_usuario_sistema_vitoria_regia.pdf');
+});
+
 app.get('/api/spaces', (req, res) => res.json({ rows: store.state?.settings?.spaces || [] }));
 
 // Endpoints API para futuras telas nativas/integrações. O front-end atual também sincroniza por /api/state/bulk.

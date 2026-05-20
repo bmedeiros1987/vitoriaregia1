@@ -78,10 +78,7 @@
           <input name="password" type="password" required placeholder="Digite sua senha" autocomplete="current-password" />
         </label>
 
-        <label data-bootstrap-password-wrap style="display:none">
-          <span>Usuário temporário</span>
-          <small>Para o acesso inicial do síndico, use o e-mail e a senha temporária configurados no Render.</small>
-        </label>
+        <span data-bootstrap-password-wrap hidden></span>
 
         <div class="split-buttons">
           <button class="btn btn--primary" type="submit">Acessar</button>
@@ -187,6 +184,7 @@
         <a href="#arquivos" data-nav data-roles="morador,sindico,portaria"><span>☁️</span> Arquivos</a>
         <a href="#comunicados" data-nav data-roles="morador,sindico,portaria"><span>📣</span> Comunicados</a>
         <a href="#app-android" data-nav data-roles="morador,sindico,portaria"><span>📱</span> App Android</a>
+        <a href="#manual" data-nav data-roles="sindico"><span>📘</span> Manual</a>
         <a href="#configuracoes" data-nav data-roles="sindico"><span>⚙️</span> Configurações</a>
       </nav>
       <div class="sidebar-profile">
@@ -336,6 +334,7 @@
                 <label class="checkline"><input type="checkbox" name="allowedTabs" value="arquivos" checked /><span>Arquivos</span></label>
                 <label class="checkline"><input type="checkbox" name="allowedTabs" value="comunicados" checked /><span>Comunicados</span></label>
                 <label class="checkline"><input type="checkbox" name="allowedTabs" value="app-android" checked /><span>App Android</span></label>
+                <label class="checkline"><input type="checkbox" name="allowedTabs" value="manual" checked /><span>Manual do sistema</span></label>
                 <label class="checkline"><input type="checkbox" name="allowedTabs" value="configuracoes" checked /><span>Configurações</span></label>
               </div>
             </fieldset>
@@ -803,6 +802,18 @@ João Souza - CPF ***.000.***-**"></textarea></label>
             </div>
           </article>
         </div>
+      </section>
+
+      <section id="manual" class="section" data-section data-roles="sindico">
+        <div class="section-head">
+          <div><span class="eyebrow">Exclusivo da administração</span><h2>Manual completo do sistema</h2><p>Documento oficial para consulta de síndico, subsíndico e administradores autorizados.</p></div>
+          <a class="btn btn--outline" href="/api/admin/manual/download" target="_blank" rel="noopener">Baixar PDF</a>
+        </div>
+        <article class="panel">
+          <div class="panel-header"><div><span class="eyebrow">Manual incorporado</span><h2>Sistema Vitória Régia</h2></div></div>
+          <p class="form-hint">O manual é protegido pelo login administrativo. Moradores e portaria não visualizam esta aba.</p>
+          <iframe title="Manual do Sistema Vitória Régia" src="/api/admin/manual" style="width:100%;min-height:72vh;border:1px solid var(--border);border-radius:18px;background:#fff;"></iframe>
+        </article>
       </section>
 
       <section id="configuracoes" class="section" data-section data-roles="sindico">
