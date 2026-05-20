@@ -205,7 +205,8 @@ function fromJson(value, fallback) {
 
 function isoOrNow(value) {
   const date = value ? new Date(value) : new Date();
-  return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
+  const validDate = Number.isNaN(date.getTime()) ? new Date() : date;
+  return validDate.toISOString().slice(0, 19).replace('T', ' ');
 }
 
 function nullableDate(value) {
