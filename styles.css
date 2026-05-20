@@ -873,3 +873,82 @@ body.no-scroll { overflow: hidden; }
   font-size: .9rem;
 }
 .integration-status strong { color: var(--primary); }
+
+
+/* Moradores múltiplos, unidade alugada e lista de convidados */
+.unit-group {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(255,255,255,.9), var(--surface-soft));
+}
+.unit-group + .unit-group { margin-top: 14px; }
+.unit-group-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 4px 4px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.unit-group-head strong { color: var(--primary); font-size: 1.05rem; }
+.unit-group-head span { display: block; color: var(--muted); font-size: .88rem; margin-top: 3px; }
+.resident-card { background: #fff; }
+.checkline--boxed {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 12px 14px;
+  background: var(--surface-soft);
+}
+.guest-box {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px dashed var(--line);
+  border-radius: 16px;
+  background: rgba(6,26,51,.035);
+  color: var(--muted);
+  font-size: .9rem;
+}
+.guest-box strong { color: var(--primary); }
+.guest-box ol { margin: 8px 0 0 18px; padding: 0; display: grid; gap: 3px; }
+.is-disabled { opacity: .7; pointer-events: none; }
+@media (max-width: 620px) { .unit-group-head { flex-direction: column; } }
+
+.integration-subcard {
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px solid rgba(148, 163, 184, .26);
+  border-radius: 16px;
+  background: rgba(248, 250, 252, .72);
+}
+.integration-subcard h4 {
+  margin: 0 0 10px;
+  font-size: .95rem;
+  color: var(--navy);
+}
+
+/* Módulos: equipe, contato protegido e serviços */
+.integration-subcard,
+.service-note,
+.guest-box {
+  border: 1px solid rgba(15, 23, 42, .08);
+  border-radius: 18px;
+  padding: 14px;
+  background: rgba(248, 250, 252, .82);
+}
+.badge--danger { background: rgba(239, 68, 68, .12); color: #991b1b; }
+.staff-privacy-note {
+  font-size: .86rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+#equipe .item-title,
+#servicos .item-title,
+#contato .item-title { align-items: center; gap: 8px; }
+@media (max-width: 840px) {
+  #servicos .content-grid,
+  #contato .content-grid,
+  #equipe .content-grid { grid-template-columns: 1fr; }
+}

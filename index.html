@@ -95,6 +95,22 @@
           <span>CPF/CNPJ do responsável</span>
           <input name="cpfCnpj" inputmode="numeric" placeholder="Somente números — usado para boleto Asaas" />
         </label>
+        <div class="form-row">
+          <label>
+            <span>Vínculo com a unidade</span>
+            <select name="residentType">
+              <option value="Proprietário">Proprietário</option>
+              <option value="Inquilino">Inquilino</option>
+              <option value="Familiar">Familiar</option>
+              <option value="Responsável financeiro">Responsável financeiro</option>
+              <option value="Outro morador">Outro morador</option>
+            </select>
+          </label>
+          <label class="checkline checkline--boxed">
+            <input type="checkbox" name="unitRented" />
+            <span>Unidade alugada</span>
+          </label>
+        </div>
         <label>
           <span>Apartamento</span>
           <select name="apartment" required data-signup-apartment></select>
@@ -122,9 +138,13 @@
         <a href="#dashboard" data-nav data-roles="morador,sindico,portaria" class="is-active"><span>▣</span> Dashboard</a>
         <a href="#aprovacoes" data-nav data-roles="sindico"><span>✅</span> Aprovações</a>
         <a href="#moradores" data-nav data-roles="sindico"><span>🏠</span> Moradores</a>
+        <a href="#equipe" data-nav data-roles="sindico"><span>🧑‍💼</span> Equipe</a>
+        <a href="#meu-cadastro" data-nav data-roles="morador"><span>👥</span> Meu cadastro</a>
         <a href="#reservas" data-nav data-roles="morador,sindico"><span>📅</span> Reservas</a>
         <a href="#calendario" data-nav data-roles="morador,sindico"><span>🗓️</span> Calendário</a>
         <a href="#financeiro" data-nav data-roles="morador,sindico"><span>💳</span> Financeiro</a>
+        <a href="#servicos" data-nav data-roles="morador,sindico"><span>🛒</span> Serviços</a>
+        <a href="#contato" data-nav data-roles="morador,sindico"><span>✉️</span> Contato</a>
         <a href="#portaria" data-nav data-roles="sindico,portaria"><span>🛡️</span> Portaria</a>
         <a href="#encomendas" data-nav data-roles="sindico,portaria"><span>📦</span> Encomendas</a>
         <a href="#comunicados" data-nav data-roles="morador,sindico,portaria"><span>📣</span> Comunicados</a>
@@ -196,7 +216,7 @@
 
       <section id="moradores" class="section" data-section data-roles="sindico">
         <div class="section-head">
-          <div><span class="eyebrow">Cadastro oficial</span><h2>Moradores e unidades</h2><p>Unidades disponíveis: 101, 102, 103, 201... até 1103.</p></div>
+          <div><span class="eyebrow">Cadastro oficial</span><h2>Moradores e unidades</h2><p>Permite mais de um morador por apartamento, define unidade alugada e escolhe o responsável principal para boletos.</p></div>
           <button class="btn btn--outline" type="button" data-export-residents>Exportar CSV</button>
         </div>
         <div class="content-grid content-grid--two">
@@ -206,14 +226,69 @@
             <label><span>E-mail</span><input name="email" type="email" required /></label>
             <label><span>WhatsApp</span><input name="whatsapp" type="tel" required /></label>
             <label><span>CPF/CNPJ do responsável</span><input name="cpfCnpj" inputmode="numeric" placeholder="Obrigatório para boleto Asaas" /></label>
-            <label><span>Apartamento</span><select name="apartment" required data-resident-apartment></select></label>
+            <div class="form-row">
+              <label><span>Apartamento</span><select name="apartment" required data-resident-apartment></select></label>
+              <label><span>Vínculo</span><select name="residentType"><option>Proprietário</option><option>Inquilino</option><option>Familiar</option><option>Responsável financeiro</option><option>Outro morador</option></select></label>
+            </div>
+            <label class="checkline checkline--boxed"><input type="checkbox" name="primaryBilling" /><span>Morador principal para recebimento de boletos desta unidade</span></label>
+            <label class="checkline checkline--boxed"><input type="checkbox" name="unitRented" /><span>Designar unidade como alugada</span></label>
             <label><span>Observações</span><textarea name="notes" rows="3"></textarea></label>
             <button class="btn btn--primary" type="submit">Salvar morador aprovado</button>
             <p class="form-hint" data-resident-message></p>
           </form>
           <article class="panel">
-            <div class="panel-header"><div><span class="eyebrow">Lista</span><h2>Moradores aprovados</h2></div><input class="search" data-resident-search placeholder="Buscar por nome, apto ou e-mail" /></div>
+            <div class="panel-header"><div><span class="eyebrow">Lista por unidade</span><h2>Moradores aprovados</h2></div><input class="search" data-resident-search placeholder="Buscar por nome, apto, vínculo ou e-mail" /></div>
             <div data-residents-list class="list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="equipe" class="section" data-section data-roles="sindico">
+        <div class="section-head">
+          <div><span class="eyebrow">Exclusivo do síndico</span><h2>Síndico, subsíndico e porteiros</h2><p>Cadastre e mantenha os contatos internos da administração. Esses dados ficam ocultos para moradores e somente o síndico pode alterar.</p></div>
+        </div>
+        <div class="content-grid content-grid--two">
+          <form class="panel form-card" data-staff-form autocomplete="off">
+            <div class="panel-header"><div><span class="eyebrow">Equipe</span><h2>Novo cadastro interno</h2></div></div>
+            <label><span>Nome</span><input name="name" required /></label>
+            <label><span>Perfil</span><select name="role" required><option value="sindico">Síndico</option><option value="subsindico">Subsíndico</option><option value="porteiro">Porteiro</option></select></label>
+            <label><span>E-mail interno para recebimento</span><input name="email" type="email" placeholder="não será exibido ao morador" /></label>
+            <label><span>WhatsApp interno para recebimento</span><input name="whatsapp" type="tel" placeholder="não será exibido ao morador" /></label>
+            <label class="checkline checkline--boxed"><input type="checkbox" name="active" checked /><span>Cadastro ativo para receber mensagens do sistema</span></label>
+            <label><span>Observações / escala</span><textarea name="notes" rows="3" placeholder="Ex.: turno, função, observações internas"></textarea></label>
+            <button class="btn btn--primary" type="submit">Salvar equipe</button>
+            <p class="form-hint" data-staff-message></p>
+          </form>
+          <article class="panel">
+            <div class="panel-header"><div><span class="eyebrow">Contatos internos</span><h2>Equipe cadastrada</h2></div></div>
+            <div data-staff-list class="list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="meu-cadastro" class="section" data-section data-roles="morador">
+        <div class="section-head">
+          <div><span class="eyebrow">Área do morador</span><h2>Meu cadastro e minha unidade</h2><p>Quando a unidade estiver marcada como alugada, somente o síndico e os moradores vinculados à unidade podem alterar informações cadastrais.</p></div>
+        </div>
+        <div class="content-grid content-grid--two">
+          <form class="panel form-card" data-my-resident-form autocomplete="off">
+            <div class="panel-header"><div><span class="eyebrow">Dados pessoais</span><h2>Atualizar meu cadastro</h2></div></div>
+            <input type="hidden" name="id" />
+            <label><span>Apartamento</span><input name="apartment" readonly /></label>
+            <label><span>Nome</span><input name="name" required /></label>
+            <label><span>E-mail</span><input name="email" type="email" required /></label>
+            <label><span>WhatsApp</span><input name="whatsapp" type="tel" required /></label>
+            <label><span>CPF/CNPJ do responsável</span><input name="cpfCnpj" inputmode="numeric" /></label>
+            <label><span>Vínculo com a unidade</span><select name="residentType"><option>Proprietário</option><option>Inquilino</option><option>Familiar</option><option>Responsável financeiro</option><option>Outro morador</option></select></label>
+            <label class="checkline checkline--boxed"><input type="checkbox" name="primaryBilling" /><span>Sou o morador principal para recebimento de boletos desta unidade</span></label>
+            <label class="checkline checkline--boxed"><input type="checkbox" name="unitRented" /><span>Unidade alugada</span></label>
+            <label><span>Observações</span><textarea name="notes" rows="3"></textarea></label>
+            <button class="btn btn--primary" type="submit">Salvar meu cadastro</button>
+            <p class="form-hint" data-my-resident-message></p>
+          </form>
+          <article class="panel">
+            <div class="panel-header"><div><span class="eyebrow">Unidade</span><h2>Moradores vinculados</h2></div></div>
+            <div data-my-unit-residents class="list"></div>
           </article>
         </div>
       </section>
@@ -235,6 +310,14 @@
               <label><span>Valor da taxa</span><input name="fee" data-booking-fee readonly /></label>
             </div>
             <label><span>Finalidade / observações</span><textarea name="notes" rows="3" placeholder="Ex.: aniversário familiar, reunião etc."></textarea></label>
+            <div class="form-row">
+              <label><span>Quantidade estimada de convidados</span><input name="guestCount" type="number" min="0" step="1" placeholder="Ex.: 25" /></label>
+              <label><span>Responsável pelo evento</span><input name="eventResponsible" placeholder="Ex.: morador principal" /></label>
+            </div>
+            <label><span>Lista de convidados do evento</span><textarea name="guestList" rows="5" placeholder="Informe um convidado por linha. Ex.:
+Maria Silva - RG 000000
+João Souza - CPF ***.000.***-**"></textarea></label>
+            <p class="form-hint">Para reservas do salão de festas, a lista ajuda a portaria a liberar apenas os convidados informados.</p>
             <label><span>Upload de documento ou comprovante do morador</span><input name="residentDocument" type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" /></label>
             <label class="checkline">
               <input type="checkbox" name="signature" required />
@@ -282,6 +365,50 @@
               <div class="empty-state">Selecione uma reserva para gerar o cobrança de reserva.</div>
             </div>
           </article>
+        </div>
+      </section>
+
+      <section id="servicos" class="section" data-section data-roles="morador,sindico">
+        <div class="section-head"><div><span class="eyebrow">Serviços e compras</span><h2>Controle-remoto, tags e outros serviços</h2><p>O síndico cadastra os serviços disponíveis e os moradores solicitam pelo sistema.</p></div></div>
+        <div class="content-grid content-grid--two">
+          <form class="panel form-card" data-service-form data-roles="sindico" autocomplete="off">
+            <div class="panel-header"><div><span class="eyebrow">Cadastro pelo síndico</span><h2>Novo serviço</h2></div></div>
+            <label><span>Nome do serviço/produto</span><input name="name" required placeholder="Ex.: Controle-remoto de portão" /></label>
+            <div class="form-row"><label><span>Categoria</span><input name="category" placeholder="Acesso, manutenção, documentos..." /></label><label><span>Valor</span><input name="price" type="number" min="0" step="0.01" required /></label></div>
+            <label><span>Descrição</span><textarea name="description" rows="3"></textarea></label>
+            <label class="checkline checkline--boxed"><input type="checkbox" name="active" checked /><span>Disponível para solicitação</span></label>
+            <label class="checkline checkline--boxed"><input type="checkbox" name="requiresApproval" checked /><span>Exigir aprovação do síndico</span></label>
+            <button class="btn btn--primary" type="submit">Cadastrar serviço</button>
+            <p class="form-hint" data-service-message></p>
+          </form>
+          <form class="panel form-card" data-service-request-form autocomplete="off">
+            <div class="panel-header"><div><span class="eyebrow">Solicitação</span><h2>Comprar/solicitar serviço</h2></div></div>
+            <label><span>Serviço</span><select name="serviceId" required data-service-select></select></label>
+            <div class="form-row"><label><span>Apartamento</span><select name="apartment" data-booking-apartment></select></label><label><span>Quantidade</span><input name="quantity" type="number" min="1" step="1" value="1" /></label></div>
+            <label><span>Observações</span><textarea name="notes" rows="3" placeholder="Ex.: modelo do controle, placa, observações para retirada"></textarea></label>
+            <button class="btn btn--primary" type="submit">Enviar solicitação</button>
+            <p class="form-hint" data-service-request-message></p>
+          </form>
+        </div>
+        <div class="content-grid content-grid--two">
+          <article class="panel"><div class="panel-header"><div><span class="eyebrow">Catálogo</span><h2>Serviços cadastrados</h2></div></div><div data-services-list class="list"></div></article>
+          <article class="panel"><div class="panel-header"><div><span class="eyebrow">Pedidos</span><h2>Solicitações</h2></div></div><div data-service-requests-list class="list"></div></article>
+        </div>
+      </section>
+
+      <section id="contato" class="section" data-section data-roles="morador,sindico">
+        <div class="section-head"><div><span class="eyebrow">Contato protegido</span><h2>Falar com síndico ou portaria</h2><p>O morador envia mensagem pelo sistema, sem visualizar e-mail ou telefone dos destinatários internos.</p></div></div>
+        <div class="content-grid content-grid--two">
+          <form class="panel form-card" data-contact-form autocomplete="off">
+            <div class="panel-header"><div><span class="eyebrow">Mensagem</span><h2>Novo contato</h2></div></div>
+            <label><span>Destinatário</span><select name="target" required><option value="sindico">Síndico/Subsíndico</option><option value="portaria">Portaria</option></select></label>
+            <label><span>Canal</span><select name="channel" required><option value="email">E-mail automático</option><option value="whatsapp">WhatsApp automático</option></select></label>
+            <label><span>Assunto</span><input name="subject" required placeholder="Ex.: Dúvida sobre reserva" /></label>
+            <label><span>Mensagem</span><textarea name="message" required rows="5"></textarea></label>
+            <button class="btn btn--primary" type="submit">Enviar sem revelar contatos</button>
+            <p class="form-hint" data-contact-message></p>
+          </form>
+          <article class="panel"><div class="panel-header"><div><span class="eyebrow">Histórico</span><h2>Mensagens do sistema</h2></div></div><div data-contact-history class="list"></div></article>
         </div>
       </section>
 
@@ -363,6 +490,8 @@
             <label class="checkline"><input type="checkbox" name="bookingStatus" /> <span>Avisar morador quando a reserva for validada, cancelada ou paga.</span></label>
             <label class="checkline"><input type="checkbox" name="visitor" /> <span>Avisar morador quando visitante for registrado na portaria.</span></label>
             <label class="checkline"><input type="checkbox" name="package" /> <span>Avisar morador quando encomenda for registrada.</span></label>
+            <label class="checkline"><input type="checkbox" name="contact" /> <span>Avisar equipe quando morador enviar contato pelo sistema.</span></label>
+            <label class="checkline"><input type="checkbox" name="serviceRequest" /> <span>Avisar síndico quando houver solicitação de serviço/compra.</span></label>
             <button class="btn btn--primary" type="submit">Salvar regras</button>
             <p class="form-hint" data-notification-rules-message></p>
           </form>
@@ -371,12 +500,25 @@
             <div class="panel-header"><div><span class="eyebrow">Integrações</span><h2>E-mail e WhatsApp automáticos</h2><p>Preencha as credenciais apenas no servidor. As senhas não aparecem novamente depois de salvas.</p></div></div>
 
             <div class="integration-card">
-              <h3>E-mail SMTP / Gmail</h3>
+              <h3>E-mail automático</h3>
               <label class="checkline"><input type="checkbox" name="emailEnabled" /> <span>Ativar envio automático por e-mail.</span></label>
-              <div class="form-row"><label><span>SMTP host</span><input name="smtpHost" placeholder="smtp.gmail.com" /></label><label><span>Porta</span><input name="smtpPort" type="number" placeholder="465" /></label></div>
-              <div class="form-row"><label><span>Segurança</span><select name="smtpSecure"><option value="true">SSL/TLS</option><option value="false">STARTTLS / sem SSL direto</option></select></label><label><span>Usuário/e-mail</span><input name="smtpUser" type="email" placeholder="seuemail@gmail.com" /></label></div>
-              <label><span>Senha de aplicativo</span><input name="smtpPassword" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter a senha salva" /></label>
-              <div class="form-row"><label><span>Nome do remetente</span><input name="smtpFromName" placeholder="Condomínio Vitória Régia" /></label><label><span>E-mail remetente</span><input name="smtpFromEmail" type="email" placeholder="opcional" /></label></div>
+              <label><span>Provedor de envio</span><select name="emailProvider"><option value="smtp">SMTP / Gmail</option><option value="mailersend">MailerSend API</option></select></label>
+
+              <div class="integration-subcard">
+                <h4>SMTP / Gmail</h4>
+                <div class="form-row"><label><span>SMTP host</span><input name="smtpHost" placeholder="smtp.gmail.com" /></label><label><span>Porta</span><input name="smtpPort" type="number" placeholder="465" /></label></div>
+                <div class="form-row"><label><span>Segurança</span><select name="smtpSecure"><option value="true">SSL/TLS</option><option value="false">STARTTLS / sem SSL direto</option></select></label><label><span>Usuário/e-mail</span><input name="smtpUser" type="email" placeholder="seuemail@gmail.com" /></label></div>
+                <label><span>Senha de aplicativo</span><input name="smtpPassword" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter a senha salva" /></label>
+                <div class="form-row"><label><span>Nome do remetente</span><input name="smtpFromName" placeholder="Condomínio Vitória Régia" /></label><label><span>E-mail remetente</span><input name="smtpFromEmail" type="email" placeholder="opcional" /></label></div>
+              </div>
+
+              <div class="integration-subcard">
+                <h4>MailerSend API</h4>
+                <label><span>API Token MailerSend</span><input name="mailersendApiKey" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter o token salvo" /></label>
+                <div class="form-row"><label><span>Nome do remetente</span><input name="mailersendFromName" placeholder="Condomínio Vitória Régia" /></label><label><span>E-mail remetente validado</span><input name="mailersendFromEmail" type="email" placeholder="ex.: contato@seudominio.com.br" /></label></div>
+                <p class="form-hint">Use um remetente validado no MailerSend. O token deve ficar apenas no Render ou salvo pelo painel do síndico.</p>
+              </div>
+
               <label><span>E-mail para teste</span><input name="testEmailTo" type="email" placeholder="seuemail@gmail.com" /></label>
               <button class="btn btn--outline" type="button" data-test-email>Enviar e-mail de teste</button>
             </div>

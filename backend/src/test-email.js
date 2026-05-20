@@ -17,6 +17,8 @@ async function main() {
     auth: { user, pass },
   });
 
+  await transporter.verify();
+
   const info = await transporter.sendMail({
     from: `"${process.env.SMTP_FROM_NAME || 'Condomínio Vitória Régia'}" <${process.env.SMTP_FROM_EMAIL || user}>`,
     to,

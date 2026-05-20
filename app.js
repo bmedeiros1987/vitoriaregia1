@@ -7,6 +7,10 @@ const keys = {
   packages: `${STORE_PREFIX}packages`,
   visitors: `${STORE_PREFIX}visitors`,
   notices: `${STORE_PREFIX}notices`,
+  staff: `${STORE_PREFIX}staff`,
+  services: `${STORE_PREFIX}services`,
+  serviceRequests: `${STORE_PREFIX}serviceRequests`,
+  contactMessages: `${STORE_PREFIX}contactMessages`,
   settings: `${STORE_PREFIX}settings`,
 };
 
@@ -45,6 +49,8 @@ const defaultSettings = {
     bookingStatus: true,
     visitor: true,
     package: true,
+    contact: true,
+    serviceRequest: true,
   },
 };
 
@@ -186,6 +192,7 @@ async function saveNotificationConfigFromForm(form) {
   const payload = {
     email: {
       enabled: Boolean(data.get('emailEnabled')),
+      provider: data.get('emailProvider') || 'smtp',
       host: data.get('smtpHost')?.trim() || 'smtp.gmail.com',
       port: Number(data.get('smtpPort') || 465),
       secure: data.get('smtpSecure') === 'true',
@@ -193,6 +200,13 @@ async function saveNotificationConfigFromForm(form) {
       password: data.get('smtpPassword') || '',
       fromName: data.get('smtpFromName')?.trim() || 'Condomínio Vitória Régia',
       fromEmail: data.get('smtpFromEmail')?.trim() || '',
+      testTo: data.get('testEmailTo')?.trim() || data.get('smtpUser')?.trim() || '',
+      mailersend: {
+        apiKey: data.get('mailersendApiKey') || '',
+        fromName: data.get('mailersendFromName')?.trim() || data.get('smtpFromName')?.trim() || 'Condomínio Vitória Régia',
+        fromEmail: data.get('mailersendFromEmail')?.trim() || data.get('smtpFromEmail')?.trim() || '',
+        testTo: data.get('testEmailTo')?.trim() || '',
+      },
     },
     whatsapp: {
       enabled: Boolean(data.get('whatsappEnabled')),
@@ -304,6 +318,8 @@ function statusLabel(status) {
     paid: 'Pagamento informado',
     delivered: 'Retirada',
     open: 'Aberta',
+    sent: 'Enviada',
+    saved: 'Registrada',
   };
   return map[status] || status || '-';
 }
@@ -314,7 +330,30 @@ function statusClass(status) {
 function getSettings() { return { ...defaultSettings, ...read(keys.settings, {}) }; }
 function saveSettings(settings) { write(keys.settings, settings); }
 function getResidents() { return read(keys.residents, []); }
-function saveResidents(value) { write(keys.residents, value); }
+function normalizeResidents(list = []) {
+  const byApartment = {};
+  const normalized = (list || []).map((resident) => ({
+    ...resident,
+    residentType: resident.residentType || 'Morador',
+    status: resident.status || 'approved',
+    primaryBilling: Boolean(resident.primaryBilling),
+    unitRented: Boolean(resident.unitRented),
+  }));
+  normalized.forEach((resident) => {
+    if (!byApartment[resident.apartment]) byApartment[resident.apartment] = [];
+    byApartment[resident.apartment].push(resident);
+  });
+  Object.values(byApartment).forEach((group) => {
+    const unitRented = group.some((resident) => resident.unitRented);
+    const primary = group.find((resident) => resident.primaryBilling) || group[0];
+    group.forEach((resident) => {
+      resident.unitRented = unitRented;
+      resident.primaryBilling = Boolean(primary && resident.id === primary.id);
+    });
+  });
+  return normalized;
+}
+function saveResidents(value) { write(keys.residents, normalizeResidents(value)); }
 function getPendingResidents() { return read(keys.pendingResidents, []); }
 function savePendingResidents(value) { write(keys.pendingResidents, value); }
 function getBookings() { return read(keys.bookings, []); }
@@ -325,6 +364,14 @@ function getPackages() { return read(keys.packages, []); }
 function savePackages(value) { write(keys.packages, value); }
 function getNotices() { return read(keys.notices, []); }
 function saveNotices(value) { write(keys.notices, value); }
+function getStaff() { return read(keys.staff, []); }
+function saveStaff(value) { write(keys.staff, value); }
+function getServices() { return read(keys.services, []); }
+function saveServices(value) { write(keys.services, value); }
+function getServiceRequests() { return read(keys.serviceRequests, []); }
+function saveServiceRequests(value) { write(keys.serviceRequests, value); }
+function getContactMessages() { return read(keys.contactMessages, []); }
+function saveContactMessages(value) { write(keys.contactMessages, value); }
 
 function seedDemo(force = false) {
   if (!force && localStorage.getItem(`${STORE_PREFIX}seeded`)) return;
@@ -334,14 +381,15 @@ function seedDemo(force = false) {
     { id: uid('pending'), name: 'Paulo Lima', email: 'paulo@email.com', whatsapp: '(61) 99999-1103', apartment: '1103', status: 'pending', createdAt: nowISO() },
   ]);
   write(keys.residents, [
-    { id: uid('resident'), name: 'Bruno Saraiva', email: 'bruno@email.com', whatsapp: '(61) 99999-0001', apartment: '101', status: 'approved', notes: 'Morador responsável.', createdAt: nowISO(), approvedAt: nowISO() },
-    { id: uid('resident'), name: 'Camila Nogueira', email: 'camila@email.com', whatsapp: '(61) 99999-0002', apartment: '203', status: 'approved', notes: 'Contato principal da unidade.', createdAt: nowISO(), approvedAt: nowISO() },
-    { id: uid('resident'), name: 'Rafael Torres', email: 'rafael@email.com', whatsapp: '(61) 99999-0003', apartment: '902', status: 'approved', notes: '', createdAt: nowISO(), approvedAt: nowISO() },
+    { id: uid('resident'), name: 'Bruno Saraiva', email: 'bruno@email.com', whatsapp: '(61) 99999-0001', apartment: '101', residentType: 'Proprietário', primaryBilling: true, unitRented: false, status: 'approved', notes: 'Morador responsável.', createdAt: nowISO(), approvedAt: nowISO() },
+    { id: uid('resident'), name: 'Camila Nogueira', email: 'camila@email.com', whatsapp: '(61) 99999-0002', apartment: '203', residentType: 'Inquilino', primaryBilling: true, unitRented: true, status: 'approved', notes: 'Contato principal da unidade alugada.', createdAt: nowISO(), approvedAt: nowISO() },
+    { id: uid('resident'), name: 'Marcelo Nogueira', email: 'marcelo@email.com', whatsapp: '(61) 99999-0004', apartment: '203', residentType: 'Familiar', primaryBilling: false, unitRented: true, status: 'approved', notes: 'Morador adicional da unidade.', createdAt: nowISO(), approvedAt: nowISO() },
+    { id: uid('resident'), name: 'Rafael Torres', email: 'rafael@email.com', whatsapp: '(61) 99999-0003', apartment: '902', residentType: 'Proprietário', primaryBilling: true, unitRented: false, status: 'approved', notes: '', createdAt: nowISO(), approvedAt: nowISO() },
   ]);
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
   const plusFive = new Date(); plusFive.setDate(plusFive.getDate() + 5);
   write(keys.bookings, [
-    { id: uid('booking'), spaceId: 'salao-festas', spaceName: 'Salão de festas', date: toISODate(tomorrow), period: 'Noite', apartment: '203', residentName: 'Camila Nogueira', residentEmail: 'camila@email.com', residentWhatsapp: '(61) 99999-0002', fee: 250, notes: 'Aniversário familiar.', status: 'pending', signed: true, signedAt: nowISO(), createdAt: nowISO(), boleto: null, managerDocument: null, residentDocument: null },
+    { id: uid('booking'), spaceId: 'salao-festas', spaceName: 'Salão de festas', date: toISODate(tomorrow), period: 'Noite', apartment: '203', residentName: 'Camila Nogueira', residentEmail: 'camila@email.com', residentWhatsapp: '(61) 99999-0002', fee: 250, notes: 'Aniversário familiar.', guestCount: 3, eventResponsible: 'Camila Nogueira', guests: [{ name: 'Fernanda Lopes' }, { name: 'João Pereira' }, { name: 'Ana Costa' }], status: 'pending', signed: true, signedAt: nowISO(), createdAt: nowISO(), boleto: null, managerDocument: null, residentDocument: null },
     { id: uid('booking'), spaceId: 'churrasqueira', spaceName: 'Churrasqueira', date: toISODate(plusFive), period: 'Tarde', apartment: '101', residentName: 'Bruno Saraiva', residentEmail: 'bruno@email.com', residentWhatsapp: '(61) 99999-0001', fee: 120, notes: 'Confraternização.', status: 'approved', signed: true, signedAt: nowISO(), approvedAt: nowISO(), createdAt: nowISO(), boleto: null, managerDocument: null, residentDocument: null },
   ]);
   write(keys.packages, [
@@ -354,6 +402,18 @@ function seedDemo(force = false) {
     { id: uid('notice'), title: 'Manutenção preventiva', category: 'Manutenção', message: 'Haverá manutenção preventiva nas áreas comuns nesta semana. Agradecemos a compreensão de todos.', createdAt: nowISO() },
     { id: uid('notice'), title: 'Regras de reserva', category: 'Reservas', message: 'As reservas de espaços comuns precisam ser pré-agendadas pelo sistema e validadas pelo síndico.', createdAt: nowISO() },
   ]);
+
+  write(keys.staff, [
+    { id: uid('staff'), name: 'Bruno Saraiva', role: 'sindico', email: 'bmedeiros1987@gmail.com', whatsapp: '', active: true, notes: 'Responsável principal pela administração.', createdAt: nowISO() },
+    { id: uid('staff'), name: 'Subsíndico', role: 'subsindico', email: '', whatsapp: '', active: true, notes: 'Cadastro editável pelo síndico.', createdAt: nowISO() },
+    { id: uid('staff'), name: 'Portaria', role: 'porteiro', email: '', whatsapp: '', active: true, notes: 'Contato operacional da portaria.', createdAt: nowISO() },
+  ]);
+  write(keys.services, [
+    { id: uid('service'), name: 'Controle-remoto de portão', category: 'Acesso', price: 85, active: true, description: 'Solicitação de controle-remoto para acesso ao condomínio.', requiresApproval: true, createdAt: nowISO() },
+    { id: uid('service'), name: 'Segunda via de tag/cartão', category: 'Acesso', price: 35, active: true, description: 'Pedido de segunda via de tag ou cartão de acesso.', requiresApproval: true, createdAt: nowISO() },
+  ]);
+  write(keys.serviceRequests, []);
+  write(keys.contactMessages, []);
   localStorage.setItem(`${STORE_PREFIX}seeded`, 'true');
 }
 
@@ -449,7 +509,9 @@ function authSetup() {
     const email = form.get('email') || '';
     const apartment = role === 'morador' ? form.get('apartment') : '';
     if (role === 'morador') {
-      const approved = getResidents().find((resident) => resident.apartment === apartment || (email && resident.email === email));
+      const approved = email
+        ? (getResidents().find((resident) => resident.apartment === apartment && resident.email === email) || getResidents().find((resident) => resident.email === email))
+        : approvedResidentByApartment(apartment);
       const payload = { role, name: approved?.name || name, email: approved?.email || email, apartment: approved?.apartment || apartment, residentId: approved?.id || null, demo: false };
       await createBackendSession(payload);
       startSession(payload);
@@ -470,13 +532,16 @@ function authSetup() {
       whatsapp: form.get('whatsapp').trim(),
       cpfCnpj: (form.get('cpfCnpj') || '').replace(/\D/g, ''),
       apartment: form.get('apartment'),
+      residentType: form.get('residentType') || 'Morador',
+      unitRented: Boolean(form.get('unitRented')),
+      primaryBilling: false,
       status: 'pending',
       createdAt: nowISO(),
     };
     const pendings = getPendingResidents();
     const residents = getResidents();
-    if (pendings.some((item) => item.apartment === data.apartment && item.status === 'pending')) {
-      $('[data-signup-message]').textContent = 'Já existe uma solicitação pendente para esta unidade.';
+    if (pendings.some((item) => item.apartment === data.apartment && item.email === data.email && item.status === 'pending')) {
+      $('[data-signup-message]').textContent = 'Já existe uma solicitação pendente para este e-mail nesta unidade.';
       return;
     }
     if (residents.some((item) => item.apartment === data.apartment && item.email === data.email)) {
@@ -540,7 +605,23 @@ function setupCurrentDate() {
   if (el) el.textContent = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }).format(new Date());
 }
 
-function approvedResidentByApartment(apartment) { return getResidents().find((resident) => resident.apartment === apartment); }
+function residentsByApartment(apartment) { return getResidents().filter((resident) => resident.apartment === apartment); }
+function approvedResidentByApartment(apartment) {
+  const residents = residentsByApartment(apartment);
+  return residents.find((resident) => resident.primaryBilling) || residents[0] || null;
+}
+function isApartmentRented(apartment) { return residentsByApartment(apartment).some((resident) => resident.unitRented); }
+function canEditResident(resident) {
+  if (!resident) return false;
+  if (isSyndic()) return true;
+  if (!isResident()) return false;
+  if (resident.apartment !== session?.apartment) return false;
+  return !session?.email || resident.email === session.email || resident.id === session.residentId;
+}
+function parseGuestList(value = '') {
+  return String(value || '').split(/\n|;/).map((line) => line.trim()).filter(Boolean).map((name) => ({ id: uid('guest'), name }));
+}
+function guestsText(guests = []) { return (guests || []).map((guest) => guest.name || guest).filter(Boolean).join('\n'); }
 function bookingVisibleToCurrentUser(booking) {
   if (!isResident()) return true;
   return booking.apartment === session?.apartment;
@@ -555,12 +636,17 @@ function renderAll() {
   renderDashboard();
   renderPendingResidents();
   renderResidents();
+  renderMyResident();
   renderBookings();
   renderCalendar();
   renderFinance();
   renderVisitors();
   renderPackages();
   renderNotices();
+  renderStaff();
+  renderContactCenter();
+  renderServices();
+  renderServiceRequests();
   renderSettings();
 }
 
@@ -599,7 +685,7 @@ function renderPendingResidents() {
       <div class="item-row">
         <div>
           <div class="item-title">${escapeHTML(item.name)} • Unidade ${escapeHTML(item.apartment)}</div>
-          <div class="item-sub">${escapeHTML(item.email)} • ${escapeHTML(item.whatsapp)}${item.cpfCnpj ? ` • CPF/CNPJ: ${escapeHTML(item.cpfCnpj)}` : ''}<br>Solicitado em ${formatDateTime(item.createdAt)}</div>
+          <div class="item-sub">${escapeHTML(item.email)} • ${escapeHTML(item.whatsapp)}${item.cpfCnpj ? ` • CPF/CNPJ: ${escapeHTML(item.cpfCnpj)}` : ''}<br>Vínculo: ${escapeHTML(item.residentType || 'Morador')} • ${item.unitRented ? 'Unidade alugada' : 'Unidade própria/não informada'} • Solicitado em ${formatDateTime(item.createdAt)}</div>
         </div>
         <span class="status status--pending">Pendente</span>
       </div>
@@ -614,25 +700,45 @@ function renderResidents() {
   const box = $('[data-residents-list]');
   if (!box) return;
   const search = normalizeText($('[data-resident-search]')?.value || '');
-  let list = getResidents().slice().sort((a, b) => a.apartment.localeCompare(b.apartment, 'pt-BR', { numeric: true }));
-  if (search) list = list.filter((item) => normalizeText(`${item.name} ${item.email} ${item.whatsapp} ${item.apartment} ${item.cpfCnpj || ''}`).includes(search));
-  box.innerHTML = list.length ? list.map((resident) => `
-    <div class="item">
-      <div class="item-row">
-        <div>
-          <div class="item-title">Unidade ${escapeHTML(resident.apartment)} • ${escapeHTML(resident.name)}</div>
-          <div class="item-sub">${escapeHTML(resident.email)} • ${escapeHTML(resident.whatsapp)}${resident.cpfCnpj ? ` • CPF/CNPJ: ${escapeHTML(resident.cpfCnpj)}` : ''}${resident.notes ? `<br>${escapeHTML(resident.notes)}` : ''}</div>
-        </div>
-        <span class="status status--approved">Aprovado</span>
+  const all = getResidents().slice().sort((a, b) => a.apartment.localeCompare(b.apartment, 'pt-BR', { numeric: true }) || a.name.localeCompare(b.name, 'pt-BR'));
+  const list = search ? all.filter((item) => normalizeText(`${item.name} ${item.email} ${item.whatsapp} ${item.apartment} ${item.cpfCnpj || ''} ${item.residentType || ''} ${item.unitRented ? 'alugada' : ''} ${item.primaryBilling ? 'principal boleto' : ''}`).includes(search)) : all;
+  const grouped = list.reduce((acc, resident) => {
+    if (!acc[resident.apartment]) acc[resident.apartment] = [];
+    acc[resident.apartment].push(resident);
+    return acc;
+  }, {});
+  const apartmentsSorted = Object.keys(grouped).sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
+  box.innerHTML = apartmentsSorted.length ? apartmentsSorted.map((apartment) => {
+    const residents = grouped[apartment];
+    const rented = residents.some((resident) => resident.unitRented);
+    const primary = residents.find((resident) => resident.primaryBilling) || residents[0];
+    return `<div class="unit-group">
+      <div class="unit-group-head">
+        <div><strong>Unidade ${escapeHTML(apartment)}</strong><span>${residents.length} morador(es) cadastrado(s) • Principal: ${escapeHTML(primary?.name || '-')}</span></div>
+        <div class="item-meta"><span class="badge ${rented ? 'badge--pending' : 'badge--approved'}">${rented ? 'Unidade alugada' : 'Unidade própria/não alugada'}</span></div>
       </div>
-      <div class="item-actions">
-        <button class="btn btn--success btn--sm" data-auto-resident-whatsapp="${resident.id}">Auto WhatsApp</button>
-        <button class="btn btn--success btn--sm" data-auto-resident-email="${resident.id}">Auto e-mail</button>
-        <a class="btn btn--outline btn--sm" href="${whatsAppLink(resident.whatsapp, `Olá, ${resident.name}. Mensagem do Condomínio Vitória Régia.`)}" target="_blank" rel="noopener">Manual WhatsApp</a>
-        <a class="btn btn--outline btn--sm" href="mailto:${encodeURIComponent(resident.email)}?subject=${encodeURIComponent('Condomínio Vitória Régia')}">Manual e-mail</a>
-        <button class="btn btn--danger btn--sm" data-remove-resident="${resident.id}">Remover</button>
-      </div>
-    </div>`).join('') : empty('Nenhum morador aprovado encontrado.');
+      ${residents.map((resident) => `
+        <div class="item resident-card">
+          <div class="item-row">
+            <div>
+              <div class="item-title">${escapeHTML(resident.name)} ${resident.primaryBilling ? '<span class="badge badge--approved">Principal para boletos</span>' : ''}</div>
+              <div class="item-sub">${escapeHTML(resident.email)} • ${escapeHTML(resident.whatsapp)}${resident.cpfCnpj ? ` • CPF/CNPJ: ${escapeHTML(resident.cpfCnpj)}` : ''}<br>Vínculo: ${escapeHTML(resident.residentType || 'Morador')}${resident.notes ? `<br>${escapeHTML(resident.notes)}` : ''}</div>
+            </div>
+            <span class="status status--approved">Aprovado</span>
+          </div>
+          <div class="item-actions">
+            <button class="btn btn--outline btn--sm" data-edit-resident="${resident.id}">Editar</button>
+            ${!resident.primaryBilling ? `<button class="btn btn--success btn--sm" data-primary-resident="${resident.id}">Definir como principal</button>` : ''}
+            <button class="btn btn--outline btn--sm" data-toggle-rented="${resident.apartment}">${rented ? 'Marcar não alugada' : 'Marcar alugada'}</button>
+            <button class="btn btn--success btn--sm" data-auto-resident-whatsapp="${resident.id}">Auto WhatsApp</button>
+            <button class="btn btn--success btn--sm" data-auto-resident-email="${resident.id}">Auto e-mail</button>
+            <a class="btn btn--outline btn--sm" href="${whatsAppLink(resident.whatsapp, `Olá, ${resident.name}. Mensagem do Condomínio Vitória Régia.`)}" target="_blank" rel="noopener">Manual WhatsApp</a>
+            <a class="btn btn--outline btn--sm" href="mailto:${encodeURIComponent(resident.email)}?subject=${encodeURIComponent('Condomínio Vitória Régia')}">Manual e-mail</a>
+            <button class="btn btn--danger btn--sm" data-remove-resident="${resident.id}">Remover</button>
+          </div>
+        </div>`).join('')}
+    </div>`;
+  }).join('') : empty('Nenhum morador aprovado encontrado.');
 }
 
 function setupResidents() {
@@ -647,6 +753,9 @@ function setupResidents() {
       whatsapp: data.get('whatsapp').trim(),
       cpfCnpj: (data.get('cpfCnpj') || '').replace(/\D/g, ''),
       apartment: data.get('apartment'),
+      residentType: data.get('residentType') || 'Morador',
+      primaryBilling: Boolean(data.get('primaryBilling')),
+      unitRented: Boolean(data.get('unitRented')),
       notes: data.get('notes').trim(),
       status: 'approved',
       createdAt: nowISO(),
@@ -661,7 +770,7 @@ function setupResidents() {
     saveResidents(residents);
     form.reset();
     fillApartmentSelects();
-    $('[data-resident-message]').textContent = 'Morador aprovado e cadastrado.';
+    $('[data-resident-message]').textContent = 'Morador aprovado e cadastrado. Se marcado como principal, ele receberá os boletos da unidade.';
     renderAll();
   });
   $('[data-resident-search]')?.addEventListener('input', renderResidents);
@@ -673,7 +782,8 @@ async function approveResident(id) {
   const pending = pendings.find((item) => item.id === id);
   if (!pending) return;
   const residents = getResidents();
-  const approved = { ...pending, status: 'approved', approvedAt: nowISO(), notes: 'Cadastro aprovado pelo síndico.' };
+  const hasPrimary = residents.some((item) => item.apartment === pending.apartment && item.primaryBilling);
+  const approved = { ...pending, status: 'approved', approvedAt: nowISO(), primaryBilling: !hasPrimary, unitRented: Boolean(pending.unitRented), notes: 'Cadastro aprovado pelo síndico.' };
   residents.unshift(approved);
   saveResidents(residents);
   savePendingResidents(pendings.filter((item) => item.id !== id));
@@ -690,6 +800,105 @@ function removeResident(id) {
   if (!confirm('Remover este morador aprovado?')) return;
   saveResidents(getResidents().filter((item) => item.id !== id));
   renderAll();
+}
+
+function updateResidentById(id, patch) {
+  let updated = null;
+  const residents = getResidents().map((resident) => {
+    if (resident.id !== id) return resident;
+    updated = { ...resident, ...patch, updatedAt: nowISO() };
+    return updated;
+  });
+  saveResidents(residents);
+  return updated;
+}
+function setPrimaryResident(id) {
+  const target = getResidents().find((resident) => resident.id === id);
+  if (!target) return;
+  saveResidents(getResidents().map((resident) => resident.apartment === target.apartment ? { ...resident, primaryBilling: resident.id === id } : resident));
+  renderAll();
+}
+function toggleApartmentRented(apartment) {
+  const rented = !isApartmentRented(apartment);
+  saveResidents(getResidents().map((resident) => resident.apartment === apartment ? { ...resident, unitRented: rented } : resident));
+  renderAll();
+}
+function editResident(id) {
+  const resident = getResidents().find((item) => item.id === id);
+  if (!resident || !canEditResident(resident)) { alert('Você não tem permissão para alterar este cadastro.'); return; }
+  const name = prompt('Nome do morador:', resident.name) ?? resident.name;
+  const email = prompt('E-mail:', resident.email) ?? resident.email;
+  const whatsapp = prompt('WhatsApp:', resident.whatsapp) ?? resident.whatsapp;
+  const cpfCnpj = prompt('CPF/CNPJ do responsável:', resident.cpfCnpj || '') ?? resident.cpfCnpj;
+  const residentType = prompt('Vínculo (Proprietário, Inquilino, Familiar, Responsável financeiro, Outro morador):', resident.residentType || 'Morador') ?? resident.residentType;
+  const notes = prompt('Observações:', resident.notes || '') ?? resident.notes;
+  updateResidentById(id, { name: name.trim(), email: email.trim(), whatsapp: whatsapp.trim(), cpfCnpj: String(cpfCnpj || '').replace(/\D/g, ''), residentType, notes });
+  renderAll();
+}
+function currentResidentRecord() {
+  if (!session?.apartment) return null;
+  return getResidents().find((resident) => resident.id === session.residentId)
+    || (session.email ? getResidents().find((resident) => resident.apartment === session.apartment && resident.email === session.email) : null)
+    || approvedResidentByApartment(session.apartment);
+}
+function renderMyResident() {
+  const form = $('[data-my-resident-form]');
+  const listBox = $('[data-my-unit-residents]');
+  if (!form && !listBox) return;
+  const resident = currentResidentRecord();
+  const unitResidents = session?.apartment ? residentsByApartment(session.apartment) : [];
+  if (form) {
+    if (!resident) {
+      form.classList.add('is-disabled');
+      $('[data-my-resident-message]') && ($('[data-my-resident-message]').textContent = 'Nenhum cadastro aprovado encontrado para sua sessão. Solicite aprovação ao síndico.');
+    } else if (document.activeElement?.form !== form) {
+      form.classList.remove('is-disabled');
+      form.elements.id.value = resident.id || '';
+      form.elements.apartment.value = resident.apartment || session.apartment || '';
+      form.elements.name.value = resident.name || '';
+      form.elements.email.value = resident.email || '';
+      form.elements.whatsapp.value = resident.whatsapp || '';
+      form.elements.cpfCnpj.value = resident.cpfCnpj || '';
+      form.elements.residentType.value = resident.residentType || 'Morador';
+      form.elements.primaryBilling.checked = Boolean(resident.primaryBilling);
+      form.elements.unitRented.checked = Boolean(resident.unitRented);
+      form.elements.notes.value = resident.notes || '';
+    }
+  }
+  if (listBox) {
+    listBox.innerHTML = unitResidents.length ? unitResidents.map((item) => `<div class="item resident-card">
+      <div class="item-row"><div><div class="item-title">${escapeHTML(item.name)} ${item.primaryBilling ? '<span class="badge badge--approved">Principal boletos</span>' : ''}</div><div class="item-sub">${escapeHTML(item.email)} • ${escapeHTML(item.whatsapp)}<br>Vínculo: ${escapeHTML(item.residentType || 'Morador')} • ${item.unitRented ? 'Unidade alugada' : 'Unidade não marcada como alugada'}</div></div><span class="status status--approved">Aprovado</span></div>
+    </div>`).join('') : empty('Nenhum morador aprovado nesta unidade.');
+  }
+}
+function setupMyResident() {
+  const form = $('[data-my-resident-form]');
+  form?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    const id = data.get('id');
+    const current = getResidents().find((resident) => resident.id === id);
+    if (!current || !canEditResident(current)) { $('[data-my-resident-message]').textContent = 'Você não tem permissão para alterar este cadastro.'; return; }
+    const patch = {
+      name: data.get('name').trim(),
+      email: data.get('email').trim(),
+      whatsapp: data.get('whatsapp').trim(),
+      cpfCnpj: (data.get('cpfCnpj') || '').replace(/\D/g, ''),
+      residentType: data.get('residentType') || 'Morador',
+      primaryBilling: Boolean(data.get('primaryBilling')),
+      unitRented: Boolean(data.get('unitRented')),
+      notes: data.get('notes').trim(),
+    };
+    updateResidentById(id, patch);
+    if (patch.primaryBilling) setPrimaryResident(id);
+    if (session?.residentId === id || session?.email === current.email) {
+      session = { ...session, name: patch.name, email: patch.email, apartment: current.apartment, residentId: id };
+      write(keys.session, session);
+      applyPermissions();
+    }
+    $('[data-my-resident-message]').textContent = 'Cadastro atualizado e sincronizado com o banco.';
+    renderAll();
+  });
 }
 
 function setupBookings() {
@@ -710,6 +919,8 @@ function setupBookings() {
       return;
     }
     const residentDocument = await fileMeta(data.get('residentDocument'));
+    const guests = parseGuestList(data.get('guestList'));
+    const guestCount = Number(data.get('guestCount') || guests.length || 0);
     const booking = {
       id: uid('booking'),
       spaceId: space.id,
@@ -723,6 +934,10 @@ function setupBookings() {
       residentCpfCnpj: resident.cpfCnpj || '',
       fee: Number(space.fee || 0),
       notes: data.get('notes').trim(),
+      eventResponsible: (data.get('eventResponsible') || resident.name || session?.name || '').trim(),
+      guestCount,
+      guests,
+      guestListText: guestsText(guests),
       status: 'pending',
       signed: Boolean(data.get('signature')),
       signedAt: nowISO(),
@@ -770,6 +985,8 @@ function renderBookings() {
 function renderBookingItem(booking) {
   const syndicDetails = isSyndic() ? `<div class="item-sub"><b>Unidade:</b> ${escapeHTML(booking.apartment)} • <b>Morador:</b> ${escapeHTML(booking.residentName || '')} • ${escapeHTML(booking.residentEmail || '')}</div>` : '';
   const docLinks = [booking.residentDocument, booking.managerDocument].filter(Boolean).map((doc) => `<span class="badge">📎 ${escapeHTML(doc.name)}</span>`).join(' ');
+  const guests = Array.isArray(booking.guests) ? booking.guests : parseGuestList(booking.guestListText || '');
+  const guestBlock = guests.length || booking.guestCount || booking.eventResponsible ? `<div class="guest-box"><strong>Convidados/evento:</strong> ${booking.guestCount ? `${Number(booking.guestCount)} previsto(s)` : `${guests.length} informado(s)`}${booking.eventResponsible ? ` • Responsável: ${escapeHTML(booking.eventResponsible)}` : ''}${guests.length ? `<ol>${guests.map((guest) => `<li>${escapeHTML(guest.name || guest)}</li>`).join('')}</ol>` : ''}</div>` : '';
   const actions = isSyndic() ? `
     ${booking.status === 'pending' ? `<button class="btn btn--success btn--sm" data-approve-booking="${booking.id}">Validar</button>` : ''}
     <button class="btn btn--outline btn--sm" data-boleto-booking="${booking.id}">Gerar boleto Asaas</button>
@@ -788,6 +1005,7 @@ function renderBookingItem(booking) {
           <div class="item-sub">Taxa: ${money.format(Number(booking.fee || 0))} • Assinatura digital: ${booking.signed ? `sim, em ${formatDateTime(booking.signedAt)}` : 'não'}</div>
           ${syndicDetails}
           ${booking.notes ? `<div class="item-sub">${escapeHTML(booking.notes)}</div>` : ''}
+          ${guestBlock}
           ${docLinks ? `<div class="item-meta">${docLinks}</div>` : ''}
         </div>
         <span class="status status--${statusClass(booking.status)}">${statusLabel(booking.status)}</span>
@@ -930,7 +1148,7 @@ async function generateAsaasBoletoForBooking(id, options = {}) {
   }
   if (preview && !options.silent) preview.innerHTML = '<div class="empty-state">Gerando boleto bancário registrado no Asaas...</div>';
   const resident = approvedResidentByApartment(booking.apartment) || {};
-  let cpfCnpj = booking.residentCpfCnpj || resident.cpfCnpj || '';
+  let cpfCnpj = resident.cpfCnpj || booking.residentCpfCnpj || '';
   if (!cpfCnpj && residentPrompt) cpfCnpj = prompt('Informe CPF/CNPJ do responsável para gerar o boleto Asaas:') || '';
   if (!cpfCnpj) throw new Error('CPF/CNPJ é obrigatório para gerar boleto Asaas. Cadastre o CPF/CNPJ do morador ou informe no momento da geração.');
   const response = await apiRequest(`/api/asaas/payments/booking/${encodeURIComponent(id)}`, {
@@ -1125,6 +1343,201 @@ function renderNoticeItem(notice) {
 }
 
 
+function roleLabel(role) {
+  return { sindico: 'Síndico', subsindico: 'Subsíndico', porteiro: 'Porteiro' }[role] || role || '-';
+}
+function activeStaffFor(target) {
+  const staff = getStaff().filter((item) => item.active !== false);
+  if (target === 'sindico') return staff.filter((item) => ['sindico', 'subsindico'].includes(item.role));
+  if (target === 'portaria') return staff.filter((item) => item.role === 'porteiro');
+  return staff;
+}
+function primaryStaff(role = 'sindico') {
+  const list = activeStaffFor(role);
+  return list[0] || null;
+}
+function setupStaff() {
+  const form = $('[data-staff-form]');
+  form?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!isSyndic()) return;
+    const data = new FormData(form);
+    const item = {
+      id: uid('staff'),
+      name: data.get('name').trim(),
+      role: data.get('role'),
+      email: data.get('email').trim(),
+      whatsapp: data.get('whatsapp').trim(),
+      active: Boolean(data.get('active')),
+      notes: data.get('notes').trim(),
+      createdAt: nowISO(),
+    };
+    saveStaff([item, ...getStaff()]);
+    form.reset();
+    form.active.checked = true;
+    $('[data-staff-message]').textContent = 'Cadastro de equipe salvo. Apenas o síndico pode alterar estes dados.';
+    renderAll();
+  });
+}
+function renderStaff() {
+  const box = $('[data-staff-list]');
+  if (!box) return;
+  const staff = getStaff().sort((a, b) => String(a.role).localeCompare(String(b.role)) || String(a.name).localeCompare(String(b.name)));
+  box.innerHTML = staff.length ? staff.map((item) => `
+    <div class="item">
+      <div class="item-row">
+        <div>
+          <div class="item-title">${escapeHTML(item.name)} <span class="badge">${escapeHTML(roleLabel(item.role))}</span> ${item.active === false ? '<span class="badge badge--danger">Inativo</span>' : '<span class="badge badge--approved">Ativo</span>'}</div>
+          <div class="item-sub">E-mail: ${escapeHTML(item.email || 'não informado')} • WhatsApp: ${escapeHTML(item.whatsapp || 'não informado')}</div>
+          ${item.notes ? `<div class="item-sub">${escapeHTML(item.notes)}</div>` : ''}
+        </div>
+      </div>
+      <div class="item-actions">
+        <button class="btn btn--outline btn--sm" data-edit-staff="${item.id}">Editar</button>
+        <button class="btn btn--danger btn--sm" data-remove-staff="${item.id}">Remover</button>
+      </div>
+    </div>`).join('') : empty('Nenhum síndico, subsíndico ou porteiro cadastrado.');
+}
+function editStaff(id) {
+  if (!isSyndic()) return;
+  const item = getStaff().find((staff) => staff.id === id);
+  if (!item) return;
+  const name = prompt('Nome:', item.name) ?? item.name;
+  const role = prompt('Perfil (sindico, subsindico ou porteiro):', item.role) ?? item.role;
+  const email = prompt('E-mail:', item.email || '') ?? item.email;
+  const whatsapp = prompt('WhatsApp:', item.whatsapp || '') ?? item.whatsapp;
+  const notes = prompt('Observações:', item.notes || '') ?? item.notes;
+  const active = confirm('Manter este cadastro ativo? Clique em Cancelar para inativar.');
+  saveStaff(getStaff().map((staff) => staff.id === id ? { ...staff, name: name.trim(), role: String(role || item.role).trim(), email: String(email || '').trim(), whatsapp: String(whatsapp || '').trim(), notes: String(notes || '').trim(), active, updatedAt: nowISO() } : staff));
+  renderAll();
+}
+function removeStaff(id) {
+  if (!isSyndic()) return;
+  if (!confirm('Remover este cadastro de equipe?')) return;
+  saveStaff(getStaff().filter((item) => item.id !== id));
+  renderAll();
+}
+
+function setupContactCenter() {
+  const form = $('[data-contact-form]');
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    const target = data.get('target');
+    const channel = data.get('channel');
+    const recipients = activeStaffFor(target);
+    if (!recipients.length) { $('[data-contact-message]').textContent = 'Nenhum destinatário ativo cadastrado para este setor.'; return; }
+    const resident = currentResidentRecord() || {};
+    const subject = `Contato do morador — unidade ${session?.apartment || resident.apartment || '-'}`;
+    const message = `Mensagem enviada pelo sistema Vitória Régia\n\nOrigem: ${session?.name || resident.name || 'Morador'}\nUnidade: ${session?.apartment || resident.apartment || '-'}\nAssunto: ${data.get('subject')}\n\nMensagem:\n${data.get('message')}\n\nObservação: o contato do destinatário não foi revelado ao morador.`;
+    const record = { id: uid('contact'), target, channel, subject: data.get('subject').trim(), message: data.get('message').trim(), apartment: session?.apartment || resident.apartment || '', residentName: session?.name || resident.name || '', status: 'pending', recipients: recipients.map((r) => ({ id: r.id, name: r.name, role: r.role })), createdAt: nowISO() };
+    saveContactMessages([record, ...getContactMessages()]);
+    let sent = [];
+    if (backendAvailable) {
+      for (const recipient of recipients) {
+        try {
+          const response = await sendBackendNotification({ email: recipient.email, whatsapp: recipient.whatsapp, subject, message, channels: [channel] });
+          sent.push(`${recipient.name}: ${resultSummary(response)}`);
+        } catch (error) {
+          sent.push(`${recipient.name}: erro ${error.message}`);
+        }
+      }
+    }
+    const newStatus = sent.length ? 'sent' : 'saved';
+    saveContactMessages(getContactMessages().map((item) => item.id === record.id ? { ...item, status: newStatus, delivery: sent, sentAt: sent.length ? nowISO() : null } : item));
+    $('[data-contact-message]').textContent = sent.length ? `Mensagem enviada sem revelar contatos: ${sent.join(' | ')}` : 'Mensagem registrada. Para envio automático, configure e-mail/WhatsApp no backend.';
+    form.reset();
+    renderAll();
+  });
+}
+function renderContactCenter() {
+  const history = $('[data-contact-history]');
+  if (!history) return;
+  let list = getContactMessages().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  if (isResident()) list = list.filter((item) => item.apartment === session?.apartment);
+  history.innerHTML = list.length ? list.slice(0, 30).map((item) => `
+    <div class="item">
+      <div class="item-row"><div><div class="item-title">${escapeHTML(item.subject)} <span class="badge">${item.target === 'portaria' ? 'Portaria' : 'Síndico/Subsíndico'}</span></div><div class="item-sub">Unidade ${escapeHTML(item.apartment || '-')} • ${formatDateTime(item.createdAt)} • canal: ${escapeHTML(item.channel || '-')}</div></div><span class="status status--${item.status === 'sent' ? 'approved' : 'pending'}">${item.status === 'sent' ? 'Enviada' : 'Registrada'}</span></div>
+      <p class="item-sub">${escapeHTML(item.message)}</p>
+    </div>`).join('') : empty('Nenhuma mensagem registrada.');
+}
+
+function setupServices() {
+  const serviceForm = $('[data-service-form]');
+  serviceForm?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!isSyndic()) return;
+    const data = new FormData(serviceForm);
+    const service = { id: uid('service'), name: data.get('name').trim(), category: data.get('category').trim() || 'Serviço', price: Number(data.get('price') || 0), active: Boolean(data.get('active')), requiresApproval: Boolean(data.get('requiresApproval')), description: data.get('description').trim(), createdAt: nowISO() };
+    saveServices([service, ...getServices()]);
+    serviceForm.reset(); serviceForm.active.checked = true; serviceForm.requiresApproval.checked = true;
+    $('[data-service-message]').textContent = 'Serviço cadastrado pelo síndico.';
+    fillServiceSelects(); renderAll();
+  });
+
+  const requestForm = $('[data-service-request-form]');
+  requestForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const data = new FormData(requestForm);
+    const service = getServices().find((item) => item.id === data.get('serviceId'));
+    if (!service) return;
+    const resident = currentResidentRecord() || approvedResidentByApartment(session?.apartment) || {};
+    const quantity = Math.max(1, Number(data.get('quantity') || 1));
+    const request = { id: uid('service-request'), serviceId: service.id, serviceName: service.name, category: service.category, unitPrice: Number(service.price || 0), quantity, total: Number(service.price || 0) * quantity, apartment: isResident() ? session.apartment : data.get('apartment'), residentName: resident.name || session?.name || 'Morador', residentEmail: resident.email || session?.email || '', residentWhatsapp: resident.whatsapp || '', notes: data.get('notes').trim(), status: service.requiresApproval ? 'pending' : 'approved', createdAt: nowISO() };
+    saveServiceRequests([request, ...getServiceRequests()]);
+    requestForm.reset(); fillApartmentSelects(); fillServiceSelects();
+    $('[data-service-request-message]').textContent = service.requiresApproval ? 'Solicitação enviada e aguardando aprovação do síndico.' : 'Solicitação registrada.';
+    const staff = primaryStaff('sindico');
+    if (staff && backendAvailable) {
+      await notifyResidentEntity({ email: staff.email, whatsapp: staff.whatsapp, name: staff.name }, 'Nova solicitação de serviço — Vitória Régia', `Nova solicitação de ${request.serviceName}\nUnidade: ${request.apartment}\nMorador: ${request.residentName}\nQuantidade: ${quantity}\nTotal: ${money.format(request.total)}\nObservações: ${request.notes || '-'}`, ['email']);
+    }
+    renderAll();
+  });
+}
+function fillServiceSelects() {
+  const options = getServices().filter((item) => item.active !== false).map((item) => `<option value="${escapeHTML(item.id)}">${escapeHTML(item.name)} — ${money.format(Number(item.price || 0))}</option>`).join('');
+  $$('[data-service-select]').forEach((select) => { select.innerHTML = options || '<option value="">Nenhum serviço ativo</option>'; });
+}
+function renderServices() {
+  const listBox = $('[data-services-list]');
+  if (listBox) {
+    const services = getServices().sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    listBox.innerHTML = services.length ? services.map((service) => `
+      <div class="item"><div class="item-row"><div><div class="item-title">${escapeHTML(service.name)} <span class="badge">${escapeHTML(service.category || 'Serviço')}</span></div><div class="item-sub">Valor: ${money.format(Number(service.price || 0))} • ${service.active === false ? 'Inativo' : 'Ativo'} • ${service.requiresApproval ? 'exige aprovação' : 'aprovação automática'}</div>${service.description ? `<div class="item-sub">${escapeHTML(service.description)}</div>` : ''}</div><span class="status status--${service.active === false ? 'canceled' : 'approved'}">${service.active === false ? 'Inativo' : 'Ativo'}</span></div><div class="item-actions"><button class="btn btn--outline btn--sm" data-edit-service="${service.id}">Editar</button><button class="btn btn--danger btn--sm" data-remove-service="${service.id}">Remover</button></div></div>`).join('') : empty('Nenhum serviço cadastrado.');
+  }
+  fillServiceSelects();
+}
+function renderServiceRequests() {
+  const box = $('[data-service-requests-list]');
+  if (!box) return;
+  let list = getServiceRequests().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  if (isResident()) list = list.filter((item) => item.apartment === session?.apartment);
+  box.innerHTML = list.length ? list.map((req) => `
+    <div class="item"><div class="item-row"><div><div class="item-title">${escapeHTML(req.serviceName)} • ${money.format(Number(req.total || 0))}</div><div class="item-sub">Unidade ${escapeHTML(req.apartment)} • ${escapeHTML(req.residentName || '')} • qtd. ${Number(req.quantity || 1)} • ${formatDateTime(req.createdAt)}</div>${req.notes ? `<div class="item-sub">${escapeHTML(req.notes)}</div>` : ''}</div><span class="status status--${statusClass(req.status)}">${statusLabel(req.status)}</span></div><div class="item-actions">${isSyndic() && req.status === 'pending' ? `<button class="btn btn--success btn--sm" data-approve-service-request="${req.id}">Aprovar</button>` : ''}${isSyndic() ? `<button class="btn btn--danger btn--sm" data-cancel-service-request="${req.id}">Cancelar</button>` : ''}</div></div>`).join('') : empty('Nenhuma solicitação de serviço encontrada.');
+}
+function editService(id) {
+  if (!isSyndic()) return;
+  const service = getServices().find((item) => item.id === id); if (!service) return;
+  const name = prompt('Nome do serviço:', service.name) ?? service.name;
+  const category = prompt('Categoria:', service.category || 'Serviço') ?? service.category;
+  const price = Number(prompt('Valor:', String(service.price || 0)) ?? service.price);
+  const description = prompt('Descrição:', service.description || '') ?? service.description;
+  const active = confirm('Manter serviço ativo? Clique em Cancelar para inativar.');
+  saveServices(getServices().map((item) => item.id === id ? { ...item, name: name.trim(), category: String(category || '').trim(), price, description: String(description || '').trim(), active, updatedAt: nowISO() } : item));
+  fillServiceSelects(); renderAll();
+}
+function removeService(id) {
+  if (!isSyndic()) return;
+  if (!confirm('Remover este serviço?')) return;
+  saveServices(getServices().filter((item) => item.id !== id));
+  fillServiceSelects(); renderAll();
+}
+function updateServiceRequest(id, status) {
+  saveServiceRequests(getServiceRequests().map((item) => item.id === id ? { ...item, status, updatedAt: nowISO() } : item));
+  renderAll();
+}
+
+
 function setupNotificationForms() {
   $('[data-notification-rules-form]')?.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -1138,6 +1551,8 @@ function setupNotificationForms() {
       bookingStatus: Boolean(data.get('bookingStatus')),
       visitor: Boolean(data.get('visitor')),
       package: Boolean(data.get('package')),
+      contact: Boolean(data.get('contact')),
+      serviceRequest: Boolean(data.get('serviceRequest')),
     };
     saveSettings(settings);
     $('[data-notification-rules-message]').textContent = 'Regras de notificação salvas.';
@@ -1171,7 +1586,13 @@ function setupNotificationForms() {
       msg.textContent = `E-mail de teste enviado. ID: ${response.messageId || 'ok'}`;
       msg.style.color = 'var(--green)';
     } catch (error) {
-      msg.textContent = `Erro no teste de e-mail: ${error.message}`;
+      let extra = '';
+      try {
+        const debug = await apiRequest('/api/integrations/email/debug');
+        const problems = debug?.email?.problems || [];
+        if (problems.length) extra = ` | Diagnóstico: ${problems.join(' ')}`;
+      } catch (_) {}
+      msg.textContent = `Erro no teste de e-mail: ${error.message}${extra}`;
       msg.style.color = 'var(--red)';
     }
   });
@@ -1220,6 +1641,8 @@ function renderNotificationRules() {
   form.bookingStatus.checked = Boolean(rules.bookingStatus);
   form.visitor.checked = Boolean(rules.visitor);
   form.package.checked = Boolean(rules.package);
+  if (form.contact) form.contact.checked = Boolean(rules.contact);
+  if (form.serviceRequest) form.serviceRequest.checked = Boolean(rules.serviceRequest);
 }
 
 function renderNotificationSettings() {
@@ -1229,6 +1652,7 @@ function renderNotificationSettings() {
   const whatsapp = notificationConfig.whatsapp || {};
   const asaas = asaasConfig || {};
   form.emailEnabled.checked = Boolean(email.enabled);
+  if (form.emailProvider) form.emailProvider.value = email.provider || 'smtp';
   form.smtpHost.value = email.host || 'smtp.gmail.com';
   form.smtpPort.value = email.port || 465;
   form.smtpSecure.value = String(Boolean(email.secure));
@@ -1237,6 +1661,14 @@ function renderNotificationSettings() {
   form.smtpPassword.placeholder = email.passwordSaved ? 'Senha salva — deixe em branco para manter' : 'Senha de aplicativo do Gmail/SMTP';
   form.smtpFromName.value = email.fromName || 'Condomínio Vitória Régia';
   form.smtpFromEmail.value = email.fromEmail || '';
+  const mailersend = email.mailersend || {};
+  if (form.mailersendApiKey) {
+    form.mailersendApiKey.value = '';
+    form.mailersendApiKey.placeholder = mailersend.apiKeySaved ? 'Token salvo — deixe em branco para manter' : 'Token API do MailerSend';
+  }
+  if (form.mailersendFromName) form.mailersendFromName.value = mailersend.fromName || email.fromName || 'Condomínio Vitória Régia';
+  if (form.mailersendFromEmail) form.mailersendFromEmail.value = mailersend.fromEmail || email.fromEmail || '';
+  if (form.testEmailTo) form.testEmailTo.value = email.provider === 'mailersend' ? (mailersend.testTo || email.testTo || email.user || '') : (email.testTo || email.user || '');
   form.whatsappEnabled.checked = Boolean(whatsapp.enabled);
   form.whatsappApiVersion.value = whatsapp.apiVersion || 'v20.0';
   form.whatsappPhoneNumberId.value = whatsapp.phoneNumberId || '';
@@ -1255,7 +1687,7 @@ function renderNotificationSettings() {
   const status = $('[data-integration-status]');
   if (status) {
     status.innerHTML = `
-      <div><strong>E-mail:</strong> ${email.enabled ? 'ativado' : 'desativado'} ${email.passwordSaved ? '• senha salva' : '• senha não salva'}</div>
+      <div><strong>E-mail:</strong> ${email.enabled ? 'ativado' : 'desativado'} • provedor: ${escapeHTML(email.provider || 'smtp')} ${email.provider === 'mailersend' ? (email.mailersend?.apiKeySaved ? '• token MailerSend salvo' : '• token MailerSend não salvo') : (email.passwordSaved ? '• senha SMTP salva' : '• senha SMTP não salva')}</div>
       <div><strong>WhatsApp:</strong> ${whatsapp.enabled ? 'ativado' : 'desativado'} ${whatsapp.tokenSaved ? '• token salvo' : '• token não salvo'}</div>
       <div><strong>Asaas:</strong> ${asaas.enabled ? 'ativado' : 'desativado'} • ${escapeHTML(asaas.environment || 'sandbox')} ${asaas.apiKeySaved ? '• API Key salva' : '• API Key não salva'}</div>
       <div><small>Para funcionar em produção, o backend precisa estar rodando com banco inicializado e as credenciais corretas.</small></div>`;
@@ -1361,6 +1793,7 @@ function handleDocumentClick(event) {
   const target = event.target;
   const actionMap = [
     ['data-approve-resident', approveResident], ['data-reject-resident', rejectResident], ['data-remove-resident', removeResident],
+    ['data-edit-resident', editResident], ['data-primary-resident', setPrimaryResident], ['data-toggle-rented', toggleApartmentRented],
     ['data-approve-booking', approveBooking], ['data-cancel-booking', cancelBooking], ['data-edit-booking', editBooking],
     ['data-boleto-booking', async (id) => { location.hash = '#financeiro'; await renderBoletoPreview(id); }], ['data-mark-paid', markPaid],
     ['data-remove-visitor', (id) => { saveVisitors(getVisitors().filter((item) => item.id !== id)); renderAll(); }],
@@ -1369,6 +1802,9 @@ function handleDocumentClick(event) {
     ['data-auto-visitor-whatsapp', (id) => notifyVisitorById(id, ['whatsapp'])], ['data-auto-visitor-email', (id) => notifyVisitorById(id, ['email'])],
     ['data-auto-package-whatsapp', (id) => notifyPackageById(id, ['whatsapp'])], ['data-auto-package-email', (id) => notifyPackageById(id, ['email'])],
     ['data-auto-resident-whatsapp', (id) => notifyResidentById(id, ['whatsapp'])], ['data-auto-resident-email', (id) => notifyResidentById(id, ['email'])],
+    ['data-edit-staff', editStaff], ['data-remove-staff', removeStaff],
+    ['data-edit-service', editService], ['data-remove-service', removeService],
+    ['data-approve-service-request', (id) => updateServiceRequest(id, 'approved')], ['data-cancel-service-request', (id) => updateServiceRequest(id, 'canceled')],
   ];
   for (const [attr, fn] of actionMap) {
     const el = target.closest(`[${attr}]`);
@@ -1390,15 +1826,20 @@ async function init() {
   if (!read(keys.settings, null)) write(keys.settings, defaultSettings);
   fillApartmentSelects();
   fillSpaceSelects();
+  fillServiceSelects();
   setupCurrentDate();
   authSetup();
   navigationSetup();
   setupResidents();
+  setupMyResident();
   setupBookings();
   setupCalendar();
   setupVisitors();
   setupPackages();
   setupNotices();
+  setupStaff();
+  setupContactCenter();
+  setupServices();
   setupSettings();
   if (backendAvailable) { await loadNotificationConfig(); await loadAsaasConfig(); }
   setupPrint();

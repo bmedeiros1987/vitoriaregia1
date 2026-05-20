@@ -36,15 +36,22 @@ const DEFAULT_STATE = {
 
 const DEFAULT_NOTIFICATION_CONFIG = {
   email: {
-    enabled: String(process.env.SMTP_ENABLED || 'false').toLowerCase() === 'true',
+    enabled: String(process.env.EMAIL_ENABLED || process.env.SMTP_ENABLED || 'false').toLowerCase() === 'true',
+    provider: process.env.EMAIL_PROVIDER || (process.env.MAILERSEND_API_KEY ? 'mailersend' : 'smtp'),
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: Number(process.env.SMTP_PORT || 465),
     secure: String(process.env.SMTP_SECURE || 'true').toLowerCase() === 'true',
     user: process.env.SMTP_USER || '',
     password: process.env.SMTP_APP_PASSWORD || '',
-    fromName: process.env.SMTP_FROM_NAME || 'Condomínio Vitória Régia',
-    fromEmail: process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || '',
-    testTo: process.env.SMTP_TEST_TO || process.env.SMTP_USER || '',
+    fromName: process.env.SMTP_FROM_NAME || process.env.MAILERSEND_FROM_NAME || 'Condomínio Vitória Régia',
+    fromEmail: process.env.SMTP_FROM_EMAIL || process.env.MAILERSEND_FROM_EMAIL || process.env.SMTP_USER || '',
+    testTo: process.env.SMTP_TEST_TO || process.env.MAILERSEND_TEST_TO || process.env.SMTP_USER || '',
+    mailersend: {
+      apiKey: process.env.MAILERSEND_API_KEY || '',
+      fromName: process.env.MAILERSEND_FROM_NAME || process.env.SMTP_FROM_NAME || 'Condomínio Vitória Régia',
+      fromEmail: process.env.MAILERSEND_FROM_EMAIL || process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || '',
+      testTo: process.env.MAILERSEND_TEST_TO || process.env.SMTP_TEST_TO || process.env.SMTP_USER || '',
+    },
   },
   whatsapp: {
     enabled: String(process.env.WHATSAPP_ENABLED || 'false').toLowerCase() === 'true',
@@ -276,12 +283,108 @@ function allowedRole(email, requestedRole) {
 }
 
 function sanitizeConfig(config) {
-  const email = config.email || {};
-  const whatsapp = config.whatsapp || {};
+  const effective = effectiveNotificationConfig(config || {});
+  const email = effective.email || {};
+  const whatsapp = effective.whatsapp || {};
   return {
-    ...config,
-    email: { ...email, password: '', passwordSaved: Boolean(email.password) },
+    ...effective,
+    email: {
+      ...email,
+      password: '',
+      passwordSaved: Boolean(email.password),
+      passwordSource: email.passwordSource || 'none',
+      mailersend: {
+        ...(email.mailersend || {}),
+        apiKey: '',
+        apiKeySaved: Boolean(email.mailersend?.apiKey),
+        apiKeySource: email.mailersend?.apiKeySource || 'none',
+      },
+    },
     whatsapp: { ...whatsapp, token: '', tokenSaved: Boolean(whatsapp.token) },
+  };
+}
+
+function effectiveNotificationConfig(config = store.notificationConfig || DEFAULT_NOTIFICATION_CONFIG) {
+  const merged = deepMerge(DEFAULT_NOTIFICATION_CONFIG, config || {});
+  const envEmailPassword = process.env.SMTP_APP_PASSWORD || '';
+  const envEmailUser = process.env.SMTP_USER || '';
+  const envEmailEnabled = String(process.env.EMAIL_ENABLED || process.env.SMTP_ENABLED || '').toLowerCase() === 'true';
+  const savedPassword = merged.email?.password || '';
+  const effectivePassword = savedPassword || envEmailPassword;
+  const effectiveUser = merged.email?.user || envEmailUser;
+
+  const savedMailerSendKey = merged.email?.mailersend?.apiKey || '';
+  const envMailerSendKey = process.env.MAILERSEND_API_KEY || '';
+  const effectiveMailerSendKey = savedMailerSendKey || envMailerSendKey;
+
+  let provider = String(merged.email?.provider || process.env.EMAIL_PROVIDER || '').toLowerCase();
+  if (!['smtp', 'mailersend'].includes(provider)) provider = effectiveMailerSendKey ? 'mailersend' : 'smtp';
+
+  const mailerSendFromEmail = merged.email?.mailersend?.fromEmail || process.env.MAILERSEND_FROM_EMAIL || merged.email?.fromEmail || process.env.SMTP_FROM_EMAIL || effectiveUser;
+  const mailerSendFromName = merged.email?.mailersend?.fromName || process.env.MAILERSEND_FROM_NAME || merged.email?.fromName || process.env.SMTP_FROM_NAME || 'Condomínio Vitória Régia';
+  const mailerSendTestTo = merged.email?.mailersend?.testTo || process.env.MAILERSEND_TEST_TO || merged.email?.testTo || process.env.SMTP_TEST_TO || effectiveUser;
+
+  const smtpTestTo = merged.email?.testTo || process.env.SMTP_TEST_TO || effectiveUser || mailerSendTestTo;
+  const enabledByEnv = envEmailEnabled || Boolean(process.env.MAILERSEND_API_KEY);
+
+  return {
+    ...merged,
+    email: {
+      ...(merged.email || {}),
+      provider,
+      enabled: Boolean((merged.email || {}).enabled || (enabledByEnv && (provider === 'mailersend' ? effectiveMailerSendKey : (effectiveUser && effectivePassword)))),
+      host: merged.email?.host || process.env.SMTP_HOST || 'smtp.gmail.com',
+      port: Number(merged.email?.port || process.env.SMTP_PORT || 465),
+      secure: typeof merged.email?.secure === 'boolean' ? merged.email.secure : String(process.env.SMTP_SECURE || 'true').toLowerCase() === 'true',
+      user: effectiveUser,
+      password: effectivePassword,
+      passwordSource: savedPassword ? 'saved' : (envEmailPassword ? 'env' : 'none'),
+      fromName: merged.email?.fromName || process.env.SMTP_FROM_NAME || mailerSendFromName || 'Condomínio Vitória Régia',
+      fromEmail: merged.email?.fromEmail || process.env.SMTP_FROM_EMAIL || effectiveUser || mailerSendFromEmail,
+      testTo: smtpTestTo,
+      mailersend: {
+        ...(merged.email?.mailersend || {}),
+        apiKey: effectiveMailerSendKey,
+        apiKeySource: savedMailerSendKey ? 'saved' : (envMailerSendKey ? 'env' : 'none'),
+        fromName: mailerSendFromName,
+        fromEmail: mailerSendFromEmail,
+        testTo: mailerSendTestTo,
+      },
+    },
+  };
+}
+
+function emailDiagnostics(config = effectiveNotificationConfig()) {
+  const email = config.email || {};
+  const provider = email.provider || 'smtp';
+  const problems = [];
+  if (!email.enabled) problems.push('Envio automático por e-mail desativado. Marque Ativar envio automático por e-mail ou defina EMAIL_ENABLED=true no Render.');
+  if (provider === 'mailersend') {
+    if (!email.mailersend?.apiKey) problems.push('MAILERSEND_API_KEY não configurado. Cole o token apenas no Render ou nas configurações do síndico.');
+    if (!email.mailersend?.fromEmail) problems.push('MAILERSEND_FROM_EMAIL não configurado. Informe um remetente validado no MailerSend.');
+  } else {
+    if (!email.host) problems.push('SMTP_HOST não configurado.');
+    if (!email.user) problems.push('SMTP_USER não configurado.');
+    if (!email.password) problems.push('Senha de aplicativo não configurada.');
+    if (!email.fromEmail) problems.push('SMTP_FROM_EMAIL não configurado; será usado SMTP_USER.');
+  }
+  return {
+    ok: problems.length === 0,
+    problems,
+    config: {
+      enabled: Boolean(email.enabled),
+      provider,
+      host: email.host || null,
+      port: Number(email.port || 465),
+      secure: Boolean(email.secure),
+      user: email.user || null,
+      fromEmail: provider === 'mailersend' ? (email.mailersend?.fromEmail || null) : (email.fromEmail || email.user || null),
+      testTo: provider === 'mailersend' ? (email.mailersend?.testTo || null) : (email.testTo || email.user || null),
+      passwordSaved: Boolean(email.password),
+      passwordSource: email.passwordSource || 'none',
+      mailersendApiKeySaved: Boolean(email.mailersend?.apiKey),
+      mailersendApiKeySource: email.mailersend?.apiKeySource || 'none',
+    },
   };
 }
 
@@ -380,9 +483,11 @@ function residentExternalReference(booking, cpfCnpj) {
 }
 
 function findResidentForBooking(booking) {
-  return (store.state?.residents || []).find((r) => r.apartment === booking.apartment && (!booking.residentEmail || r.email === booking.residentEmail))
-    || (store.state?.residents || []).find((r) => r.apartment === booking.apartment)
-    || null;
+  const residents = (store.state?.residents || []).filter((r) => r.apartment === booking.apartment);
+  return residents.find((r) => r.primaryBilling)
+    || residents.find((r) => booking.residentEmail && r.email === booking.residentEmail)
+    || residents[0]
+    || {};
 }
 
 async function getOrCreateAsaasCustomer(booking, cpfCnpj) {
@@ -395,10 +500,10 @@ async function getOrCreateAsaasCustomer(booking, cpfCnpj) {
   return asaasRequest('/customers', {
     method: 'POST',
     body: {
-      name: booking.residentName || resident.name || `Unidade ${booking.apartment}`,
+      name: resident.name || booking.residentName || `Unidade ${booking.apartment}`,
       cpfCnpj: document,
-      email: booking.residentEmail || resident.email || undefined,
-      mobilePhone: onlyDigits(booking.residentWhatsapp || resident.whatsapp || '' ) || undefined,
+      email: resident.email || booking.residentEmail || undefined,
+      mobilePhone: onlyDigits(resident.whatsapp || booking.residentWhatsapp || '' ) || undefined,
       notificationDisabled: false,
       externalReference,
       observations: `Cliente criado pelo Sistema Vitória Régia - unidade ${booking.apartment}`,
@@ -449,7 +554,7 @@ async function createAsaasBoletoForBooking(bookingId, cpfCnpj) {
     raw: payment,
   };
 
-  const updated = { ...booking, boleto, asaasPaymentId: payment.id, residentCpfCnpj: onlyDigits(cpfCnpj || booking.residentCpfCnpj || findResidentForBooking(booking)?.cpfCnpj || '') };
+  const updated = { ...booking, boleto, asaasPaymentId: payment.id, residentName: resident.name || booking.residentName, residentEmail: resident.email || booking.residentEmail, residentWhatsapp: resident.whatsapp || booking.residentWhatsapp, residentCpfCnpj: onlyDigits(cpfCnpj || resident.cpfCnpj || booking.residentCpfCnpj || '') };
   store.state.bookings = bookings.map((item) => item.id === bookingId ? updated : item);
   await saveStore(store);
   await logNotification({ channel: 'asaas', recipient: booking.residentEmail || '', subject: 'Boleto Asaas gerado', message: boleto.invoiceUrl || boleto.bankSlipUrl || payment.id, status: 'sent', providerResponse: payment });
@@ -481,13 +586,23 @@ async function saveNotificationConfig(incoming = {}) {
   const clean = deepMerge(existing, incoming);
 
   if (!incoming.email || incoming.email.password === '') clean.email.password = existing.email?.password || DEFAULT_NOTIFICATION_CONFIG.email.password || '';
+  if (!clean.email.mailersend) clean.email.mailersend = {};
+  if (!incoming.email?.mailersend || incoming.email.mailersend.apiKey === '') {
+    clean.email.mailersend.apiKey = existing.email?.mailersend?.apiKey || DEFAULT_NOTIFICATION_CONFIG.email.mailersend.apiKey || '';
+  }
   if (!incoming.whatsapp || incoming.whatsapp.token === '') clean.whatsapp.token = existing.whatsapp?.token || DEFAULT_NOTIFICATION_CONFIG.whatsapp.token || '';
   if (incoming.email?.clearPassword) clean.email.password = '';
+  if (incoming.email?.mailersend?.clearApiKey) clean.email.mailersend.apiKey = '';
   if (incoming.whatsapp?.clearToken) clean.whatsapp.token = '';
 
   clean.email.enabled = Boolean(clean.email.enabled);
+  clean.email.provider = ['smtp', 'mailersend'].includes(String(clean.email.provider || '').toLowerCase()) ? String(clean.email.provider).toLowerCase() : 'smtp';
   clean.email.port = Number(clean.email.port || 465);
   clean.email.secure = Boolean(clean.email.secure);
+  clean.email.testTo = clean.email.testTo || process.env.SMTP_TEST_TO || clean.email.user || process.env.SMTP_USER || '';
+  clean.email.mailersend.fromName = clean.email.mailersend.fromName || clean.email.fromName || 'Condomínio Vitória Régia';
+  clean.email.mailersend.fromEmail = clean.email.mailersend.fromEmail || process.env.MAILERSEND_FROM_EMAIL || clean.email.fromEmail || '';
+  clean.email.mailersend.testTo = clean.email.mailersend.testTo || clean.email.testTo || process.env.MAILERSEND_TEST_TO || '';
   clean.whatsapp.enabled = Boolean(clean.whatsapp.enabled);
 
   store.notificationConfig = clean;
@@ -524,12 +639,74 @@ async function logNotification(entry) {
   return log;
 }
 
+async function sendMailerSendEmail({ apiKey, fromEmail, fromName, to, subject, message, html }) {
+  const finalTo = to;
+  const finalSubject = subject || 'Teste de e-mail - Condomínio Vitória Régia';
+  const finalMessage = message || 'Este é um e-mail automático de teste do Sistema Vitória Régia.';
+
+  const response = await fetch('https://api.mailersend.com/v1/email', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({
+      from: { email: fromEmail, name: fromName || 'Condomínio Vitória Régia' },
+      to: [{ email: finalTo }],
+      subject: finalSubject,
+      text: finalMessage,
+      html: html || `<p>${String(finalMessage).replace(/\n/g, '<br>')}</p>`,
+    }),
+  });
+
+  const raw = await response.text().catch(() => '');
+  let payload = {};
+  try { payload = raw ? JSON.parse(raw) : {}; } catch (_) { payload = { raw }; }
+  if (!response.ok) {
+    const detail = payload.message || payload.error || payload.errors?.email?.[0] || payload.errors?.from?.[0] || response.statusText;
+    throw new Error(`MailerSend HTTP ${response.status}: ${detail}`);
+  }
+
+  return {
+    ok: true,
+    provider: 'mailersend',
+    status: response.status,
+    messageId: response.headers.get('x-message-id') || payload.message_id || payload.id || null,
+    response: payload,
+  };
+}
+
 async function sendEmailNotification({ to, subject, message, html }) {
-  const config = store.notificationConfig || DEFAULT_NOTIFICATION_CONFIG;
+  const config = effectiveNotificationConfig();
   const email = config.email || {};
 
-  if (!email.enabled) throw new Error('Envio de e-mail desativado nas configurações.');
-  if (!email.host || !email.user || !email.password) throw new Error('SMTP incompleto. Configure host, usuário e senha de aplicativo.');
+  const diagnostics = emailDiagnostics(config);
+  if (!diagnostics.ok) throw new Error(`E-mail incompleto: ${diagnostics.problems.join(' ')}`);
+
+  const provider = email.provider || 'smtp';
+  const finalSubject = subject || 'Teste de e-mail - Condomínio Vitória Régia';
+  const finalMessage = message || 'Este é um e-mail automático de teste do Sistema Vitória Régia.';
+
+  if (provider === 'mailersend') {
+    const ms = email.mailersend || {};
+    const finalTo = to || ms.testTo || email.testTo || email.user;
+    if (!finalTo) throw new Error('E-mail destinatário não informado para teste/envio.');
+    const result = await sendMailerSendEmail({
+      apiKey: ms.apiKey,
+      fromEmail: ms.fromEmail,
+      fromName: ms.fromName || email.fromName,
+      to: finalTo,
+      subject: finalSubject,
+      message: finalMessage,
+      html,
+    });
+    await logNotification({
+      channel: 'email', recipient: finalTo, subject: finalSubject, message: finalMessage, status: 'sent',
+      providerResponse: { provider: 'mailersend', messageId: result.messageId, status: result.status, response: result.response },
+    });
+    return result;
+  }
 
   const transporter = nodemailer.createTransport({
     host: email.host,
@@ -538,11 +715,17 @@ async function sendEmailNotification({ to, subject, message, html }) {
     auth: { user: email.user, pass: normalizeSmtpPassword(email.password) },
   });
 
+  try {
+    await transporter.verify();
+  } catch (error) {
+    const code = error.code ? ` (${error.code})` : '';
+    throw new Error(`Falha na autenticação/conexão SMTP${code}: ${error.message}`);
+  }
+
   const fromAddress = email.fromEmail || email.user;
   const fromName = email.fromName || 'Condomínio Vitória Régia';
   const finalTo = to || email.testTo || email.user;
-  const finalSubject = subject || 'Teste de e-mail - Condomínio Vitória Régia';
-  const finalMessage = message || 'Este é um e-mail automático de teste do Sistema Vitória Régia.';
+  if (!finalTo) throw new Error('E-mail destinatário não informado para teste/envio.');
 
   const info = await transporter.sendMail({
     from: `"${String(fromName).replace(/"/g, '')}" <${fromAddress}>`,
@@ -554,7 +737,7 @@ async function sendEmailNotification({ to, subject, message, html }) {
 
   await logNotification({
     channel: 'email', recipient: finalTo, subject: finalSubject, message: finalMessage, status: 'sent',
-    providerResponse: { messageId: info.messageId, accepted: info.accepted, rejected: info.rejected },
+    providerResponse: { provider: 'smtp', messageId: info.messageId, accepted: info.accepted, rejected: info.rejected },
   });
 
   return { ok: true, provider: 'smtp', messageId: info.messageId, accepted: info.accepted, rejected: info.rejected };
@@ -607,7 +790,7 @@ app.use(session({
 }));
 
 app.get('/api/health', async (req, res) => {
-  const email = store.notificationConfig?.email || DEFAULT_NOTIFICATION_CONFIG.email;
+  const email = effectiveNotificationConfig().email || DEFAULT_NOTIFICATION_CONFIG.email;
   let db = { configured: hasDatabaseConfig(), ready: databaseReady };
   if (databaseReady) {
     try { db = { ...db, ...(await testConnection()) }; } catch (error) { db.error = error.message; }
@@ -618,7 +801,16 @@ app.get('/api/health', async (req, res) => {
     timestamp: new Date().toISOString(),
     database: db,
     frontendDir: FRONTEND_DIR,
-    email: { enabled: Boolean(email.enabled), user: email.user || null, passwordSaved: Boolean(email.password) },
+    email: {
+      enabled: Boolean(email.enabled),
+      provider: email.provider || 'smtp',
+      user: email.user || null,
+      passwordSaved: Boolean(email.password),
+      passwordSource: email.passwordSource || 'none',
+      mailersendApiKeySaved: Boolean(email.mailersend?.apiKey),
+      mailersendApiKeySource: email.mailersend?.apiKeySource || 'none',
+      testTo: email.provider === 'mailersend' ? (email.mailersend?.testTo || null) : (email.testTo || null),
+    },
     asaas: { enabled: Boolean(effectiveAsaasConfig().enabled), environment: effectiveAsaasConfig().environment, apiKeySaved: Boolean(effectiveAsaasConfig().apiKey), apiKeySource: (store.asaasConfig?.apiKey ? 'saved' : (process.env.ASAAS_API_KEY ? 'env' : 'none')) },
   });
 });
@@ -677,6 +869,10 @@ app.post('/api/state/:key', async (req, res) => {
 app.get('/api/integrations/notifications', (req, res) => {
   store.notificationConfig = deepMerge(DEFAULT_NOTIFICATION_CONFIG, store.notificationConfig || {});
   res.json({ ok: true, config: sanitizeConfig(store.notificationConfig) });
+});
+
+app.get('/api/integrations/email/debug', (req, res) => {
+  res.json({ ok: true, email: emailDiagnostics(), database: { configured: hasDatabaseConfig(), ready: databaseReady } });
 });
 
 app.post('/api/integrations/notifications', async (req, res) => {
