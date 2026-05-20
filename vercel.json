@@ -2,6 +2,8 @@
   "version": 2,
   "cleanUrls": true,
   "rewrites": [
+    { "source": "/api/(.*)", "destination": "https://vitoriaregia1.onrender.com/api/$1" },
+    { "source": "/auth/(.*)", "destination": "https://vitoriaregia1.onrender.com/auth/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

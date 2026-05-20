@@ -18,8 +18,6 @@ const keys = {
   settings: `${STORE_PREFIX}settings`,
 };
 
-const TAB_AUTH_KEY = `${STORE_PREFIX}tabAuthenticated`;
-
 const BACKEND_API = window.VR_API_BASE || '';
 const REQUIRE_BACKEND = true;
 const REQUIRE_APPROVED_RESIDENT = true;
@@ -28,30 +26,13 @@ const BACKEND_STATE_KEYS = Object.keys(keys);
 let backendAvailable = false;
 let suppressBackendSync = false;
 let stateSyncTimer = null;
-let stateWriteQueue = Promise.resolve();
-let pendingBackendWrites = 0;
+let lastBackendError = '';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const dateFormatter = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium' });
 const dateTimeFormatter = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
-
-function setAuthLocked(locked = true) {
-  document.documentElement.classList.toggle('auth-locked', Boolean(locked));
-}
-function markTabAuthenticated() {
-  try { sessionStorage.setItem(TAB_AUTH_KEY, 'true'); } catch (_) {}
-}
-function clearTabAuthentication() {
-  try { sessionStorage.removeItem(TAB_AUTH_KEY); } catch (_) {}
-}
-function isTabAuthenticated() {
-  try { return sessionStorage.getItem(TAB_AUTH_KEY) === 'true'; } catch (_) { return false; }
-}
-function clearStoredSession() {
-  try { localStorage.removeItem(keys.session); } catch (_) {}
-}
 
 const roles = {
   morador: { label: 'Morador', title: 'Área do Morador' },
@@ -114,38 +95,31 @@ function stateNameFromStorageKey(storageKey) {
   return Object.entries(keys).find(([, value]) => value === storageKey)?.[0] || null;
 }
 function persistSingleStateKey(storageKey, value) {
-  if (!backendAvailable || suppressBackendSync) return Promise.resolve(false);
+  if (!backendAvailable || suppressBackendSync) return;
   const name = stateNameFromStorageKey(storageKey);
-  if (!name || name === 'session') return Promise.resolve(false);
-
-  const payload = JSON.stringify({ value });
-  const task = () => {
-    pendingBackendWrites += 1;
-    return apiRequest(`/api/state/${encodeURIComponent(name)}`, {
-      method: 'POST',
-      body: payload,
-      // Evita perda quando o usuário atualiza/fecha a página logo após salvar.
-      // O navegador tentará concluir a gravação curta mesmo durante o unload.
-      keepalive: payload.length < 60000,
-    }).catch((error) => {
-      console.warn(`Não foi possível salvar ${name} no banco:`, error.message);
-      showBackendRequiredBanner();
-      throw error;
-    }).finally(() => {
-      pendingBackendWrites = Math.max(0, pendingBackendWrites - 1);
-    });
-  };
-
-  const next = stateWriteQueue.then(task, task);
-  stateWriteQueue = next.catch(() => {});
-  return next;
+  if (!name || name === 'session') return;
+  apiRequest(`/api/state/${encodeURIComponent(name)}`, {
+    method: 'POST',
+    body: JSON.stringify({ value }),
+  }).catch((error) => {
+    console.warn(`Não foi possível salvar ${name} no banco:`, error.message);
+    showBackendRequiredBanner();
+  });
 }
 function showBackendRequiredBanner() {
-  if ($('[data-backend-required-banner]')) return;
+  const existing = $('[data-backend-required-banner]');
+  if (existing) existing.remove();
   const banner = document.createElement('div');
   banner.setAttribute('data-backend-required-banner', 'true');
   banner.className = 'backend-required-banner';
-  banner.innerHTML = '<strong>Banco de dados indisponível.</strong> Este sistema está em modo operacional e exige backend e banco MySQL ativos no Render. Verifique /api/health e /api/db/status.';
+  const apiBase = BACKEND_API || (window.location.origin && window.location.origin !== 'null' ? window.location.origin : '');
+  const detail = lastBackendError ? ` Tentativa: ${apiBase || '(origem local)'}/api/state. Detalhe: ${lastBackendError}` : '';
+  const strong = document.createElement('strong');
+  strong.textContent = 'Banco de dados indisponivel.';
+  banner.append(
+    strong,
+    document.createTextNode(` Este sistema exige o backend do Render com MySQL ativo. Abra o app pelo Render ou publique o vercel.json corrigido.${detail}`)
+  );
   document.body.prepend(banner);
 }
 function clearAppLocalCache() {
@@ -156,23 +130,22 @@ function write(key, value) {
   if (REQUIRE_BACKEND && !backendAvailable && !suppressBackendSync) {
     showBackendRequiredBanner();
     console.warn('Gravação bloqueada: backend/banco indisponível.');
-    return Promise.resolve(false);
+    return;
   }
   localStorage.setItem(key, JSON.stringify(value));
   // Persistência operacional: salva a chave alterada diretamente no banco.
   // Isso evita perda de dados por debounce, troca de tela, refresh ou estado local antigo.
-  return persistSingleStateKey(key, value);
+  persistSingleStateKey(key, value);
 }
 function remove(key) {
   if (REQUIRE_BACKEND && !backendAvailable && !suppressBackendSync) {
     showBackendRequiredBanner();
     console.warn('Remoção bloqueada: backend/banco indisponível.');
-    return Promise.resolve(false);
+    return;
   }
   localStorage.removeItem(key);
   const name = stateNameFromStorageKey(key);
-  if (name && name !== 'session') return persistSingleStateKey(key, name === 'settings' ? defaultSettings : []);
-  return Promise.resolve(false);
+  if (name && name !== 'session') persistSingleStateKey(key, name === 'settings' ? defaultSettings : []);
 }
 function stateSnapshot() {
   const state = {};
@@ -212,8 +185,7 @@ function formDataOf(source, fallbackSelector) {
 async function apiRequest(path, options = {}) {
   const headers = { ...(options.headers || {}) };
   if (options.body && !(options.body instanceof FormData)) headers['Content-Type'] = headers['Content-Type'] || 'application/json';
-  const fetchOptions = { credentials: 'include', ...options, headers };
-  const response = await fetch(`${BACKEND_API}${path}`, fetchOptions);
+  const response = await fetch(`${BACKEND_API}${path}`, { credentials: 'include', ...options, headers });
   if (!response.ok) {
     const text = await response.text().catch(() => '');
     throw new Error(text || `Erro HTTP ${response.status}`);
@@ -405,62 +377,19 @@ async function maybeNotifyResident(resident, ruleKey, subject, message) {
   return notifyResidentEntity(resident, subject, message);
 }
 
-function mergeArrayById(backendList = [], localList = []) {
-  const output = Array.isArray(backendList) ? [...backendList] : [];
-  const seen = new Set(output.map((item) => item && item.id).filter(Boolean));
-  for (const item of Array.isArray(localList) ? localList : []) {
-    if (!item || typeof item !== 'object') continue;
-    const id = item.id || '';
-    if (id && !seen.has(id)) {
-      output.unshift(item);
-      seen.add(id);
-    }
-  }
-  return output;
-}
-
-function hasExtraLocalItems(backendList = [], localList = []) {
-  const backendIds = new Set((Array.isArray(backendList) ? backendList : []).map((item) => item && item.id).filter(Boolean));
-  return (Array.isArray(localList) ? localList : []).some((item) => item && item.id && !backendIds.has(item.id));
-}
-
-function mergeLocalCacheWithBackendState(backendState = {}) {
-  const localState = stateSnapshot();
-  const nextState = { ...backendState };
-  const mergeKeys = [
-    'pendingResidents', 'residents', 'bookings', 'packages', 'packageLabelMemory', 'visitors',
-    'recurringVisitors', 'notices', 'staff', 'staffSchedules', 'services', 'serviceRequests',
-    'contactMessages', 'financeRecords',
-  ];
-  let recovered = false;
-  for (const name of mergeKeys) {
-    const localValue = localState[name];
-    const backendValue = backendState[name];
-    if (hasExtraLocalItems(backendValue, localValue)) recovered = true;
-    nextState[name] = mergeArrayById(backendValue, localValue);
-  }
-  if (!backendState.settings && localState.settings) {
-    nextState.settings = localState.settings;
-    recovered = true;
-  }
-  return { state: nextState, recovered };
-}
-
 async function loadBackendState() {
   try {
     const data = await apiRequest('/api/state');
-    backendAvailable = true;
-    const merged = mergeLocalCacheWithBackendState(data.state || {});
-    applyBackendState(merged.state || {});
-    if (merged.recovered) {
-      // Se o usuário atualizou a página antes de o POST terminar, recuperamos os itens
-      // ainda existentes no localStorage e reenviamos ao banco.
-      apiRequest('/api/state/bulk', { method: 'POST', body: JSON.stringify({ state: merged.state }) })
-        .catch((error) => console.warn('Não foi possível recuperar dados locais no banco:', error.message));
+    if (!data || typeof data !== 'object' || data.ok !== true || !data.state) {
+      throw new Error('Resposta invalida de /api/state. Verifique se o frontend esta apontando para o backend do Render.');
     }
+    lastBackendError = '';
+    backendAvailable = true;
+    applyBackendState(data.state || {});
     if (!read(keys.settings, null)) write(keys.settings, defaultSettings);
     return true;
   } catch (error) {
+    lastBackendError = error.message || 'Falha desconhecida ao acessar /api/state.';
     backendAvailable = false;
     return false;
   }
@@ -523,9 +452,6 @@ function nowISO() { return new Date().toISOString(); }
 function toISODate(date) { return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
 function escapeHTML(value = '') {
   return String(value).replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#039;', '"': '&quot;' }[char]));
-}
-function normalizeEmail(value = '') {
-  return String(value || '').trim().toLowerCase();
 }
 function normalizeText(value = '') {
   return String(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -758,9 +684,7 @@ function applyPermissions() {
 
 function startSession(data) {
   session = data;
-  markTabAuthenticated();
-  clearStoredSession();
-  setAuthLocked(false);
+  write(keys.session, session);
   $('[data-login-screen]').hidden = true;
   $('[data-app]').hidden = false;
   applyPermissions();
@@ -770,9 +694,7 @@ function startSession(data) {
 }
 function endSession() {
   session = null;
-  clearTabAuthentication();
-  clearStoredSession();
-  setAuthLocked(true);
+  remove(keys.session);
   $('[data-login-screen]').hidden = false;
   $('[data-app]').hidden = true;
   location.hash = '';
@@ -788,7 +710,7 @@ async function promptPasswordChangeIfNeeded() {
     try {
       await changeOwnPassword({ newPassword: first, confirmPassword: second });
       session = { ...session, mustChangePassword: false };
-      clearStoredSession();
+      write(keys.session, session);
       alert('Senha alterada com sucesso.');
     } catch (error) {
       alert(error.message || 'Não foi possível alterar a senha.');
@@ -930,7 +852,6 @@ function navigationSetup() {
   $$('[data-logout]').forEach((btn) => btn.addEventListener('click', async () => { await destroyBackendSession(); endSession(); }));
   $('[data-clear-cache]')?.addEventListener('click', async () => {
     if (!confirm('Limpar apenas o cache local deste navegador e recarregar os dados do banco?')) return;
-    clearAppLocalCache();
     await loadBackendState();
     fillApartmentSelects();
     fillSpaceSelects();
@@ -1384,7 +1305,7 @@ function setupMyResident() {
     if (patch.primaryBilling) setPrimaryResident(id);
     if (session?.residentId === id || session?.email === current.email) {
       session = { ...session, name: patch.name, email: patch.email, apartment: current.apartment, residentId: id };
-      clearStoredSession();
+      write(keys.session, session);
       applyPermissions();
     }
     $('[data-my-resident-message]').textContent = 'Cadastro atualizado e sincronizado com o banco.';
@@ -3847,15 +3768,8 @@ function handleDocumentChange(event) {
 function setupPrint() { $('[data-print-boleto]')?.addEventListener('click', () => window.print()); }
 
 async function init() {
-  setAuthLocked(true);
-  session = null;
-  clearStoredSession();
-  if ($('[data-login-screen]')) $('[data-login-screen]').hidden = false;
-  if ($('[data-app]')) $('[data-app]').hidden = true;
-
   await loadBackendState();
   if (!backendAvailable && REQUIRE_BACKEND) {
-    clearAppLocalCache();
     showBackendRequiredBanner();
     console.error('Backend/banco indisponível: o sistema operacional exige Render Web Service com banco configurado.');
   }
@@ -3888,15 +3802,16 @@ async function init() {
   document.addEventListener('input', (event) => { if (event.target.matches('[data-activity-log-search]')) renderActivityLogsFromCache(); });
   const url = new URL(window.location.href);
   const authError = url.searchParams.get('authError');
-  const serverUser = backendAvailable && isTabAuthenticated() ? await getBackendSession() : null;
+  const serverUser = await getBackendSession();
   if (backendAvailable && serverUser?.role) {
     cleanAuthQueryParams();
     await loadBackendState();
     startSession(serverUser);
     return;
   }
-  // Segurança: a página inicial nunca reabre o dashboard com sessão antiga de localStorage
-  // ou cookie de outra aba. Só a aba que acabou de autenticar pode restaurar a sessão.
+  // Segurança: não reabre o aplicativo usando apenas localStorage.
+  // O acesso precisa vir de uma sessão válida no backend ou de novo login com senha.
+  remove(keys.session);
   endSession();
   if (authError) {
     const message = $('[data-login-message]');
@@ -3904,12 +3819,5 @@ async function init() {
     cleanAuthQueryParams();
   }
 }
-
-window.addEventListener('beforeunload', (event) => {
-  if (pendingBackendWrites > 0) {
-    event.preventDefault();
-    event.returnValue = '';
-  }
-});
 
 document.addEventListener('DOMContentLoaded', init);

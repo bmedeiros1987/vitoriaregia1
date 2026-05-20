@@ -1,6 +1,6 @@
 require('dotenv').config();
 const { initDatabase } = require('./schema');
-const { testConnection } = require('./db');
+const { getPool, testConnection } = require('./db');
 
 async function main() {
   const info = await testConnection();
@@ -9,7 +9,11 @@ async function main() {
   console.log('Banco inicializado com sucesso.');
 }
 
-main().catch((error) => {
-  console.error('Erro ao inicializar banco:', error);
-  process.exit(1);
-});
+main()
+  .catch((error) => {
+    console.error('Erro ao inicializar banco:', error);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await getPool()?.end().catch(() => {});
+  });

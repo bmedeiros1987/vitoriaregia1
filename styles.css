@@ -41,8 +41,6 @@ button, input, select, textarea { font: inherit; }
 a { color: inherit; text-decoration: none; }
 img { max-width: 100%; display: block; }
 [hidden] { display: none !important; }
-html.auth-locked [data-app] { display: none !important; }
-html.auth-locked [data-login-screen] { display: grid !important; }
 .is-role-hidden { display: none !important; }
 
 .login-screen {
