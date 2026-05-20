@@ -152,6 +152,7 @@
         <a href="#contato" data-nav data-roles="morador,sindico"><span>✉️</span> Contato</a>
         <a href="#portaria" data-nav data-roles="sindico,portaria"><span>🛡️</span> Portaria</a>
         <a href="#encomendas" data-nav data-roles="sindico,portaria"><span>📦</span> Encomendas</a>
+        <a href="#atividades-portaria" data-nav data-roles="sindico"><span>🧾</span> Logs da portaria</a>
         <a href="#comunicados" data-nav data-roles="morador,sindico,portaria"><span>📣</span> Comunicados</a>
         <a href="#configuracoes" data-nav data-roles="sindico"><span>⚙️</span> Configurações</a>
       </nav>
@@ -446,6 +447,13 @@ João Souza - CPF ***.000.***-**"></textarea></label>
         <div class="section-head"><div><span class="eyebrow">Portaria</span><h2>Encomendas</h2><p>Registro e aviso ao morador via WhatsApp ou e-mail.</p></div></div>
         <div class="content-grid content-grid--two">
           <form class="panel form-card" data-package-form autocomplete="off">
+            <div class="panel-header"><div><span class="eyebrow">Leitura móvel</span><h2>Cadastrar encomenda</h2><p>Use a câmera do celular para ler QR/código de barras da etiqueta ou cole o texto da etiqueta para preencher automaticamente.</p></div></div>
+            <div class="scan-box">
+              <label class="btn btn--outline"><input name="labelImage" type="file" accept="image/*" capture="environment" hidden data-package-label-image />Ler etiqueta com câmera</label>
+              <button class="btn btn--outline" type="button" data-parse-package-label>Preencher pelo texto</button>
+              <label class="scan-text"><span>Texto/QR da etiqueta</span><textarea name="labelText" rows="4" data-package-label-text placeholder="Cole aqui o texto da etiqueta, QR Code ou dados de rastreio, destinatário, unidade/apartamento..."></textarea></label>
+              <p class="form-hint" data-package-scan-message>Em celulares compatíveis, a câmera reconhece QR code e códigos de barras. Para etiqueta apenas impressa, cole o texto manualmente.</p>
+            </div>
             <label><span>Apartamento</span><select name="apartment" required data-package-apartment></select></label>
             <label><span>Destinatário</span><input name="recipient" required /></label>
             <div class="form-row"><label><span>Transportadora</span><input name="carrier" /></label><label><span>Código</span><input name="code" /></label></div>
@@ -455,6 +463,24 @@ João Souza - CPF ***.000.***-**"></textarea></label>
           </form>
           <article class="panel"><div class="panel-header"><div><span class="eyebrow">Lista</span><h2>Encomendas pendentes</h2></div></div><div data-packages-list class="list"></div></article>
         </div>
+      </section>
+
+
+      <section id="atividades-portaria" class="section" data-section data-roles="sindico">
+        <div class="section-head">
+          <div><span class="eyebrow">Auditoria interna</span><h2>Logs de atividades da portaria</h2><p>Somente o síndico e subsíndico visualizam o histórico do que foi registrado pelos usuários da portaria.</p></div>
+          <div class="topbar-actions">
+            <button class="btn btn--outline btn--sm" type="button" data-refresh-activity-logs>Atualizar logs</button>
+            <button class="btn btn--outline btn--sm" type="button" data-export-activity-logs>Exportar CSV</button>
+          </div>
+        </div>
+        <article class="panel">
+          <div class="panel-header">
+            <div><span class="eyebrow">Conferência</span><h2>Registro de ações</h2></div>
+            <input class="search" data-activity-log-search placeholder="Buscar por porteiro, unidade, ação ou e-mail" />
+          </div>
+          <div data-activity-logs-list class="list"></div>
+        </article>
       </section>
 
       <section id="comunicados" class="section" data-section data-roles="morador,sindico,portaria">

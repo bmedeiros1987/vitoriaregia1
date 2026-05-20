@@ -161,6 +161,20 @@ async function initDatabase() {
       created_at timestamptz not null default now()
     );
 
+    create table if not exists activity_logs (
+      id text primary key,
+      actor_name text,
+      actor_email text,
+      actor_role text,
+      action text not null,
+      entity_type text,
+      entity_id text,
+      apartment text,
+      summary text,
+      details jsonb not null default '{}'::jsonb,
+      created_at timestamptz not null default now()
+    );
+
     create index if not exists idx_residents_apartment on residents(apartment);
     create index if not exists idx_pending_residents_status on pending_residents(status);
     create index if not exists idx_bookings_date_period on bookings(date, period);
@@ -172,6 +186,9 @@ async function initDatabase() {
     create index if not exists idx_service_requests_apartment_status on service_requests(apartment, status);
     create index if not exists idx_contact_messages_created on contact_messages(created_at desc);
     create index if not exists idx_notification_logs_created on notification_logs(created_at desc);
+    create index if not exists idx_activity_logs_created on activity_logs(created_at desc);
+    create index if not exists idx_activity_logs_actor on activity_logs(actor_email, created_at desc);
+    create index if not exists idx_activity_logs_entity on activity_logs(entity_type, entity_id);
   `);
 }
 

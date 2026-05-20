@@ -1102,6 +1102,40 @@ function requireDatabaseReady(req, res, next) {
   return next();
 }
 
+function requireSyndicUser(req, res, next) {
+  if (req.session?.user?.role !== 'sindico') {
+    return res.status(403).json({ ok: false, error: 'Acesso permitido somente ao síndico/subsíndico.' });
+  }
+  return next();
+}
+
+function requirePortariaOrSyndicUser(req, res, next) {
+  const role = req.session?.user?.role;
+  if (!['portaria', 'sindico'].includes(role)) {
+    return res.status(403).json({ ok: false, error: 'Acesso permitido somente para portaria ou administração.' });
+  }
+  return next();
+}
+
+async function recordActivityLog(entry = {}, user = {}) {
+  const id = entry.id || `activity-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const details = entry.details && typeof entry.details === 'object' ? entry.details : {};
+  const actorName = entry.actorName || user.name || 'Usuário';
+  const actorEmail = normalizeEmail(entry.actorEmail || user.email || '');
+  const actorRole = entry.actorRole || user.role || '';
+  const action = String(entry.action || 'Ação registrada').slice(0, 180);
+  const entityType = String(entry.entityType || '').slice(0, 80);
+  const entityId = String(entry.entityId || '').slice(0, 120);
+  const apartment = String(entry.apartment || details.apartment || '').slice(0, 20);
+  const summary = String(entry.summary || '').slice(0, 500);
+  await query(
+    `insert into activity_logs (id, actor_name, actor_email, actor_role, action, entity_type, entity_id, apartment, summary, details, created_at)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,now())`,
+    [id, actorName, actorEmail, actorRole, action, entityType, entityId, apartment, summary, toJson(details)]
+  );
+  return { id, actorName, actorEmail, actorRole, action, entityType, entityId, apartment, summary, details, createdAt: new Date().toISOString() };
+}
+
 function handleLogin(req, res) {
   const requested = req.body || {};
   const requestedRole = requested.role || 'morador';
@@ -1325,6 +1359,39 @@ app.get('/api/notifications/logs', async (req, res) => {
       return res.json({ ok: true, logs: result.rows });
     }
     res.json({ ok: true, logs: store.notificationLogs || [] });
+  } catch (error) {
+    res.status(500).send(error.message);
+  }
+});
+
+app.get('/api/activity-logs', requireDatabaseReady, requireSyndicUser, async (req, res) => {
+  try {
+    const result = await query(`
+      select id,
+             actor_name as "actorName",
+             actor_email as "actorEmail",
+             actor_role as "actorRole",
+             action,
+             entity_type as "entityType",
+             entity_id as "entityId",
+             apartment,
+             summary,
+             details,
+             created_at as "createdAt"
+      from activity_logs
+      order by created_at desc
+      limit 500
+    `);
+    res.json({ ok: true, logs: result.rows });
+  } catch (error) {
+    res.status(500).send(error.message);
+  }
+});
+
+app.post('/api/activity-logs', requireDatabaseReady, requirePortariaOrSyndicUser, async (req, res) => {
+  try {
+    const saved = await recordActivityLog(req.body || {}, req.session.user || {});
+    res.json({ ok: true, log: saved });
   } catch (error) {
     res.status(500).send(error.message);
   }

@@ -965,3 +965,34 @@ body.no-scroll { overflow: hidden; }
   font-size: 14px;
   text-align: center;
 }
+
+/* Scanner de etiqueta e auditoria de portaria */
+.scan-box {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px dashed rgba(31, 46, 70, .18);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(255,255,255,.92), rgba(247,250,255,.78));
+}
+.scan-box .btn {
+  justify-content: center;
+  width: 100%;
+}
+.scan-text {
+  display: grid;
+  gap: 7px;
+}
+.scan-text textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+@media (max-width: 720px) {
+  .scan-box {
+    padding: 12px;
+  }
+  .scan-box .btn,
+  .topbar-actions .btn {
+    min-height: 44px;
+  }
+}

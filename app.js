@@ -65,6 +65,8 @@ let notificationConfig = null;
 let notificationConfigLoading = false;
 let asaasConfig = null;
 let asaasConfigLoading = false;
+let activityLogsCache = [];
+let activityLogsLoading = false;
 
 function apartments() {
   const list = [];
@@ -618,6 +620,89 @@ function updateActiveSection() {
   renderAll();
 }
 
+
+async function logPortariaActivity(action, details = {}, entityType = '') {
+  if (!backendAvailable || currentRole() !== 'portaria') return;
+  const payload = {
+    action,
+    entityType,
+    entityId: details.id || details.entityId || '',
+    apartment: details.apartment || '',
+    summary: details.summary || '',
+    details,
+  };
+  try {
+    await apiRequest('/api/activity-logs', { method: 'POST', body: JSON.stringify(payload) });
+  } catch (error) {
+    console.warn('Não foi possível registrar log de atividade:', error.message);
+  }
+}
+
+async function loadActivityLogs(force = false) {
+  if (!backendAvailable || !isSyndic()) return [];
+  if (activityLogsLoading) return activityLogsCache;
+  if (!force && activityLogsCache.length) return activityLogsCache;
+  activityLogsLoading = true;
+  try {
+    const data = await apiRequest('/api/activity-logs');
+    activityLogsCache = Array.isArray(data.logs) ? data.logs : [];
+    return activityLogsCache;
+  } catch (error) {
+    const box = $('[data-activity-logs-list]');
+    if (box) box.innerHTML = empty(`Não foi possível carregar os logs: ${error.message}`);
+    return [];
+  } finally {
+    activityLogsLoading = false;
+  }
+}
+
+function renderActivityLogsFromCache() {
+  const box = $('[data-activity-logs-list]');
+  if (!box) return;
+  if (!isSyndic()) { box.innerHTML = empty('Acesso restrito ao síndico/subsíndico.'); return; }
+  const search = normalizeText($('[data-activity-log-search]')?.value || '');
+  let logs = activityLogsCache.slice();
+  if (search) {
+    logs = logs.filter((log) => normalizeText(`${log.actorName || ''} ${log.actorEmail || ''} ${log.action || ''} ${log.apartment || ''} ${log.summary || ''}`).includes(search));
+  }
+  box.innerHTML = logs.length ? logs.map((log) => `
+    <div class="item">
+      <div class="item-row">
+        <div>
+          <div class="item-title">${escapeHTML(log.action || 'Atividade registrada')} <span class="badge">${escapeHTML(log.entityType || 'portaria')}</span></div>
+          <div class="item-sub">${formatDateTime(log.createdAt)} • ${escapeHTML(log.actorName || 'Portaria')} ${log.actorEmail ? `(${escapeHTML(log.actorEmail)})` : ''}${log.apartment ? ` • Unidade ${escapeHTML(log.apartment)}` : ''}</div>
+          ${log.summary ? `<div class="item-sub">${escapeHTML(log.summary)}</div>` : ''}
+        </div>
+        <span class="status status--approved">auditado</span>
+      </div>
+    </div>`).join('') : empty('Nenhuma atividade registrada pela portaria.');
+}
+
+async function renderActivityLogs(force = false) {
+  const box = $('[data-activity-logs-list]');
+  if (!box) return;
+  if (!isSyndic()) return;
+  if (!activityLogsCache.length || force) {
+    box.innerHTML = empty('Carregando registros de atividade...');
+    await loadActivityLogs(force);
+  }
+  renderActivityLogsFromCache();
+}
+
+function exportActivityLogsCSV() {
+  const rows = activityLogsCache.map((log) => ({
+    data: formatDateTime(log.createdAt),
+    usuario: log.actorName || '',
+    email: log.actorEmail || '',
+    perfil: log.actorRole || '',
+    acao: log.action || '',
+    tipo: log.entityType || '',
+    unidade: log.apartment || '',
+    resumo: log.summary || '',
+  }));
+  exportCSV('logs-portaria.csv', rows);
+}
+
 function setupCurrentDate() {
   const el = $('[data-current-date]');
   if (el) el.textContent = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }).format(new Date());
@@ -666,6 +751,7 @@ function renderAll() {
   renderServices();
   renderServiceRequests();
   renderSettings();
+  renderActivityLogs();
 }
 
 function renderKpis() {
@@ -1257,6 +1343,7 @@ function setupVisitors() {
       apartment: data.get('apartment'), type: data.get('type'), notes: data.get('notes').trim(), photo: currentVisitorPhoto, createdAt: nowISO(),
     };
     saveVisitors([visitor, ...getVisitors()]);
+    logPortariaActivity('Registrou visitante', { ...visitor, summary: `Visitante ${visitor.name} registrado para a unidade ${visitor.apartment}` }, 'visitante');
     const resident = approvedResidentByApartment(visitor.apartment);
     $('[data-visitor-message]').innerHTML = resident ? `Visitante salvo. <a class="text-link" target="_blank" href="${whatsAppLink(resident.whatsapp, visitorMessage(visitor, resident))}">Abrir WhatsApp manual</a>` : 'Visitante salvo. Morador da unidade não encontrado.';
     currentVisitorPhoto = '';
@@ -1302,17 +1389,96 @@ function whatsAppLink(phone, text) {
   return `https://wa.me/55${number}?text=${encodeURIComponent(text)}`;
 }
 
+
+function detectCarrierFromText(text = '') {
+  const normalized = normalizeText(text);
+  const carriers = ['Correios', 'Jadlog', 'Loggi', 'Amazon', 'Mercado Livre', 'Shopee', 'Total Express', 'Azul Cargo', 'DHL', 'FedEx', 'UPS', 'Sequoia'];
+  return carriers.find((name) => normalized.includes(normalizeText(name))) || '';
+}
+
+function parsePackageLabelText(text = '') {
+  const raw = String(text || '').replace(/\r/g, '\n');
+  const lines = raw.split('\n').map((line) => line.trim()).filter(Boolean);
+  const joined = lines.join(' ');
+  const fields = { rawText: raw };
+  const apartmentsList = apartments();
+  const aptByLabel = joined.match(/(?:apto|apartamento|unidade|apt\.?|unid\.?)[\s:#-]*(\d{3,4})/i);
+  const aptStandalone = apartmentsList.find((apt) => new RegExp(`(^|\\D)${apt}(\\D|$)`).test(joined));
+  if (aptByLabel?.[1] && apartmentsList.includes(aptByLabel[1])) fields.apartment = aptByLabel[1];
+  else if (aptStandalone) fields.apartment = aptStandalone;
+
+  const carrier = detectCarrierFromText(raw);
+  if (carrier) fields.carrier = carrier;
+
+  const labeledCode = joined.match(/(?:codigo|código|rastreio|tracking|awb|pedido|nf|nota fiscal)[\s:#-]*([A-Z0-9.-]{6,44})/i);
+  const correiosCode = joined.match(/\b[A-Z]{2}\d{9}[A-Z]{2}\b/i);
+  const longNumeric = joined.match(/\b\d{8,44}\b/);
+  fields.code = (labeledCode?.[1] || correiosCode?.[0] || longNumeric?.[0] || '').replace(/[^A-Za-z0-9.-]/g, '').toUpperCase();
+
+  const recipientLine = lines.find((line) => /destinat[aá]rio|recebedor|nome/i.test(line));
+  if (recipientLine) fields.recipient = recipientLine.replace(/.*?(destinat[aá]rio|recebedor|nome)\s*[:#-]?\s*/i, '').trim();
+  if (!fields.recipient) {
+    const candidates = lines.filter((line) => !/codigo|código|rastreio|tracking|awb|pedido|nota|cpf|cnpj|cep|endere[cç]o|bairro|cidade|uf/i.test(line));
+    const probable = candidates.find((line) => /[A-Za-zÀ-ÿ]{3,}\s+[A-Za-zÀ-ÿ]{2,}/.test(line));
+    if (probable && !detectCarrierFromText(probable)) fields.recipient = probable.slice(0, 90);
+  }
+  return fields;
+}
+
+function applyPackageLabelFields(fields = {}) {
+  const form = $('[data-package-form]');
+  if (!form) return;
+  if (fields.apartment && form.apartment) form.apartment.value = fields.apartment;
+  if (fields.recipient && form.recipient) form.recipient.value = fields.recipient;
+  if (fields.carrier && form.carrier) form.carrier.value = fields.carrier;
+  if (fields.code && form.code) form.code.value = fields.code;
+  if (fields.rawText && form.labelText) form.labelText.value = fields.rawText;
+  const filled = ['apartment', 'recipient', 'carrier', 'code'].filter((key) => fields[key]).map((key) => ({ apartment: 'apartamento', recipient: 'destinatário', carrier: 'transportadora', code: 'código' }[key]));
+  const msg = $('[data-package-scan-message]');
+  if (msg) msg.textContent = filled.length ? `Etiqueta lida. Campos preenchidos: ${filled.join(', ')}.` : 'Etiqueta lida, mas não encontrei dados reconhecíveis. Preencha manualmente ou cole o texto da etiqueta.';
+}
+
+async function decodeBarcodeFromImage(file) {
+  if (!file) throw new Error('Selecione ou fotografe uma etiqueta.');
+  if (!('BarcodeDetector' in window)) throw new Error('Este navegador não oferece leitura automática de código de barras. Cole o texto da etiqueta no campo abaixo.');
+  const formats = ['qr_code', 'code_128', 'code_39', 'ean_13', 'ean_8', 'itf', 'upc_a', 'upc_e', 'pdf417', 'aztec', 'data_matrix'];
+  const detector = new BarcodeDetector({ formats });
+  const bitmap = await createImageBitmap(file);
+  const codes = await detector.detect(bitmap);
+  if (!codes.length) throw new Error('Nenhum QR code ou código de barras foi detectado na imagem. Tente aproximar a câmera ou cole o texto da etiqueta.');
+  return codes.map((item) => item.rawValue).filter(Boolean).join('\n');
+}
+
+async function handlePackageLabelImage(file) {
+  const msg = $('[data-package-scan-message]');
+  if (msg) msg.textContent = 'Lendo etiqueta pela câmera...';
+  try {
+    const decoded = await decodeBarcodeFromImage(file);
+    const textArea = $('[data-package-label-text]');
+    if (textArea) textArea.value = decoded;
+    applyPackageLabelFields(parsePackageLabelText(decoded));
+  } catch (error) {
+    if (msg) msg.textContent = error.message;
+  }
+}
+
 function packageMessage(pkg) {
   return `Olá. Há uma encomenda na portaria para a unidade ${pkg.apartment}. Destinatário: ${pkg.recipient}. ${pkg.carrier ? `Transportadora: ${pkg.carrier}.` : ''} ${pkg.code ? `Código: ${pkg.code}.` : ''}`;
 }
 
 function setupPackages() {
+  $('[data-package-label-image]')?.addEventListener('change', (event) => handlePackageLabelImage(event.target.files?.[0]));
+  $('[data-parse-package-label]')?.addEventListener('click', () => {
+    const text = $('[data-package-label-text]')?.value || '';
+    applyPackageLabelFields(parsePackageLabelText(text));
+  });
   $('[data-package-form]')?.addEventListener('submit', (event) => {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
-    const pkg = { id: uid('package'), apartment: data.get('apartment'), recipient: data.get('recipient').trim(), carrier: data.get('carrier').trim(), code: data.get('code').trim(), notes: data.get('notes').trim(), status: 'open', createdAt: nowISO() };
+    const pkg = { id: uid('package'), apartment: data.get('apartment'), recipient: data.get('recipient').trim(), carrier: data.get('carrier').trim(), code: data.get('code').trim(), labelText: data.get('labelText')?.trim() || '', notes: data.get('notes').trim(), status: 'open', createdAt: nowISO() };
     savePackages([pkg, ...getPackages()]);
+    logPortariaActivity('Registrou encomenda', { ...pkg, summary: `Encomenda registrada para ${pkg.recipient} na unidade ${pkg.apartment}` }, 'encomenda');
     const resident = approvedResidentByApartment(pkg.apartment);
     const msg = packageMessage(pkg);
     $('[data-package-message]').textContent = 'Encomenda registrada.';
@@ -1330,13 +1496,15 @@ function renderPackages() {
     const resident = approvedResidentByApartment(pkg.apartment);
     const msg = packageMessage(pkg);
     return `<div class="item">
-      <div class="item-row"><div><div class="item-title">Unidade ${escapeHTML(pkg.apartment)} • ${escapeHTML(pkg.recipient)}</div><div class="item-sub">${escapeHTML(pkg.carrier || 'Transportadora não informada')} • ${escapeHTML(pkg.code || 'sem código')} • ${formatDateTime(pkg.createdAt)}</div></div><span class="status status--pending">Aguardando retirada</span></div>
+      <div class="item-row"><div><div class="item-title">Unidade ${escapeHTML(pkg.apartment)} • ${escapeHTML(pkg.recipient)}</div><div class="item-sub">${escapeHTML(pkg.carrier || 'Transportadora não informada')} • ${escapeHTML(pkg.code || 'sem código')} • ${formatDateTime(pkg.createdAt)}${pkg.notes ? `<br>${escapeHTML(pkg.notes)}` : ''}</div></div><span class="status status--pending">Aguardando retirada</span></div>
       <div class="item-actions">${resident ? `<button class="btn btn--success btn--sm" data-auto-package-whatsapp="${pkg.id}">Auto WhatsApp</button><button class="btn btn--success btn--sm" data-auto-package-email="${pkg.id}">Auto e-mail</button><a class="btn btn--outline btn--sm" target="_blank" href="${whatsAppLink(resident.whatsapp, msg)}">Manual WhatsApp</a><a class="btn btn--outline btn--sm" href="mailto:${encodeURIComponent(resident.email)}?subject=${encodeURIComponent('Encomenda na portaria')}&body=${encodeURIComponent(msg)}">Manual e-mail</a>` : ''}<button class="btn btn--success btn--sm" data-deliver-package="${pkg.id}">Marcar retirada</button></div>
     </div>`;
   }).join('') : empty('Nenhuma encomenda pendente.');
 }
 function deliverPackage(id) {
+  const original = getPackages().find((item) => item.id === id);
   savePackages(getPackages().map((item) => item.id === id ? { ...item, status: 'delivered', deliveredAt: nowISO() } : item));
+  if (original) logPortariaActivity('Marcou encomenda como retirada', { ...original, summary: `Encomenda de ${original.recipient} retirada na unidade ${original.apartment}` }, 'encomenda');
   renderAll();
 }
 
@@ -1734,6 +1902,7 @@ async function notifyVisitorById(id, channels) {
   const resident = visitor ? approvedResidentByApartment(visitor.apartment) : null;
   if (!visitor || !resident) { alert('Visitante ou morador não encontrado.'); return; }
   const response = await notifyResidentEntity(resident, 'Visitante registrado — Condomínio Vitória Régia', visitorMessage(visitor, resident), channels);
+  logPortariaActivity(`Enviou aviso de visitante por ${channels.join('/')}`, { ...visitor, summary: `Aviso sobre visitante ${visitor.name} enviado para unidade ${visitor.apartment}` }, 'visitante');
   alert(`Notificação: ${resultSummary(response)}`);
 }
 
@@ -1742,6 +1911,7 @@ async function notifyPackageById(id, channels) {
   const resident = pkg ? approvedResidentByApartment(pkg.apartment) : null;
   if (!pkg || !resident) { alert('Encomenda ou morador não encontrado.'); return; }
   const response = await notifyResidentEntity(resident, 'Encomenda na portaria — Condomínio Vitória Régia', packageMessage(pkg), channels);
+  logPortariaActivity(`Enviou aviso de encomenda por ${channels.join('/')}`, { ...pkg, summary: `Aviso de encomenda enviado para unidade ${pkg.apartment}` }, 'encomenda');
   alert(`Notificação: ${resultSummary(response)}`);
 }
 
@@ -1831,7 +2001,7 @@ function handleDocumentClick(event) {
     ['data-edit-resident', editResident], ['data-primary-resident', setPrimaryResident], ['data-toggle-rented', toggleApartmentRented],
     ['data-approve-booking', approveBooking], ['data-cancel-booking', cancelBooking], ['data-edit-booking', editBooking],
     ['data-boleto-booking', async (id) => { location.hash = '#financeiro'; await renderBoletoPreview(id); }], ['data-mark-paid', markPaid],
-    ['data-remove-visitor', (id) => { saveVisitors(getVisitors().filter((item) => item.id !== id)); renderAll(); }],
+    ['data-remove-visitor', (id) => { const v = getVisitors().find((item) => item.id === id); saveVisitors(getVisitors().filter((item) => item.id !== id)); if (v) logPortariaActivity('Removeu visitante', { ...v, summary: `Visitante ${v.name} removido da unidade ${v.apartment}` }, 'visitante'); renderAll(); }],
     ['data-deliver-package', deliverPackage], ['data-remove-notice', (id) => { saveNotices(getNotices().filter((item) => item.id !== id)); renderAll(); }],
     ['data-remove-space', removeSpace],
     ['data-auto-visitor-whatsapp', (id) => notifyVisitorById(id, ['whatsapp'])], ['data-auto-visitor-email', (id) => notifyVisitorById(id, ['email'])],
@@ -1840,6 +2010,7 @@ function handleDocumentClick(event) {
     ['data-edit-staff', editStaff], ['data-remove-staff', removeStaff],
     ['data-edit-service', editService], ['data-remove-service', removeService],
     ['data-approve-service-request', (id) => updateServiceRequest(id, 'approved')], ['data-cancel-service-request', (id) => updateServiceRequest(id, 'canceled')],
+    ['data-refresh-activity-logs', async () => { await renderActivityLogs(true); }], ['data-export-activity-logs', exportActivityLogsCSV],
   ];
   for (const [attr, fn] of actionMap) {
     const el = target.closest(`[${attr}]`);
@@ -1851,6 +2022,7 @@ function handleDocumentChange(event) {
   if (target.matches('[data-manager-doc]')) uploadManagerDocument(target.dataset.managerDoc, target.files?.[0]);
   if (target.matches('[data-space-name]')) updateSpace(target.dataset.spaceName, { name: target.value });
   if (target.matches('[data-space-fee]')) updateSpace(target.dataset.spaceFee, { fee: Number(target.value || 0) });
+  if (target.matches('[data-activity-log-search]')) renderActivityLogsFromCache();
 }
 
 function setupPrint() { $('[data-print-boleto]')?.addEventListener('click', () => window.print()); }
@@ -1884,6 +2056,7 @@ async function init() {
   setupPrint();
   document.addEventListener('click', handleDocumentClick);
   document.addEventListener('change', handleDocumentChange);
+  document.addEventListener('input', (event) => { if (event.target.matches('[data-activity-log-search]')) renderActivityLogsFromCache(); });
   const saved = read(keys.session, null);
   if (backendAvailable && saved?.role) {
     try {
