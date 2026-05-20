@@ -1,31 +1,37 @@
 require('dotenv').config();
+
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const express = require('express');
 const session = require('express-session');
-const PgSession = require('connect-pg-simple')(session);
-const passport = require('passport');
-const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const helmet = require('helmet');
 const cors = require('cors');
 const morgan = require('morgan');
-const multer = require('multer');
 const nodemailer = require('nodemailer');
-const { pool } = require('./db');
 
 const app = express();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT || 10000);
 const APP_URL = process.env.APP_URL || `http://localhost:${PORT}`;
-const FRONTEND_DIR = path.resolve(__dirname, '../../');
-const REQUIRE_AUTH_FOR_STATE = String(process.env.REQUIRE_AUTH_FOR_STATE || 'false').toLowerCase() === 'true';
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').split(',').map((v) => v.trim().toLowerCase()).filter(Boolean);
-const PORTARIA_EMAILS = (process.env.PORTARIA_EMAILS || '').split(',').map((v) => v.trim().toLowerCase()).filter(Boolean);
+const DATA_FILE = process.env.DATA_FILE || path.join(os.tmpdir(), 'vitoria-regia-state.json');
+const FRONTEND_DIR = process.env.FRONTEND_DIR
+  ? path.resolve(process.env.FRONTEND_DIR)
+  : path.resolve(__dirname, '../../');
 
+const DEFAULT_STATE = {
+  session: null,
+  pendingResidents: [],
+  residents: [],
+  bookings: [],
+  packages: [],
+  visitors: [],
+  notices: [],
+  settings: null,
+};
 
-const NOTIFICATION_CONFIG_KEY = 'notification_config';
 const DEFAULT_NOTIFICATION_CONFIG = {
   email: {
-    enabled: String(process.env.SMTP_USER || '').length > 0,
+    enabled: String(process.env.SMTP_ENABLED || 'false').toLowerCase() === 'true',
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: Number(process.env.SMTP_PORT || 465),
     secure: String(process.env.SMTP_SECURE || 'true').toLowerCase() === 'true',
@@ -33,70 +39,187 @@ const DEFAULT_NOTIFICATION_CONFIG = {
     password: process.env.SMTP_APP_PASSWORD || '',
     fromName: process.env.SMTP_FROM_NAME || 'Condomínio Vitória Régia',
     fromEmail: process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || '',
+    testTo: process.env.SMTP_TEST_TO || process.env.SMTP_USER || '',
   },
   whatsapp: {
-    enabled: String(process.env.WHATSAPP_TOKEN || '').length > 0 && String(process.env.WHATSAPP_PHONE_NUMBER_ID || '').length > 0,
+    enabled: String(process.env.WHATSAPP_ENABLED || 'false').toLowerCase() === 'true',
     apiVersion: process.env.WHATSAPP_API_VERSION || 'v20.0',
     token: process.env.WHATSAPP_TOKEN || '',
     phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
     countryCode: process.env.WHATSAPP_COUNTRY_CODE || '55',
+    testTo: process.env.WHATSAPP_TEST_TO || '',
   },
 };
+
+function ensureDir(filePath) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+}
+
+function loadStore() {
+  try {
+    if (!fs.existsSync(DATA_FILE)) {
+      return { state: DEFAULT_STATE, notificationConfig: DEFAULT_NOTIFICATION_CONFIG, notificationLogs: [] };
+    }
+    const parsed = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    return {
+      state: { ...DEFAULT_STATE, ...(parsed.state || {}) },
+      notificationConfig: deepMerge(DEFAULT_NOTIFICATION_CONFIG, parsed.notificationConfig || {}),
+      notificationLogs: Array.isArray(parsed.notificationLogs) ? parsed.notificationLogs : [],
+    };
+  } catch (error) {
+    console.warn('Não foi possível ler DATA_FILE, usando memória temporária:', error.message);
+    return { state: DEFAULT_STATE, notificationConfig: DEFAULT_NOTIFICATION_CONFIG, notificationLogs: [] };
+  }
+}
+
+function saveStore(store) {
+  ensureDir(DATA_FILE);
+  fs.writeFileSync(DATA_FILE, JSON.stringify(store, null, 2));
+}
+
+let store = loadStore();
 
 function deepMerge(baseValue, patchValue) {
   const result = { ...(baseValue || {}) };
   for (const [key, value] of Object.entries(patchValue || {})) {
-    if (value && typeof value === 'object' && !Array.isArray(value)) result[key] = deepMerge(result[key], value);
-    else result[key] = value;
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      result[key] = deepMerge(result[key], value);
+    } else {
+      result[key] = value;
+    }
   }
   return result;
 }
 
-function stripSecret(value = '') {
-  return value ? '••••••••' : '';
+function normalizeEmail(value = '') {
+  return String(value).trim().toLowerCase();
 }
 
-function sanitizeNotificationConfig(config) {
+function adminEmails() {
+  return String(process.env.ADMIN_EMAILS || '')
+    .split(',')
+    .map((item) => normalizeEmail(item))
+    .filter(Boolean);
+}
+
+function portariaEmails() {
+  return String(process.env.PORTARIA_EMAILS || '')
+    .split(',')
+    .map((item) => normalizeEmail(item))
+    .filter(Boolean);
+}
+
+function allowedRole(email, requestedRole) {
+  const normalized = normalizeEmail(email);
+  if (requestedRole === 'sindico') {
+    return adminEmails().includes(normalized) || !normalized ? 'sindico' : 'morador';
+  }
+  if (requestedRole === 'portaria') {
+    return adminEmails().includes(normalized) || portariaEmails().includes(normalized) || !normalized ? 'portaria' : 'morador';
+  }
+  return 'morador';
+}
+
+function sanitizeConfig(config) {
+  const email = config.email || {};
+  const whatsapp = config.whatsapp || {};
   return {
     ...config,
     email: {
-      ...(config.email || {}),
+      ...email,
       password: '',
-      passwordSaved: Boolean(config.email?.password),
+      passwordSaved: Boolean(email.password),
     },
     whatsapp: {
-      ...(config.whatsapp || {}),
+      ...whatsapp,
       token: '',
-      tokenSaved: Boolean(config.whatsapp?.token),
+      tokenSaved: Boolean(whatsapp.token),
     },
   };
 }
 
-async function getNotificationConfig() {
-  try {
-    const { rows } = await pool.query('SELECT value FROM app_settings WHERE key=$1', [NOTIFICATION_CONFIG_KEY]);
-    return deepMerge(DEFAULT_NOTIFICATION_CONFIG, rows[0]?.value || {});
-  } catch (error) {
-    return DEFAULT_NOTIFICATION_CONFIG;
-  }
-}
-
-async function saveNotificationConfig(incoming = {}) {
-  const existing = await getNotificationConfig();
+function saveNotificationConfig(incoming = {}) {
+  const existing = store.notificationConfig || DEFAULT_NOTIFICATION_CONFIG;
   const clean = deepMerge(existing, incoming);
-  if (!incoming.email || incoming.email.password === '') clean.email.password = existing.email.password || DEFAULT_NOTIFICATION_CONFIG.email.password || '';
-  if (!incoming.whatsapp || incoming.whatsapp.token === '') clean.whatsapp.token = existing.whatsapp.token || DEFAULT_NOTIFICATION_CONFIG.whatsapp.token || '';
+
+  if (!incoming.email || incoming.email.password === '') {
+    clean.email.password = existing.email?.password || DEFAULT_NOTIFICATION_CONFIG.email.password || '';
+  }
+  if (!incoming.whatsapp || incoming.whatsapp.token === '') {
+    clean.whatsapp.token = existing.whatsapp?.token || DEFAULT_NOTIFICATION_CONFIG.whatsapp.token || '';
+  }
   if (incoming.email?.clearPassword) clean.email.password = '';
   if (incoming.whatsapp?.clearToken) clean.whatsapp.token = '';
+
+  clean.email.enabled = Boolean(clean.email.enabled);
   clean.email.port = Number(clean.email.port || 465);
   clean.email.secure = Boolean(clean.email.secure);
-  await pool.query(
-    `INSERT INTO app_settings (key, value, updated_at)
-     VALUES ($1, $2::jsonb, NOW())
-     ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()`,
-    [NOTIFICATION_CONFIG_KEY, JSON.stringify(clean)]
-  );
+  clean.whatsapp.enabled = Boolean(clean.whatsapp.enabled);
+
+  store.notificationConfig = clean;
+  saveStore(store);
   return clean;
+}
+
+function normalizeSmtpPassword(value = '') {
+  // Senhas de app do Google aparecem com espaços por grupo. Para SMTP, use sem espaços.
+  return String(value || '').replace(/\s+/g, '');
+}
+
+async function logNotification(entry) {
+  const log = {
+    id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    createdAt: new Date().toISOString(),
+    ...entry,
+  };
+  store.notificationLogs = [log, ...(store.notificationLogs || [])].slice(0, 200);
+  saveStore(store);
+  return log;
+}
+
+async function sendEmailNotification({ to, subject, message, html }) {
+  const config = store.notificationConfig || DEFAULT_NOTIFICATION_CONFIG;
+  const email = config.email || {};
+
+  if (!email.enabled) throw new Error('Envio de e-mail desativado nas configurações.');
+  if (!email.host || !email.user || !email.password) {
+    throw new Error('SMTP incompleto. Configure host, usuário e senha de aplicativo.');
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: email.host,
+    port: Number(email.port || 465),
+    secure: Boolean(email.secure),
+    auth: {
+      user: email.user,
+      pass: normalizeSmtpPassword(email.password),
+    },
+  });
+
+  const fromAddress = email.fromEmail || email.user;
+  const fromName = email.fromName || 'Condomínio Vitória Régia';
+  const finalTo = to || email.testTo || email.user;
+  const finalSubject = subject || 'Teste de e-mail - Condomínio Vitória Régia';
+  const finalMessage = message || 'Este é um e-mail automático de teste do Sistema Vitória Régia.';
+
+  const info = await transporter.sendMail({
+    from: `"${String(fromName).replace(/"/g, '')}" <${fromAddress}>`,
+    to: finalTo,
+    subject: finalSubject,
+    text: finalMessage,
+    html: html || `<p>${String(finalMessage).replace(/\n/g, '<br>')}</p>`,
+  });
+
+  await logNotification({
+    channel: 'email',
+    recipient: finalTo,
+    subject: finalSubject,
+    message: finalMessage,
+    status: 'sent',
+    providerResponse: { messageId: info.messageId, accepted: info.accepted, rejected: info.rejected },
+  });
+
+  return { ok: true, provider: 'smtp', messageId: info.messageId, accepted: info.accepted, rejected: info.rejected };
 }
 
 function normalizePhoneForWhatsApp(value = '', countryCode = '55') {
@@ -106,49 +229,18 @@ function normalizePhoneForWhatsApp(value = '', countryCode = '55') {
   return `${countryCode}${digits}`;
 }
 
-async function logNotification({ channel, recipient, subject = '', message, status, providerResponse = null, error = null }) {
-  try {
-    await pool.query(
-      `INSERT INTO notification_logs (channel, recipient, subject, message, status, provider_response, error, sent_at)
-       VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,CASE WHEN $5='sent' THEN NOW() ELSE NULL END)`,
-      [channel, recipient, subject, message, status, JSON.stringify(providerResponse), error]
-    );
-  } catch (logError) {
-    console.warn('Não foi possível registrar log da notificação:', logError.message);
-  }
-}
-
-async function sendEmailNotification({ to, subject, message, html }) {
-  const config = await getNotificationConfig();
-  const email = config.email || {};
-  if (!email.enabled) throw new Error('Envio de e-mail desativado nas configurações.');
-  if (!email.host || !email.user || !email.password) throw new Error('SMTP incompleto. Configure host, usuário e senha de aplicativo.');
-  const transporter = nodemailer.createTransport({
-    host: email.host,
-    port: Number(email.port || 465),
-    secure: Boolean(email.secure),
-    auth: { user: email.user, pass: email.password },
-  });
-  const fromAddress = email.fromEmail || email.user;
-  const fromName = email.fromName || 'Condomínio Vitória Régia';
-  const info = await transporter.sendMail({
-    from: `"${String(fromName).replaceAll('"', '')}" <${fromAddress}>`,
-    to,
-    subject,
-    text: message,
-    html: html || `<p>${String(message).replaceAll('\n', '<br>')}</p>`,
-  });
-  await logNotification({ channel: 'email', recipient: to, subject, message, status: 'sent', providerResponse: { messageId: info.messageId, accepted: info.accepted, rejected: info.rejected } });
-  return { ok: true, provider: 'smtp', messageId: info.messageId };
-}
-
 async function sendWhatsAppNotification({ to, message }) {
-  const config = await getNotificationConfig();
+  const config = store.notificationConfig || DEFAULT_NOTIFICATION_CONFIG;
   const whatsapp = config.whatsapp || {};
+
   if (!whatsapp.enabled) throw new Error('Envio por WhatsApp desativado nas configurações.');
-  if (!whatsapp.token || !whatsapp.phoneNumberId) throw new Error('WhatsApp Cloud API incompleto. Configure token e Phone Number ID.');
-  const number = normalizePhoneForWhatsApp(to, whatsapp.countryCode || '55');
+  if (!whatsapp.token || !whatsapp.phoneNumberId) {
+    throw new Error('WhatsApp Cloud API incompleto. Configure token e Phone Number ID.');
+  }
+
+  const number = normalizePhoneForWhatsApp(to || whatsapp.testTo, whatsapp.countryCode || '55');
   if (!number) throw new Error('Número de WhatsApp inválido.');
+
   const version = whatsapp.apiVersion || 'v20.0';
   const response = await fetch(`https://graph.facebook.com/${version}/${whatsapp.phoneNumberId}/messages`, {
     method: 'POST',
@@ -160,351 +252,181 @@ async function sendWhatsAppNotification({ to, message }) {
       messaging_product: 'whatsapp',
       to: number,
       type: 'text',
-      text: { preview_url: false, body: message },
+      text: { preview_url: false, body: message || 'Teste automático do Sistema Vitória Régia.' },
     }),
   });
+
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     await logNotification({ channel: 'whatsapp', recipient: number, message, status: 'error', providerResponse: payload, error: payload.error?.message || response.statusText });
     throw new Error(payload.error?.message || `Erro WhatsApp HTTP ${response.status}`);
   }
+
   await logNotification({ channel: 'whatsapp', recipient: number, message, status: 'sent', providerResponse: payload });
   return { ok: true, provider: 'meta-whatsapp', response: payload };
 }
 
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(cors({ origin: APP_URL, credentials: true }));
+app.use(cors({ origin: true, credentials: true }));
 app.use(morgan('tiny'));
-app.use(express.json({ limit: '8mb' }));
-app.use(express.urlencoded({ extended: true, limit: '8mb' }));
-
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(session({
-  store: new PgSession({ pool, createTableIfMissing: true }),
-  secret: process.env.SESSION_SECRET || 'troque-esta-chave',
+  secret: process.env.SESSION_SECRET || 'troque-esta-chave-em-producao',
   resave: false,
   saveUninitialized: false,
-  cookie: { httpOnly: true, sameSite: 'lax', secure: APP_URL.startsWith('https://') }
+  cookie: { httpOnly: true, sameSite: 'lax', secure: APP_URL.startsWith('https://') },
 }));
 
-passport.serializeUser((user, done) => done(null, user));
-passport.deserializeUser((user, done) => done(null, user));
-
-function normalizeEmail(value = '') { return String(value).trim().toLowerCase(); }
-function allowedRole(email, requestedRole) {
-  const normalized = normalizeEmail(email);
-  if (requestedRole === 'sindico') return ADMIN_EMAILS.includes(normalized) ? 'sindico' : 'morador';
-  if (requestedRole === 'portaria') return (ADMIN_EMAILS.includes(normalized) || PORTARIA_EMAILS.includes(normalized)) ? 'portaria' : 'morador';
-  return 'morador';
-}
-
-if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-  passport.use(new GoogleStrategy({
-    clientID: process.env.GOOGLE_CLIENT_ID,
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: process.env.GOOGLE_CALLBACK_URL || `${APP_URL}/auth/google/callback`,
-    passReqToCallback: true,
-  }, async (req, accessToken, refreshToken, profile, done) => {
-    try {
-      const email = normalizeEmail(profile.emails?.[0]?.value);
-      const name = profile.displayName || email;
-      if (!email) return done(new Error('Google não retornou e-mail.'));
-
-      const requestedRole = req.session.requestedRole || 'morador';
-      const role = allowedRole(email, requestedRole);
-      const approved = role !== 'morador' || ADMIN_EMAILS.includes(email);
-
-      const existing = await pool.query('SELECT * FROM users WHERE email=$1 OR google_id=$2 LIMIT 1', [email, profile.id]);
-      let user;
-      if (existing.rows[0]) {
-        const current = existing.rows[0];
-        const finalRole = current.role === 'sindico' || current.role === 'portaria' ? current.role : role;
-        const updated = await pool.query(
-          'UPDATE users SET google_id=$1, name=$2, role=$3, approved=$4, updated_at=NOW() WHERE id=$5 RETURNING *',
-          [profile.id, name, finalRole, current.approved || approved, current.id]
-        );
-        user = updated.rows[0];
-      } else {
-        const created = await pool.query(
-          'INSERT INTO users (google_id, name, email, role, approved) VALUES ($1,$2,$3,$4,$5) RETURNING *',
-          [profile.id, name, email, role, approved]
-        );
-        user = created.rows[0];
-      }
-      return done(null, { id: user.id, name: user.name, email: user.email, role: user.role, apartment: user.apartment, approved: user.approved });
-    } catch (error) { return done(error); }
-  }));
-}
-
-app.use(passport.initialize());
-app.use(passport.session());
-
-function requireAuth(req, res, next) {
-  if (req.isAuthenticated?.() || req.user) return next();
-  return res.status(401).json({ error: 'Não autenticado.' });
-}
-function requireSyndic(req, res, next) {
-  if (req.user?.role === 'sindico') return next();
-  return res.status(403).json({ error: 'Acesso restrito ao síndico.' });
-}
-function requireStaff(req, res, next) {
-  if (['sindico', 'portaria'].includes(req.user?.role)) return next();
-  return res.status(403).json({ error: 'Acesso restrito.' });
-}
-function maybeRequireAuth(req, res, next) {
-  return REQUIRE_AUTH_FOR_STATE ? requireAuth(req, res, next) : next();
-}
-
-app.get('/api/health', async (req, res) => {
-  try {
-    const { rows } = await pool.query('SELECT NOW() AS now');
-    res.json({ ok: true, database: 'connected', now: rows[0].now });
-  } catch (error) {
-    res.status(500).json({ ok: false, database: 'error', error: error.message });
-  }
-});
-
-app.get('/auth/google', (req, res, next) => {
-  if (!process.env.GOOGLE_CLIENT_ID) return res.status(500).send('Google OAuth não configurado no .env.');
-  req.session.requestedRole = req.query.role || 'morador';
-  passport.authenticate('google', { scope: ['profile', 'email'] })(req, res, next);
-});
-
-app.get('/auth/google/callback', passport.authenticate('google', { failureRedirect: '/?login=erro' }), (req, res) => {
-  res.redirect('/?login=google#dashboard');
-});
-
-app.post('/auth/demo', async (req, res) => {
-  const { role = 'morador', name = 'Usuário', email = '', apartment = '' } = req.body || {};
-  const user = {
-    id: `demo-${normalizeEmail(email) || role}`,
-    role: ['morador', 'sindico', 'portaria'].includes(role) ? role : 'morador',
-    name,
-    email: normalizeEmail(email),
-    apartment,
-    approved: true,
-    demo: true,
-  };
-  req.login(user, (error) => {
-    if (error) return res.status(500).json({ error: error.message });
-    res.json({ user });
+app.get('/api/health', (req, res) => {
+  const email = store.notificationConfig?.email || DEFAULT_NOTIFICATION_CONFIG.email;
+  res.json({
+    ok: true,
+    service: 'vitoria-regia-backend-email',
+    timestamp: new Date().toISOString(),
+    dataFile: DATA_FILE,
+    frontendDir: FRONTEND_DIR,
+    email: {
+      enabled: Boolean(email.enabled),
+      user: email.user || null,
+      passwordSaved: Boolean(email.password),
+    },
   });
 });
 
+app.post('/auth/demo', (req, res) => {
+  const requested = req.body || {};
+  const role = allowedRole(requested.email, requested.role || 'morador');
+  const user = {
+    id: requested.id || `user-${Date.now()}`,
+    role,
+    name: requested.name || role,
+    email: requested.email || '',
+    apartment: requested.apartment || '',
+    residentId: requested.residentId || null,
+    demo: true,
+  };
+  req.session.user = user;
+  res.json({ user });
+});
+
 app.post('/auth/logout', (req, res) => {
-  req.logout(() => req.session.destroy(() => res.json({ ok: true })));
+  req.session.destroy(() => res.json({ ok: true }));
 });
 
-app.get('/api/me', (req, res) => res.json({ user: req.user || null }));
+app.get('/api/me', (req, res) => res.json({ user: req.session.user || null }));
 
-app.get('/api/state', maybeRequireAuth, async (req, res) => {
-  const { rows } = await pool.query('SELECT key, value FROM client_state ORDER BY key');
-  const state = {};
-  for (const row of rows) state[row.key] = row.value;
-  res.json({ state });
+app.get('/api/state', (req, res) => {
+  res.json({ ok: true, state: store.state || DEFAULT_STATE });
 });
 
-app.post('/api/state/bulk', maybeRequireAuth, async (req, res) => {
-  const state = req.body?.state || {};
-  const client = await pool.connect();
+app.post('/api/state/bulk', (req, res) => {
+  const incoming = req.body?.state || {};
+  store.state = { ...DEFAULT_STATE, ...incoming };
+  saveStore(store);
+  res.json({ ok: true, state: store.state });
+});
+
+app.post('/api/state/:key', (req, res) => {
+  const key = req.params.key;
+  store.state = { ...DEFAULT_STATE, ...(store.state || {}) };
+  store.state[key] = req.body?.value;
+  saveStore(store);
+  res.json({ ok: true, key, value: store.state[key] });
+});
+
+app.get('/api/integrations/notifications', (req, res) => {
+  store.notificationConfig = deepMerge(DEFAULT_NOTIFICATION_CONFIG, store.notificationConfig || {});
+  saveStore(store);
+  res.json({ ok: true, config: sanitizeConfig(store.notificationConfig) });
+});
+
+app.post('/api/integrations/notifications', (req, res) => {
   try {
-    await client.query('BEGIN');
-    for (const [key, value] of Object.entries(state)) {
-      await client.query(
-        `INSERT INTO client_state (key, value, updated_at)
-         VALUES ($1, $2::jsonb, NOW())
-         ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()`,
-        [key, JSON.stringify(value)]
-      );
-    }
-    await client.query('COMMIT');
-    res.json({ ok: true });
+    const config = saveNotificationConfig(req.body || {});
+    res.json({ ok: true, config: sanitizeConfig(config) });
   } catch (error) {
-    await client.query('ROLLBACK');
-    res.status(500).json({ error: error.message });
-  } finally {
-    client.release();
+    res.status(400).send(error.message);
   }
 });
 
-app.post('/api/state/:key', maybeRequireAuth, async (req, res) => {
-  await pool.query(
-    `INSERT INTO client_state (key, value, updated_at)
-     VALUES ($1, $2::jsonb, NOW())
-     ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()`,
-    [req.params.key, JSON.stringify(req.body?.value ?? null)]
-  );
-  res.json({ ok: true });
-});
-
-app.post('/api/residents/request', async (req, res) => {
-  const { name, email, whatsapp, apartment } = req.body;
-  if (!name || !email || !whatsapp || !apartment) return res.status(400).json({ error: 'Dados obrigatórios ausentes.' });
-  const { rows } = await pool.query(
-    'INSERT INTO residents (name, email, whatsapp, apartment, status) VALUES ($1,$2,$3,$4,$5) RETURNING *',
-    [name, email, whatsapp, apartment, 'pending']
-  );
-  res.status(201).json(rows[0]);
-});
-
-app.get('/api/residents', requireSyndic, async (req, res) => {
-  const { rows } = await pool.query('SELECT * FROM residents ORDER BY created_at DESC');
-  res.json(rows);
-});
-
-app.patch('/api/residents/:id/approve', requireSyndic, async (req, res) => {
-  const { rows } = await pool.query('UPDATE residents SET status=$2, approved_at=NOW() WHERE id=$1 RETURNING *', [req.params.id, 'approved']);
-  res.json(rows[0]);
-});
-
-app.patch('/api/residents/:id/reject', requireSyndic, async (req, res) => {
-  const { rows } = await pool.query('UPDATE residents SET status=$2, rejected_at=NOW() WHERE id=$1 RETURNING *', [req.params.id, 'rejected']);
-  res.json(rows[0]);
-});
-
-app.get('/api/spaces', requireAuth, async (req, res) => {
-  const { rows } = await pool.query('SELECT * FROM spaces WHERE active=true ORDER BY name');
-  res.json(rows);
-});
-
-app.post('/api/spaces', requireSyndic, async (req, res) => {
-  const { name, fee } = req.body;
-  const { rows } = await pool.query('INSERT INTO spaces (name, fee) VALUES ($1,$2) RETURNING *', [name, fee || 0]);
-  res.status(201).json(rows[0]);
-});
-
-app.get('/api/reservations', requireAuth, async (req, res) => {
-  const params = [];
-  let sql = 'SELECT * FROM reservations';
-  if (req.user.role === 'morador') {
-    params.push(req.user.apartment || '');
-    sql += ' WHERE apartment=$1';
-  }
-  sql += ' ORDER BY reservation_date DESC, created_at DESC';
-  const { rows } = await pool.query(sql, params);
-  res.json(rows);
-});
-
-app.post('/api/reservations', requireAuth, upload.single('residentDocument'), async (req, res) => {
-  const body = req.body;
-  const doc = req.file ? { name: req.file.originalname, type: req.file.mimetype, size: req.file.size } : null;
-  const { rows } = await pool.query(
-    `INSERT INTO reservations (space_name, apartment, resident_name, resident_email, resident_whatsapp, reservation_date, period, fee, notes, signed, signed_at, signature_text, resident_document)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW(),$11,$12) RETURNING *`,
-    [body.spaceName, body.apartment, body.residentName, body.residentEmail, body.residentWhatsapp, body.date, body.period, body.fee || 0, body.notes, body.signed === 'true', body.signatureText, doc]
-  );
-  res.status(201).json(rows[0]);
-});
-
-app.patch('/api/reservations/:id/status', requireSyndic, async (req, res) => {
-  const allowed = ['pending', 'approved', 'paid', 'canceled', 'rejected'];
-  if (!allowed.includes(req.body.status)) return res.status(400).json({ error: 'Status inválido.' });
-  const { rows } = await pool.query('UPDATE reservations SET status=$2, updated_at=NOW() WHERE id=$1 RETURNING *', [req.params.id, req.body.status]);
-  res.json(rows[0]);
-});
-
-app.post('/api/reservations/:id/manager-document', requireSyndic, upload.single('document'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'Arquivo não enviado.' });
-  const doc = { name: req.file.originalname, type: req.file.mimetype, size: req.file.size, uploadedAt: new Date().toISOString() };
-  const { rows } = await pool.query('UPDATE reservations SET manager_document=$2, updated_at=NOW() WHERE id=$1 RETURNING *', [req.params.id, doc]);
-  res.json(rows[0]);
-});
-
-app.get('/api/calendar', requireAuth, async (req, res) => {
-  const { rows } = await pool.query("SELECT reservation_date, period, space_name, status, CASE WHEN $1='sindico' THEN apartment ELSE NULL END AS apartment FROM reservations WHERE status NOT IN ('canceled','rejected') ORDER BY reservation_date", [req.user.role]);
-  res.json(rows);
-});
-
-app.post('/api/visitors', requireStaff, async (req, res) => {
-  const { name, document, phone, apartment, type, notes } = req.body;
-  const { rows } = await pool.query('INSERT INTO visitors (name, document, phone, apartment, type, notes) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *', [name, document, phone, apartment, type, notes]);
-  res.status(201).json(rows[0]);
-});
-
-app.post('/api/packages', requireStaff, async (req, res) => {
-  const { apartment, recipient, carrier, code, notes } = req.body;
-  const { rows } = await pool.query('INSERT INTO packages (apartment, recipient, carrier, code, notes) VALUES ($1,$2,$3,$4,$5) RETURNING *', [apartment, recipient, carrier, code, notes]);
-  res.status(201).json(rows[0]);
-});
-
-
-
-app.get('/api/integrations/notifications', requireSyndic, async (req, res) => {
+app.post('/api/integrations/test-email', async (req, res) => {
   try {
-    const config = await getNotificationConfig();
-    res.json({ config: sanitizeNotificationConfig(config) });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post('/api/integrations/notifications', requireSyndic, async (req, res) => {
-  try {
-    const config = await saveNotificationConfig(req.body || {});
-    res.json({ ok: true, config: sanitizeNotificationConfig(config) });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post('/api/integrations/test-email', requireSyndic, async (req, res) => {
-  try {
-    const to = req.body?.to;
-    if (!to) return res.status(400).json({ error: 'Informe o e-mail de teste.' });
     const result = await sendEmailNotification({
-      to,
-      subject: 'Teste de e-mail automático — Vitória Régia',
-      message: 'Este é um teste de envio automático do Sistema Condominial Vitória Régia.',
+      to: req.body?.to || store.notificationConfig?.email?.testTo,
+      subject: 'Teste de e-mail - Condomínio Vitória Régia',
+      message: 'Este é um e-mail automático de teste enviado pelo backend do Sistema Vitória Régia.',
     });
     res.json(result);
   } catch (error) {
-    await logNotification({ channel: 'email', recipient: req.body?.to || '', subject: 'Teste de e-mail automático — Vitória Régia', message: 'Teste de envio automático.', status: 'error', error: error.message });
-    res.status(500).json({ error: error.message });
+    await logNotification({ channel: 'email', recipient: req.body?.to || '', subject: 'Teste de e-mail', message: '', status: 'error', error: error.message });
+    res.status(400).send(error.message);
   }
 });
 
-app.post('/api/integrations/test-whatsapp', requireSyndic, async (req, res) => {
+app.post('/api/integrations/test-whatsapp', async (req, res) => {
   try {
-    const to = req.body?.to;
-    if (!to) return res.status(400).json({ error: 'Informe o WhatsApp de teste.' });
     const result = await sendWhatsAppNotification({
-      to,
-      message: 'Teste de WhatsApp automático do Sistema Condominial Vitória Régia.',
+      to: req.body?.to,
+      message: 'Teste automático do Sistema Vitória Régia.',
     });
     res.json(result);
   } catch (error) {
-    await logNotification({ channel: 'whatsapp', recipient: req.body?.to || '', message: 'Teste de WhatsApp automático.', status: 'error', error: error.message });
-    res.status(500).json({ error: error.message });
+    res.status(400).send(error.message);
   }
 });
 
-app.post('/api/notifications/send', requireStaff, async (req, res) => {
-  const { channels = [], email, whatsapp, subject = 'Condomínio Vitória Régia', message = '' } = req.body || {};
-  if (!message) return res.status(400).json({ error: 'Mensagem obrigatória.' });
-  const wanted = Array.isArray(channels) && channels.length ? channels : ['email', 'whatsapp'];
+app.post('/api/notifications/send', async (req, res) => {
+  const { channels = ['email'], email, whatsapp, subject, message } = req.body || {};
   const results = [];
-  for (const channel of wanted) {
+
+  if (channels.includes('email')) {
     try {
-      if (channel === 'email') {
-        if (!email) throw new Error('E-mail do destinatário não informado.');
-        results.push({ channel, ...(await sendEmailNotification({ to: email, subject, message })) });
-      }
-      if (channel === 'whatsapp') {
-        if (!whatsapp) throw new Error('WhatsApp do destinatário não informado.');
-        results.push({ channel, ...(await sendWhatsAppNotification({ to: whatsapp, message })) });
-      }
+      const result = await sendEmailNotification({ to: email, subject, message });
+      results.push({ channel: 'email', ...result });
     } catch (error) {
-      results.push({ channel, ok: false, error: error.message });
+      await logNotification({ channel: 'email', recipient: email || '', subject, message, status: 'error', error: error.message });
+      results.push({ channel: 'email', ok: false, error: error.message });
     }
   }
+
+  if (channels.includes('whatsapp')) {
+    try {
+      const result = await sendWhatsAppNotification({ to: whatsapp, message });
+      results.push({ channel: 'whatsapp', ...result });
+    } catch (error) {
+      results.push({ channel: 'whatsapp', ok: false, error: error.message });
+    }
+  }
+
   res.json({ ok: results.some((item) => item.ok), results });
 });
 
-app.get('/api/notifications/logs', requireSyndic, async (req, res) => {
-  const { rows } = await pool.query('SELECT * FROM notification_logs ORDER BY created_at DESC LIMIT 50');
-  res.json(rows);
+app.get('/api/notifications/logs', (req, res) => {
+  res.json({ ok: true, logs: store.notificationLogs || [] });
 });
 
-app.use(express.static(FRONTEND_DIR));
-app.get('*', (req, res) => res.sendFile(path.join(FRONTEND_DIR, 'index.html')));
+// Endpoints auxiliares para evitar erro se o front-end chamar módulos futuros.
+app.get('/api/residents', (req, res) => res.json({ rows: store.state?.residents || [] }));
+app.get('/api/reservations', (req, res) => res.json({ rows: store.state?.bookings || [] }));
+app.get('/api/calendar', (req, res) => res.json({ rows: store.state?.bookings || [] }));
+app.get('/api/spaces', (req, res) => res.json({ rows: store.state?.settings?.spaces || [] }));
+app.post('/api/residents/request', (req, res) => res.json({ ok: true, data: req.body || {} }));
+app.post('/api/reservations', (req, res) => res.json({ ok: true, data: req.body || {} }));
+app.post('/api/visitors', (req, res) => res.json({ ok: true, data: req.body || {} }));
+app.post('/api/packages', (req, res) => res.json({ ok: true, data: req.body || {} }));
 
-app.listen(PORT, () => console.log(`Vitória Régia backend em ${APP_URL}`));
+if (fs.existsSync(path.join(FRONTEND_DIR, 'index.html'))) {
+  app.use(express.static(FRONTEND_DIR));
+  app.get('*', (req, res) => res.sendFile(path.join(FRONTEND_DIR, 'index.html')));
+} else {
+  app.get('/', (req, res) => {
+    res.type('html').send(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Vitória Régia Backend</title></head><body><h1>Backend Vitória Régia online</h1><p>API ativa em <code>/api/health</code>.</p></body></html>`);
+  });
+}
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Backend Vitória Régia online na porta ${PORT}`);
+  console.log(`Frontend: ${FRONTEND_DIR}`);
+  console.log(`Data file: ${DATA_FILE}`);
+});
