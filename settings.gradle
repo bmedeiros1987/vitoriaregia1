@@ -5,6 +5,17 @@ pluginManagement {
         gradlePluginPortal()
     }
 }
-dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }
-rootProject.name = 'VitoriaRegiaPortaria'
-include ':app'
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'VitoriaRegiaApps'
+include ':portariaApp'
+project(':portariaApp').projectDir = file('android-portaria/app')
+include ':moradorApp'
+project(':moradorApp').projectDir = file('android-morador/app')

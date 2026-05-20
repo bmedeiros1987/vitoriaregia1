@@ -10,7 +10,6 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -18,6 +17,7 @@ import android.webkit.CookieManager;
 import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.WebChromeClient.FileChooserParams;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -36,7 +36,7 @@ public class MainActivity extends Activity {
     private ValueCallback<Uri[]> filePathCallback;
     private PermissionRequest pendingPermissionRequest;
 
-    private final String baseUrl = "https://vitoriaregia1.onrender.com/#dashboard";
+    private static final String BASE_URL = "https://vitoriaregia1.onrender.com/#dashboard";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -44,7 +44,7 @@ public class MainActivity extends Activity {
         buildLayout();
         setupWebView();
         requestCameraIfNeeded();
-        webView.loadUrl(baseUrl);
+        webView.loadUrl(BASE_URL);
     }
 
     private void buildLayout() {
