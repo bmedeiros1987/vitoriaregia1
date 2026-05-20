@@ -1,38 +1,47 @@
 const mysql = require('mysql2/promise');
 
+function cleanEnvValue(value) {
+  if (value === undefined || value === null) return '';
+  let text = String(value).trim();
+  // Render aceita valores colados manualmente. Se o usuário copiar DATABASE_URL com aspas
+  // do arquivo .env, essas aspas podem virar parte do valor e quebrar o mysql2 com
+  // "Invalid URL". Removemos somente aspas externas equivalentes.
+  if ((text.startsWith('\"') && text.endsWith('\"')) || (text.startsWith("'") && text.endsWith("'"))) {
+    text = text.slice(1, -1).trim();
+  }
+  return text;
+}
+
 function env(name, fallback = '') {
-  const value = process.env[name];
-  if (value === undefined || value === null) return fallback;
-  return String(value).trim().replace(/^['"]|['"]$/g, '');
+  const value = cleanEnvValue(process.env[name]);
+  return value || fallback;
 }
 
 function bool(value, fallback = false) {
-  if (value === undefined || value === null || value === '') return fallback;
-  return ['1', 'true', 'yes', 'sim', 'on', 'required', 'require'].includes(String(value).toLowerCase());
-}
-
-function isMysqlUri(uri) {
-  return /^mysql:\/\//i.test(String(uri || '').trim().replace(/^['"]|['"]$/g, ''));
-}
-
-function hasMysqlParts() {
-  return Boolean(env('MYSQL_HOST') && env('MYSQL_DATABASE') && env('MYSQL_USER'));
+  const text = cleanEnvValue(value);
+  if (!text) return fallback;
+  return ['1', 'true', 'yes', 'sim', 'on', 'required', 'require'].includes(text.toLowerCase());
 }
 
 function getDatabaseProvider() {
   const provider = env('DATABASE_PROVIDER').toLowerCase();
   if (provider) return provider;
-  if (isMysqlUri(env('DATABASE_URL'))) return 'mysql';
-  if (hasMysqlParts()) return 'mysql';
+  if (env('DATABASE_URL').toLowerCase().startsWith('mysql://')) return 'mysql';
+  if (env('MYSQL_HOST') || env('MYSQL_DATABASE') || env('MYSQL_USER')) return 'mysql';
   return 'mysql';
 }
 
 function hasDatabaseConfig() {
-  return Boolean(env('DATABASE_URL') || hasMysqlParts());
+  return Boolean(
+    env('DATABASE_URL') ||
+    env('MYSQL_HOST') ||
+    env('MYSQL_DATABASE') ||
+    env('MYSQL_USER')
+  );
 }
 
 function mysqlSslConfig() {
-  const mode = String(env('MYSQL_SSL_MODE') || env('MYSQL_SSL')).toLowerCase();
+  const mode = env('MYSQL_SSL_MODE', env('MYSQL_SSL')).toLowerCase();
   const useSsl = bool(env('MYSQL_SSL'), false) || ['required', 'require', 'true', 'verify_ca', 'verify_identity'].includes(mode);
   if (!useSsl) return undefined;
   return {
@@ -43,14 +52,14 @@ function mysqlSslConfig() {
 }
 
 function normalizeConnectionUri(uri) {
-  if (!uri) return '';
+  const cleaned = cleanEnvValue(uri);
+  if (!cleaned) return cleaned;
   // mysql2 não entende ssl-mode=REQUIRED em todos os ambientes.
-  return String(uri).trim().replace(/^['"]|['"]$/g, '')
-    .replace('ssl-mode=REQUIRED', 'ssl=true')
-    .replace('ssl-mode=required', 'ssl=true')
-    .replace('sslmode=require', 'ssl=true')
-    .replace('ssl-mode=VERIFY_CA', 'ssl=true')
-    .replace('ssl-mode=VERIFY_IDENTITY', 'ssl=true');
+  return cleaned
+    .replace(/ssl-mode=REQUIRED/ig, 'ssl=true')
+    .replace(/sslmode=require/ig, 'ssl=true')
+    .replace(/ssl-mode=VERIFY_CA/ig, 'ssl=true')
+    .replace(/ssl-mode=VERIFY_IDENTITY/ig, 'ssl=true');
 }
 
 let rawPool = null;
@@ -132,7 +141,7 @@ function wrapConnection(conn) {
 function createRawPool() {
   const common = {
     waitForConnections: true,
-    connectionLimit: Number(env('MYSQL_POOL_MAX', 5)),
+    connectionLimit: Number(env('MYSQL_POOL_MAX', '5') || 5),
     queueLimit: 0,
     connectTimeout: 15000,
     multipleStatements: false,
@@ -143,27 +152,16 @@ function createRawPool() {
   const ssl = mysqlSslConfig();
   const databaseUrl = normalizeConnectionUri(env('DATABASE_URL'));
   if (databaseUrl) {
-    if (!isMysqlUri(databaseUrl)) {
-      if (!hasMysqlParts()) {
-        throw new Error('DATABASE_URL nao e uma URL MySQL valida. Use mysql://... ou configure MYSQL_HOST/MYSQL_DATABASE/MYSQL_USER/MYSQL_PASSWORD.');
-      }
-      console.warn('DATABASE_URL ignorada porque nao e MySQL. Usando variaveis MYSQL_* separadas.');
-    } else {
-      return mysql.createPool({
-        uri: databaseUrl,
-        ...common,
-        ...(ssl ? { ssl } : {}),
-      });
-    }
-  }
-
-  if (!hasMysqlParts()) {
-    throw new Error('Configuracao MySQL incompleta. Informe MYSQL_HOST, MYSQL_DATABASE e MYSQL_USER; para Aiven informe tambem MYSQL_PASSWORD e MYSQL_SSL=true.');
+    return mysql.createPool({
+      uri: databaseUrl,
+      ...common,
+      ...(ssl ? { ssl } : {}),
+    });
   }
 
   return mysql.createPool({
     host: env('MYSQL_HOST'),
-    port: Number(env('MYSQL_PORT', 3306)),
+    port: Number(env('MYSQL_PORT', '3306') || 3306),
     database: env('MYSQL_DATABASE'),
     user: env('MYSQL_USER'),
     password: env('MYSQL_PASSWORD'),

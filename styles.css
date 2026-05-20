@@ -41,6 +41,8 @@ button, input, select, textarea { font: inherit; }
 a { color: inherit; text-decoration: none; }
 img { max-width: 100%; display: block; }
 [hidden] { display: none !important; }
+html.auth-locked [data-app] { display: none !important; }
+html.auth-locked [data-login-screen] { display: grid !important; }
 .is-role-hidden { display: none !important; }
 
 .login-screen {
@@ -1556,4 +1558,32 @@ body.sidebar-collapsed .collapse-btn { transform: rotate(180deg); }
   #encomendas .item-actions {
     grid-template-columns: 1fr !important;
   }
+}
+
+
+/* =========================================================
+   Trava de autenticação reforçada v2.1
+   Mantém o dashboard invisível mesmo quando regras posteriores
+   usam display com !important para corrigir layout.
+   ========================================================= */
+html.auth-locked [data-app],
+html.auth-locked .app,
+body:not(.vr-authenticated) [data-app],
+body:not(.vr-authenticated) .app {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+html.auth-locked [data-login-screen],
+body:not(.vr-authenticated) [data-login-screen] {
+  display: grid !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+
+body.vr-authenticated [data-login-screen] {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
