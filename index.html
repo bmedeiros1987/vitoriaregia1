@@ -172,7 +172,7 @@
         <a href="#dashboard" data-nav data-roles="morador,sindico,portaria" class="is-active"><span>▣</span> Dashboard</a>
         <a href="#aprovacoes" data-nav data-roles="sindico"><span>✅</span> Aprovações</a>
         <a href="#moradores" data-nav data-roles="sindico"><span>🏠</span> Moradores</a>
-        <a href="#equipe" data-nav data-roles="sindico"><span>🧑‍💼</span> Equipe</a>
+        <a href="#equipe" data-nav data-roles="sindico"><span>🧑‍💼</span> Usuários</a>
         <a href="#escala" data-nav data-roles="sindico,portaria" data-schedule-manager><span>🕒</span> Escala</a>
         <a href="#meu-cadastro" data-nav data-roles="morador"><span>👥</span> Meu cadastro</a>
         <a href="#reservas" data-nav data-roles="morador,sindico,portaria"><span>📅</span> Reservas</a>
@@ -184,6 +184,7 @@
         <a href="#visitantes-recorrentes" data-nav data-roles="morador,sindico,portaria"><span>🔁</span> Visitantes recorrentes</a>
         <a href="#encomendas" data-nav data-roles="morador,sindico,portaria"><span>📦</span> Encomendas</a>
         <a href="#atividades-portaria" data-nav data-roles="sindico"><span>🧾</span> Logs da portaria</a>
+        <a href="#arquivos" data-nav data-roles="morador,sindico,portaria"><span>☁️</span> Arquivos</a>
         <a href="#comunicados" data-nav data-roles="morador,sindico,portaria"><span>📣</span> Comunicados</a>
         <a href="#app-android" data-nav data-roles="morador,sindico,portaria"><span>📱</span> App Android</a>
         <a href="#configuracoes" data-nav data-roles="sindico"><span>⚙️</span> Configurações</a>
@@ -277,6 +278,8 @@
             <label><span>E-mail</span><input name="email" type="email" required /></label>
             <label><span>WhatsApp</span><input name="whatsapp" type="tel" required /></label>
             <label><span>CPF/CNPJ do responsável</span><input name="cpfCnpj" inputmode="numeric" placeholder="Obrigatório para boleto Asaas" /></label>
+            <label><span>Foto do morador (nuvem)</span><input name="profilePhoto" type="file" accept="image/*" /></label>
+            <p class="form-hint">A foto será enviada ao storage externo; o MySQL salvará apenas metadados leves e o caminho seguro.</p>
             <div class="form-row">
               <label><span>Apartamento</span><select name="apartment" required data-resident-apartment></select></label>
               <label><span>Vínculo</span><select name="residentType"><option>Proprietário</option><option>Inquilino</option><option>Familiar</option><option>Responsável financeiro</option><option>Outro morador</option></select></label>
@@ -300,17 +303,42 @@
 
       <section id="equipe" class="section" data-section data-roles="sindico">
         <div class="section-head">
-          <div><span class="eyebrow">Exclusivo do síndico</span><h2>Síndico, subsíndico e porteiros</h2><p>Cadastre e mantenha os contatos internos da administração. Esses dados ficam ocultos para moradores e somente o síndico pode alterar.</p></div>
+          <div><span class="eyebrow">Exclusivo do síndico</span><h2>Usuários, administradores e permissões</h2><p>Cadastre síndico, subsíndico, portaria e outros administradores. O síndico pode ser morador também, mas seu login permanece administrativo.</p></div>
         </div>
         <div class="content-grid content-grid--two">
           <form class="panel form-card" data-staff-form autocomplete="off">
-            <div class="panel-header"><div><span class="eyebrow">Equipe</span><h2>Novo cadastro interno</h2></div></div>
+            <div class="panel-header"><div><span class="eyebrow">Usuários</span><h2>Novo usuário interno</h2></div></div>
             <label><span>Nome</span><input name="name" required /></label>
-            <label><span>Perfil</span><select name="role" required><option value="sindico">Síndico</option><option value="subsindico">Subsíndico</option><option value="porteiro">Porteiro</option></select></label>
+            <label><span>Perfil base</span><select name="role" required><option value="sindico">Síndico</option><option value="subsindico">Subsíndico</option><option value="porteiro">Porteiro</option></select></label>
             <label><span>E-mail interno para recebimento</span><input name="email" type="email" placeholder="não será exibido ao morador" /></label>
             <label><span>WhatsApp interno para recebimento</span><input name="whatsapp" type="tel" placeholder="não será exibido ao morador" /></label>
             <label class="checkline checkline--boxed"><input type="checkbox" name="active" checked /><span>Cadastro ativo no sistema</span></label>
+            <label class="checkline checkline--boxed"><input type="checkbox" name="isAdmin" /><span>Conceder acesso de administrador do sistema</span></label>
             <label class="checkline checkline--boxed"><input type="checkbox" name="canManageSchedule" /><span>Autorizar este usuário a alterar/importar escala</span></label>
+            <fieldset class="form-card__fieldset">
+              <legend>Abas permitidas para este usuário</legend>
+              <p class="form-hint">Marque as abas que este perfil poderá acessar. Para o síndico principal, o sistema mantém acesso administrativo completo.</p>
+              <div class="checkbox-grid">
+                <label class="checkline"><input type="checkbox" name="allowedTabs" value="dashboard" checked /><span>Dashboard</span></label>
+                <label class="checkline"><input type="checkbox" name="allowedTabs" value="aprovacoes" checked /><span>Aprovações</span></label>
+                <label class="checkline"><input type="checkbox" name="allowedTabs" value="moradores" checked /><span>Moradores</span></label>
+                <label class="checkline"><input type="checkbox" name="allowedTabs" value="equipe" checked /><span>Usuários</span></label>
+                <label class="checkline"><input type="checkbox" name="allowedTabs" value="escala" checked /><span>Escala</span></label>
+                <label class="checkline"><input type="checkbox" name="allowedTabs" value="reservas" checked /><span>Reservas</span></label>
+                <label class="checkline"><input type="checkbox" name="allowedTabs" value="calendario" checked /><span>Calendário</span></label>
+                <label class="checkline"><input type="checkbox" name="allowedTabs" value="financeiro" checked /><span>Financeiro</span></label>
+                <label class="checkline"><input type="checkbox" name="allowedTabs" value="servicos" checked /><span>Serviços</span></label>
+                <label class="checkline"><input type="checkbox" name="allowedTabs" value="contato" checked /><span>Contato</span></label>
+                <label class="checkline"><input type="checkbox" name="allowedTabs" value="portaria" checked /><span>Portaria</span></label>
+                <label class="checkline"><input type="checkbox" name="allowedTabs" value="visitantes-recorrentes" checked /><span>Visitantes recorrentes</span></label>
+                <label class="checkline"><input type="checkbox" name="allowedTabs" value="encomendas" checked /><span>Encomendas</span></label>
+                <label class="checkline"><input type="checkbox" name="allowedTabs" value="atividades-portaria" checked /><span>Logs da portaria</span></label>
+                <label class="checkline"><input type="checkbox" name="allowedTabs" value="arquivos" checked /><span>Arquivos</span></label>
+                <label class="checkline"><input type="checkbox" name="allowedTabs" value="comunicados" checked /><span>Comunicados</span></label>
+                <label class="checkline"><input type="checkbox" name="allowedTabs" value="app-android" checked /><span>App Android</span></label>
+                <label class="checkline"><input type="checkbox" name="allowedTabs" value="configuracoes" checked /><span>Configurações</span></label>
+              </div>
+            </fieldset>
             <div class="form-row">
               <label><span>Situação</span><select name="status"><option value="disponivel">Disponível</option><option value="afastado">Afastado</option><option value="ausente">Ausente</option><option value="ferias">Férias</option></select></label>
               <label><span>Início da indisponibilidade</span><input name="awayFrom" type="date" /></label>
@@ -322,7 +350,7 @@
             <p class="form-hint" data-staff-message></p>
           </form>
           <article class="panel">
-            <div class="panel-header"><div><span class="eyebrow">Contatos internos</span><h2>Equipe cadastrada</h2></div></div>
+            <div class="panel-header"><div><span class="eyebrow">Usuários internos</span><h2>Usuários cadastrados</h2></div></div>
             <div data-staff-list class="list"></div>
           </article>
         </div>
@@ -381,6 +409,8 @@
             <label><span>E-mail</span><input name="email" type="email" required /></label>
             <label><span>WhatsApp</span><input name="whatsapp" type="tel" required /></label>
             <label><span>CPF/CNPJ do responsável</span><input name="cpfCnpj" inputmode="numeric" /></label>
+            <label><span>Atualizar foto do morador (nuvem)</span><input name="profilePhoto" type="file" accept="image/*" /></label>
+            <p class="form-hint">Opcional. Se enviada, a imagem fica na nuvem e o banco mantém somente os metadados.</p>
             <label><span>Vínculo com a unidade</span><select name="residentType"><option>Proprietário</option><option>Inquilino</option><option>Familiar</option><option>Responsável financeiro</option><option>Outro morador</option></select></label>
             <div class="form-row">
               <label><span>Grau de parentesco / relação</span><select name="relationship"><option>Responsável</option><option>Filho(a)</option><option>Esposo(a)</option><option>Companheiro(a)</option><option>Pai/Mãe</option><option>Irmão(ã)</option><option>Familiar</option><option>Inquilino(a)</option><option>Outro</option></select></label>
@@ -664,6 +694,8 @@ João Souza - CPF ***.000.***-**"></textarea></label>
             <label><span>Destinatário</span><input name="recipient" required /></label>
             <div class="form-row"><label><span>Transportadora</span><input name="carrier" /></label><label><span>Código / rastreio</span><input name="code" /></label></div>
             <div class="form-row"><label><span>Local na portaria</span><input name="storageLocation" placeholder="Ex.: Armário 2, Prateleira B" /></label><label><span>Tipo de volume</span><select name="packageType"><option>Encomenda</option><option>Envelope</option><option>Caixa pequena</option><option>Caixa grande</option><option>Mercado/Delivery</option><option>Documento</option></select></label></div>
+            <label><span>Foto da encomenda / etiqueta (nuvem)</span><input name="packagePhoto" type="file" accept="image/*" capture="environment" /></label>
+            <p class="form-hint">A foto fica no Supabase Storage; o banco salva somente nome, tamanho, tipo e caminho do arquivo.</p>
             <label><span>Observações</span><textarea name="notes" rows="3"></textarea></label>
             <button class="btn btn--primary" type="submit">Registrar encomenda</button>
             <p class="form-hint" data-package-message></p>
@@ -688,6 +720,34 @@ João Souza - CPF ***.000.***-**"></textarea></label>
           </div>
           <div data-activity-logs-list class="list"></div>
         </article>
+      </section>
+
+
+      <section id="arquivos" class="section" data-section data-roles="morador,sindico,portaria">
+        <div class="section-head">
+          <div><span class="eyebrow">Nuvem do condomínio</span><h2>Documentos, fotos e vídeos</h2><p>Envie arquivos para armazenamento externo e mantenha no banco apenas os metadados e o caminho seguro para download.</p></div>
+        </div>
+        <div class="content-grid content-grid--two">
+          <form class="panel form-card" data-cloud-file-form autocomplete="off">
+            <div class="panel-header"><div><span class="eyebrow">Upload</span><h2>Novo arquivo</h2></div></div>
+            <label><span>Título</span><input name="title" required placeholder="Ex.: Ata da assembleia, foto da manutenção, vídeo da portaria" /></label>
+            <div class="form-row">
+              <label><span>Categoria</span><select name="category"><option>Documentos</option><option>Fotos</option><option>Vídeos</option><option>Financeiro</option><option>Manutenção</option><option>Reservas</option><option>Encomendas</option><option>Outros</option></select></label>
+              <label><span>Unidade relacionada</span><select name="apartment" data-cloud-file-apartment></select></label>
+            </div>
+            <div class="form-row">
+              <label><span>Visibilidade</span><select name="visibility"><option value="all">Todos os moradores/portaria</option><option value="unit">Somente unidade relacionada</option><option value="admin">Somente síndico/portaria</option></select></label>
+              <label><span>Arquivo</span><input name="file" type="file" required accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip,.rar" /></label>
+            </div>
+            <label><span>Observações</span><textarea name="notes" rows="3" placeholder="Descrição breve, vencimento, origem ou instrução de uso."></textarea></label>
+            <button class="btn btn--primary" type="submit">Enviar para nuvem</button>
+            <p class="form-hint" data-cloud-file-message>Configure Supabase Storage em Integrações para salvar arquivos reais. Sem storage ativo, o sistema guardará apenas metadados.</p>
+          </form>
+          <article class="panel">
+            <div class="panel-header"><div><span class="eyebrow">Biblioteca</span><h2>Arquivos disponíveis</h2></div><input class="search" data-cloud-file-search placeholder="Buscar por título, categoria, unidade ou nome" /></div>
+            <div data-cloud-files-list class="list"></div>
+          </article>
+        </div>
       </section>
 
       <section id="comunicados" class="section" data-section data-roles="morador,sindico,portaria">
@@ -850,7 +910,15 @@ João Souza - CPF ***.000.***-**"></textarea></label>
               <h3>Armazenamento externo</h3>
               <p class="form-hint">Use para guardar fotos e documentos fora do banco de dados. O banco salvará apenas metadados e caminho externo.</p>
               <label class="checkline"><input type="checkbox" name="storageEnabled" /> <span>Ativar armazenamento externo.</span></label>
-              <label><span>Provedor</span><select name="storageProvider"><option value="terabox">TeraBox Open Platform</option><option value="metadata-only">Somente metadados</option></select></label>
+              <label><span>Provedor</span><select name="storageProvider"><option value="supabase">Supabase Storage gratuito</option><option value="terabox">TeraBox Open Platform</option><option value="metadata-only">Somente metadados</option></select></label>
+              <div class="integration-subcard">
+                <h4>Supabase Storage</h4>
+                <label><span>Project URL</span><input name="supabaseUrl" placeholder="https://seu-projeto.supabase.co" /></label>
+                <label><span>Service Role Key</span><input name="supabaseServiceRoleKey" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter a chave salva" /></label>
+                <div class="form-row"><label><span>Bucket</span><input name="supabaseBucket" placeholder="vitoria-regia" /></label><label><span>Pasta raiz</span><input name="supabaseFolder" placeholder="documentos" /></label></div>
+                <div class="form-row"><label><span>Link temporário por segundos</span><input name="supabaseSignedUrlExpires" type="number" min="60" max="604800" placeholder="3600" /></label><label class="checkline checkline--boxed"><input type="checkbox" name="supabasePublicBucket" /><span>Bucket público</span></label></div>
+                <p class="form-hint">Use bucket privado com Service Role Key apenas no Render. O frontend nunca recebe a chave.</p>
+              </div>
               <div class="integration-subcard">
                 <h4>TeraBox</h4>
                 <label><span>Base URL</span><input name="teraboxBaseUrl" placeholder="https://www.terabox.com" /></label>

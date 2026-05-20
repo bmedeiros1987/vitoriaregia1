@@ -62,6 +62,7 @@ const DEFAULT_STATE = {
   serviceRequests: [],
   contactMessages: [],
   financeRecords: [],
+  cloudFiles: [],
   settings: null,
 };
 
@@ -127,8 +128,16 @@ const DEFAULT_ASAAS_CONFIG = {
 
 const DEFAULT_STORAGE_CONFIG = {
   enabled: String(process.env.STORAGE_ENABLED || process.env.TERABOX_ENABLED || 'false').toLowerCase() === 'true',
-  provider: process.env.STORAGE_PROVIDER || (process.env.TERABOX_ACCESS_TOKEN ? 'terabox' : 'metadata-only'),
+  provider: process.env.STORAGE_PROVIDER || ((process.env.SUPABASE_URL && (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY)) ? 'supabase' : (process.env.TERABOX_ACCESS_TOKEN ? 'terabox' : 'metadata-only')),
   maxUploadMb: Number(process.env.STORAGE_MAX_UPLOAD_MB || process.env.UPLOAD_MAX_MB || 10),
+  supabase: {
+    url: process.env.SUPABASE_URL || '',
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '',
+    bucket: process.env.SUPABASE_STORAGE_BUCKET || 'vitoria-regia',
+    folder: process.env.SUPABASE_STORAGE_FOLDER || 'documentos',
+    publicBucket: String(process.env.SUPABASE_STORAGE_PUBLIC || 'false').toLowerCase() === 'true',
+    signedUrlExpires: Number(process.env.SUPABASE_SIGNED_URL_EXPIRES || 3600),
+  },
   terabox: {
     baseUrl: process.env.TERABOX_BASE_URL || 'https://www.terabox.com',
     uploadBaseUrl: process.env.TERABOX_UPLOAD_BASE_URL || '',
@@ -194,9 +203,14 @@ function normalizeStore(raw = {}) {
 function stripFileDataForStorage(value) {
   if (Array.isArray(value)) return value.map(stripFileDataForStorage);
   if (!value || typeof value !== 'object') return value;
+  const isCloudMetaObject = Boolean(
+    (value.storage || value.provider || value.bucket || value.path) &&
+    (value.name || value.size || value.uploadedAt || value.type)
+  );
   const out = {};
   for (const [key, raw] of Object.entries(value)) {
-    if (key === 'dataUrl') continue;
+    if (key === 'dataUrl' || key === 'base64' || key === 'fileBase64') continue;
+    if (isCloudMetaObject && ['downloadUrl', 'url', 'signedUrl', 'providerResponse', 'rawResponse'].includes(key)) continue;
     if (key === 'photo' && typeof raw === 'string' && raw.startsWith('data:')) {
       out.photo = null;
       out.photoRemovedFromDatabase = true;
@@ -479,7 +493,7 @@ function hasActiveNonBootstrapSindico() {
   const bootstrapEmail = normalizeEmail(BOOTSTRAP_ADMIN_EMAIL);
   return (store.state?.staff || []).some((person) => {
     if (person.active === false) return false;
-    if (!['sindico', 'subsindico'].includes(String(person.role || '').toLowerCase())) return false;
+    if (!staffIsAdministrator(person)) return false;
     const email = normalizeEmail(person.email || '');
     return email && email !== bootstrapEmail;
   });
@@ -610,11 +624,28 @@ async function touchAuthLogin(email) {
   } catch (_) {}
 }
 
-function staffRoleToAppRole(role = '') {
-  const value = String(role || '').toLowerCase();
-  if (['sindico', 'subsindico'].includes(value)) return 'sindico';
-  if (value === 'porteiro') return 'portaria';
+function roleKey(value = '') {
+  return String(value || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function staffIsAdministrator(personOrRole = {}) {
+  const role = roleKey(typeof personOrRole === 'object' ? personOrRole.role : personOrRole);
+  return Boolean(
+    (typeof personOrRole === 'object' && (personOrRole.isAdmin || personOrRole.admin || personOrRole.systemAdmin || personOrRole.accessRole === 'admin')) ||
+    ['sindico', 'subsindico', 'administrador', 'admin'].includes(role)
+  );
+}
+
+function staffRoleToAppRole(personOrRole = '') {
+  if (staffIsAdministrator(personOrRole)) return 'sindico';
+  const value = roleKey(typeof personOrRole === 'object' ? personOrRole.role : personOrRole);
+  if (value === 'porteiro' || value === 'portaria') return 'portaria';
   return 'morador';
+}
+
+function normalizeAllowedTabs(value) {
+  const source = Array.isArray(value) ? value : String(value || '').split(',');
+  return source.map((item) => String(item || '').trim()).filter(Boolean).filter((item, index, arr) => arr.indexOf(item) === index);
 }
 
 function findResidentByEmail(email) {
@@ -622,17 +653,121 @@ function findResidentByEmail(email) {
   return (store.state?.residents || []).find((resident) => normalizeEmail(resident.email || '') === normalized && (resident.status || 'approved') === 'approved') || null;
 }
 
+function findResidentById(id) {
+  const needle = String(id || '').trim();
+  if (!needle) return null;
+  return (store.state?.residents || []).find((resident) => String(resident.id || '').trim() === needle && (resident.status || 'approved') === 'approved') || null;
+}
+
 function findStaffByEmail(email) {
   const normalized = normalizeEmail(email);
   return (store.state?.staff || []).find((person) => normalizeEmail(person.email || '') === normalized && person.active !== false) || null;
 }
 
-function resolveAccountTarget(email, requestedRole = '') {
-  const staff = findStaffByEmail(email);
-  if (staff) return { role: staffRoleToAppRole(staff.role), staff, resident: null, active: staffAvailable(staff) };
-  const resident = findResidentByEmail(email);
-  if (resident) return { role: 'morador', staff: null, resident, active: true };
-  return { role: requestedRole || 'morador', staff: null, resident: null, active: false };
+function findStaffById(id) {
+  const needle = String(id || '').trim();
+  if (!needle) return null;
+  return (store.state?.staff || []).find((person) => String(person.id || '').trim() === needle && person.active !== false) || null;
+}
+
+function resolveAccountTarget(email, requestedRole = '', ids = {}) {
+  const staff = findStaffById(ids.staffId) || findStaffByEmail(email);
+  const resident = findResidentById(ids.residentId) || findResidentByEmail(email);
+  if (staff) return { role: staffRoleToAppRole(staff), staff, resident, active: staffAvailable(staff), allowedTabs: normalizeAllowedTabs(staff.allowedTabs) };
+  if (resident) return { role: 'morador', staff: null, resident, active: true, allowedTabs: [] };
+  return { role: requestedRole || 'morador', staff: null, resident: null, active: false, allowedTabs: [] };
+}
+
+function fallbackTargetFromAdminReset(body = {}, email = '') {
+  const targetType = String(body.targetType || '').trim().toLowerCase();
+  const role = roleKey(body.role || '');
+  const name = String(body.name || '').trim();
+  const apartment = String(body.apartment || '').trim();
+  const residentId = String(body.residentId || '').trim();
+  const staffId = String(body.staffId || '').trim();
+  if (targetType === 'staff' || staffId || ['sindico', 'subsindico', 'administrador', 'admin', 'porteiro', 'portaria'].includes(role)) {
+    if (!name && !email) return null;
+    const staff = {
+      id: staffId || `staff-${crypto.createHash('sha1').update(email || name).digest('hex').slice(0, 10)}`,
+      name: name || email,
+      email,
+      role: body.role || 'Colaborador',
+      active: true,
+      allowedTabs: normalizeAllowedTabs(body.allowedTabs),
+    };
+    return { role: staffRoleToAppRole(staff), staff, resident: null, active: true, allowedTabs: normalizeAllowedTabs(staff.allowedTabs), fallback: true };
+  }
+  if (targetType === 'resident' || residentId || role === 'morador') {
+    if (!email || (!name && !apartment && !residentId)) return null;
+    const resident = {
+      id: residentId || `resident-${crypto.createHash('sha1').update(email).digest('hex').slice(0, 10)}`,
+      name: name || email,
+      email,
+      apartment,
+      whatsapp: body.whatsapp || '',
+      cpfCnpj: body.cpfCnpj || '',
+      status: 'approved',
+    };
+    return { role: 'morador', staff: null, resident, active: true, allowedTabs: [], fallback: true };
+  }
+  return null;
+}
+
+async function ensureAdminResetTargetInState(target = {}, email = '', body = {}) {
+  if (!target || (!target.resident && !target.staff)) return target;
+  const state = store.state || DEFAULT_STATE;
+  if (target.resident) {
+    const current = Array.isArray(state.residents) ? state.residents : [];
+    const residentId = String(target.resident.id || body.residentId || '').trim();
+    const index = current.findIndex((resident) => (residentId && String(resident.id || '').trim() === residentId) || normalizeEmail(resident.email || '') === email);
+    const merged = {
+      ...(index >= 0 ? current[index] : {}),
+      ...target.resident,
+      id: residentId || target.resident.id || `resident-${crypto.createHash('sha1').update(email).digest('hex').slice(0, 10)}`,
+      name: target.resident.name || body.name || email,
+      email,
+      apartment: target.resident.apartment || body.apartment || '',
+      whatsapp: target.resident.whatsapp || body.whatsapp || '',
+      cpfCnpj: target.resident.cpfCnpj || body.cpfCnpj || '',
+      status: 'approved',
+      updatedAt: new Date().toISOString(),
+    };
+    const residents = index >= 0 ? current.map((item, i) => i === index ? merged : item) : [merged, ...current];
+    target.resident = merged;
+    if (databaseReady) {
+      const savedState = await saveStatePatchToDatabase({ residents });
+      store.state = savedState;
+    } else {
+      store.state = { ...state, residents };
+      if (!REQUIRE_DATABASE) await saveStore(store);
+    }
+  }
+  if (target.staff) {
+    const current = Array.isArray(state.staff) ? state.staff : [];
+    const staffId = String(target.staff.id || body.staffId || '').trim();
+    const index = current.findIndex((person) => (staffId && String(person.id || '').trim() === staffId) || normalizeEmail(person.email || '') === email);
+    const merged = {
+      ...(index >= 0 ? current[index] : {}),
+      ...target.staff,
+      id: staffId || target.staff.id || `staff-${crypto.createHash('sha1').update(email).digest('hex').slice(0, 10)}`,
+      name: target.staff.name || body.name || email,
+      email,
+      role: target.staff.role || body.role || 'Colaborador',
+      active: target.staff.active !== false,
+      allowedTabs: normalizeAllowedTabs(target.staff.allowedTabs || body.allowedTabs),
+      updatedAt: new Date().toISOString(),
+    };
+    const staff = index >= 0 ? current.map((item, i) => i === index ? merged : item) : [merged, ...current];
+    target.staff = merged;
+    if (databaseReady) {
+      const savedState = await saveStatePatchToDatabase({ staff });
+      store.state = savedState;
+    } else {
+      store.state = { ...state, staff };
+      if (!REQUIRE_DATABASE) await saveStore(store);
+    }
+  }
+  return target;
 }
 
 async function sendTemporaryPassword(email, temp, name = 'usuário') {
@@ -706,8 +841,8 @@ function buildUserFromGoogleProfile(profile, oauthState) {
   const requestedRole = oauthState?.role || 'morador';
   const email = normalizeEmail(profile.email || '');
   const name = profile.name || profile.given_name || email;
-  const apartment = oauthState?.apartment || '';
-  const role = allowedRole(email, requestedRole);
+  const target = resolveAccountTarget(email, requestedRole);
+  const role = target.role || allowedRole(email, requestedRole);
 
   if (requestedRole === 'sindico' && role !== 'sindico') {
     const error = new Error('E-mail Google não autorizado para acesso de síndico/administração.');
@@ -719,26 +854,24 @@ function buildUserFromGoogleProfile(profile, oauthState) {
     error.statusCode = 403;
     throw error;
   }
-
-  let resident = null;
-  if (role === 'morador' && REQUIRE_APPROVED_RESIDENT) {
-    resident = findApprovedResident({ email, apartment });
-    if (!resident) {
-      const error = new Error('Cadastro de morador não aprovado ou não localizado para este e-mail Google.');
-      error.statusCode = 403;
-      throw error;
-    }
+  if (role === 'morador' && REQUIRE_APPROVED_RESIDENT && !target.resident) {
+    const error = new Error('Cadastro de morador não aprovado ou não localizado para este e-mail Google.');
+    error.statusCode = 403;
+    throw error;
   }
 
-  const staff = activeStaffByEmail(email);
   return {
-    id: resident?.id || staff?.id || `google-${profile.sub || Date.now()}`,
+    id: target.staff?.id || target.resident?.id || `google-${profile.sub || Date.now()}`,
     role,
-    name: resident?.name || staff?.name || name,
-    email: resident?.email || staff?.email || email,
-    apartment: resident?.apartment || apartment || '',
-    residentId: resident?.id || null,
-    staffId: staff?.id || null,
+    name: target.staff?.name || target.resident?.name || name,
+    email: target.staff?.email || target.resident?.email || email,
+    apartment: target.resident?.apartment || oauthState?.apartment || '',
+    residentId: target.resident?.id || null,
+    staffId: target.staff?.id || null,
+    staffRole: target.staff?.role || '',
+    originalRole: target.staff?.role || '',
+    isAdmin: Boolean(target.staff && staffIsAdministrator(target.staff)),
+    allowedTabs: normalizeAllowedTabs(target.staff?.allowedTabs),
     authProvider: 'google',
     googleSub: profile.sub || null,
     picture: profile.picture || null,
@@ -756,16 +889,16 @@ function matchesBootstrapAdmin(email, password) {
 function allowedRole(email, requestedRole) {
   const normalized = normalizeEmail(email);
   const staff = activeStaffByEmail(normalized);
-  const staffRole = String(staff?.role || '').toLowerCase();
+  const staffRole = staffRoleToAppRole(staff || '');
 
   if (requestedRole === 'sindico') {
     if (normalized && adminEmails().includes(normalized)) return 'sindico';
-    if (['sindico', 'subsindico'].includes(staffRole)) return 'sindico';
+    if (staffRole === 'sindico') return 'sindico';
     return 'morador';
   }
   if (requestedRole === 'portaria') {
     if (normalized && (adminEmails().includes(normalized) || portariaEmails().includes(normalized))) return 'portaria';
-    if (staffRole === 'porteiro') return 'portaria';
+    if (staffRole === 'portaria') return 'portaria';
     return 'morador';
   }
   return 'morador';
@@ -786,17 +919,45 @@ function findApprovedResident(requested = {}) {
 }
 
 
+function cleanStorageSecret(value = '') {
+  return cleanIntegrationValue(value).replace(/^Bearer\s+/i, '').trim();
+}
+
+function normalizeSupabaseUrl(value = '') {
+  return cleanIntegrationValue(value).replace(/\/+$/, '');
+}
+
+function boolFromInput(value, fallback = false) {
+  if (value === undefined || value === null || value === '') return Boolean(fallback);
+  return ['true', '1', 'yes', 'sim', 'on'].includes(String(value).toLowerCase());
+}
+
 function effectiveStorageConfig(config) {
   const saved = config || store.storageConfig || {};
   const savedTeraBox = saved.terabox || {};
+  const savedSupabase = saved.supabase || {};
   const envEnabled = String(process.env.STORAGE_ENABLED || process.env.TERABOX_ENABLED || '').toLowerCase() === 'true';
   const accessToken = savedTeraBox.accessToken || process.env.TERABOX_ACCESS_TOKEN || '';
-  const provider = String(saved.provider || process.env.STORAGE_PROVIDER || (accessToken ? 'terabox' : 'metadata-only')).toLowerCase();
+  const supabaseUrl = normalizeSupabaseUrl(savedSupabase.url || process.env.SUPABASE_URL || '');
+  const supabaseServiceRoleKey = cleanStorageSecret(savedSupabase.serviceRoleKey || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '');
+  const supabaseConfigured = Boolean(supabaseUrl && supabaseServiceRoleKey && (savedSupabase.bucket || process.env.SUPABASE_STORAGE_BUCKET || 'vitoria-regia'));
+  const provider = String(process.env.STORAGE_PROVIDER || saved.provider || (supabaseConfigured ? 'supabase' : (accessToken ? 'terabox' : 'metadata-only'))).toLowerCase();
+  const providerConfigured = provider === 'supabase' ? supabaseConfigured : (provider === 'terabox' ? Boolean(accessToken) : false);
   return {
     ...saved,
-    enabled: Boolean(saved.enabled || (envEnabled && provider === 'terabox' && accessToken)),
+    enabled: Boolean(saved.enabled || (envEnabled && providerConfigured)),
     provider,
     maxUploadMb: Number(saved.maxUploadMb || process.env.STORAGE_MAX_UPLOAD_MB || process.env.UPLOAD_MAX_MB || 10),
+    supabase: {
+      ...savedSupabase,
+      url: supabaseUrl,
+      serviceRoleKey: supabaseServiceRoleKey,
+      serviceRoleKeySource: savedSupabase.serviceRoleKey ? 'saved' : ((process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY) ? 'env' : 'none'),
+      bucket: savedSupabase.bucket || process.env.SUPABASE_STORAGE_BUCKET || 'vitoria-regia',
+      folder: savedSupabase.folder || process.env.SUPABASE_STORAGE_FOLDER || 'documentos',
+      publicBucket: boolFromInput(savedSupabase.publicBucket, String(process.env.SUPABASE_STORAGE_PUBLIC || 'false').toLowerCase() === 'true'),
+      signedUrlExpires: Number(savedSupabase.signedUrlExpires || process.env.SUPABASE_SIGNED_URL_EXPIRES || 3600),
+    },
     terabox: {
       ...savedTeraBox,
       baseUrl: savedTeraBox.baseUrl || process.env.TERABOX_BASE_URL || 'https://www.terabox.com',
@@ -813,8 +974,15 @@ function effectiveStorageConfig(config) {
 function sanitizeStorageConfig(config) {
   const effective = effectiveStorageConfig(config || {});
   const terabox = effective.terabox || {};
+  const supabase = effective.supabase || {};
   return {
     ...effective,
+    supabase: {
+      ...supabase,
+      serviceRoleKey: '',
+      serviceRoleKeySaved: Boolean(supabase.serviceRoleKey),
+      serviceRoleKeySource: supabase.serviceRoleKeySource || 'none',
+    },
     terabox: {
       ...terabox,
       accessToken: '',
@@ -828,7 +996,12 @@ function storageDiagnostics(config) {
   const effective = effectiveStorageConfig(config || store.storageConfig || {});
   const problems = [];
   if (!effective.enabled) problems.push('Armazenamento externo desativado.');
-  if (effective.provider !== 'terabox') problems.push('Provedor diferente de TeraBox.');
+  if (!['supabase', 'terabox', 'metadata-only'].includes(effective.provider)) problems.push(`Provedor desconhecido: ${effective.provider}.`);
+  if (effective.provider === 'supabase') {
+    if (!effective.supabase?.url) problems.push('SUPABASE_URL ausente.');
+    if (!effective.supabase?.serviceRoleKey) problems.push('SUPABASE_SERVICE_ROLE_KEY ausente.');
+    if (!effective.supabase?.bucket) problems.push('SUPABASE_STORAGE_BUCKET ausente.');
+  }
   if (effective.provider === 'terabox') {
     if (!effective.terabox?.accessToken) problems.push('TERABOX_ACCESS_TOKEN ausente.');
     if (!effective.terabox?.baseUrl) problems.push('TERABOX_BASE_URL ausente.');
@@ -840,11 +1013,21 @@ function storageDiagnostics(config) {
 async function saveStorageConfig(input = {}) {
   const current = store.storageConfig || DEFAULT_STORAGE_CONFIG;
   const currentTeraBox = current.terabox || {};
+  const currentSupabase = current.supabase || {};
   const nextTeraBox = input.terabox || {};
+  const nextSupabase = input.supabase || {};
   const config = deepMerge(current, {
     enabled: Boolean(input.enabled),
-    provider: input.provider || current.provider || 'terabox',
+    provider: input.provider || current.provider || 'supabase',
     maxUploadMb: Number(input.maxUploadMb || current.maxUploadMb || 10),
+    supabase: {
+      url: normalizeSupabaseUrl(nextSupabase.url || currentSupabase.url || ''),
+      serviceRoleKey: nextSupabase.serviceRoleKey ? cleanStorageSecret(nextSupabase.serviceRoleKey) : (currentSupabase.serviceRoleKey || ''),
+      bucket: nextSupabase.bucket || currentSupabase.bucket || 'vitoria-regia',
+      folder: nextSupabase.folder || currentSupabase.folder || 'documentos',
+      publicBucket: boolFromInput(nextSupabase.publicBucket, currentSupabase.publicBucket),
+      signedUrlExpires: Number(nextSupabase.signedUrlExpires || currentSupabase.signedUrlExpires || 3600),
+    },
     terabox: {
       baseUrl: nextTeraBox.baseUrl || currentTeraBox.baseUrl || 'https://www.terabox.com',
       uploadBaseUrl: nextTeraBox.uploadBaseUrl || currentTeraBox.uploadBaseUrl || '',
@@ -896,6 +1079,90 @@ async function teraboxApiForm(url, body) {
     throw new Error(payload.errmsg || payload.error_msg || payload.message || `Erro TeraBox HTTP ${response.status}`);
   }
   return payload;
+}
+
+
+function normalizeStorageFolder(folder = 'documentos') {
+  let value = String(folder || 'documentos').trim().replace(/\\/g, '/');
+  value = value.replace(/^\/+/, '').replace(/\/+$/, '').replace(/\/+/g, '/');
+  return value || 'documentos';
+}
+
+function encodeStoragePath(value = '') {
+  return String(value || '').split('/').filter(Boolean).map(encodeURIComponent).join('/');
+}
+
+function supabaseObjectBaseUrl(config) {
+  return `${normalizeSupabaseUrl(config.supabase.url)}/storage/v1/object`;
+}
+
+async function createSupabaseDownloadUrl({ path: objectPath, bucket }) {
+  const config = effectiveStorageConfig(store.storageConfig || {});
+  const sb = config.supabase || {};
+  const finalBucket = bucket || sb.bucket;
+  if (!sb.url || !sb.serviceRoleKey || !finalBucket || !objectPath) throw new Error('Supabase Storage incompleto para gerar download.');
+  const encodedPath = encodeStoragePath(objectPath);
+  const base = supabaseObjectBaseUrl(config);
+  if (sb.publicBucket) return `${base}/public/${encodeURIComponent(finalBucket)}/${encodedPath}`;
+
+  const expiresIn = Number(sb.signedUrlExpires || 3600);
+  const response = await fetch(`${base}/sign/${encodeURIComponent(finalBucket)}/${encodedPath}`, {
+    method: 'POST',
+    headers: {
+      apikey: sb.serviceRoleKey,
+      Authorization: `Bearer ${sb.serviceRoleKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ expiresIn }),
+  });
+  const raw = await response.text().catch(() => '');
+  const payload = parseProviderPayload(raw);
+  if (!response.ok || payload.error) throw new Error(payload.error || payload.message || `Erro Supabase signed URL HTTP ${response.status}`);
+  const signed = payload.signedURL || payload.signedUrl || payload.url;
+  if (!signed) throw new Error('Supabase não retornou signedURL.');
+  return String(signed).startsWith('http') ? signed : `${normalizeSupabaseUrl(sb.url)}${signed}`;
+}
+
+async function uploadToSupabase({ filename, contentType, buffer, purpose = 'arquivos' }) {
+  const config = effectiveStorageConfig(store.storageConfig || {});
+  const sb = config.supabase || {};
+  if (!config.enabled || config.provider !== 'supabase') throw new Error('Supabase Storage desativado.');
+  if (!sb.url || !sb.serviceRoleKey || !sb.bucket) throw new Error('SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY e SUPABASE_STORAGE_BUCKET são obrigatórios.');
+
+  const month = new Date().toISOString().slice(0, 7);
+  const safePurpose = normalizeStorageFolder(purpose || 'arquivos').replace(/\.+/g, '-');
+  const folder = normalizeStorageFolder(sb.folder || 'documentos');
+  const remotePath = `${folder}/${safePurpose}/${month}/${Date.now()}-${safeCloudFileName(filename)}`.replace(/\/+/g, '/');
+  const endpoint = `${supabaseObjectBaseUrl(config)}/${encodeURIComponent(sb.bucket)}/${encodeStoragePath(remotePath)}`;
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      apikey: sb.serviceRoleKey,
+      Authorization: `Bearer ${sb.serviceRoleKey}`,
+      'Content-Type': contentType || 'application/octet-stream',
+      'x-upsert': 'false',
+    },
+    body: buffer,
+  });
+  const raw = await response.text().catch(() => '');
+  const payload = parseProviderPayload(raw);
+  if (!response.ok || payload.error) throw new Error(payload.error || payload.message || `Erro Supabase upload HTTP ${response.status}`);
+  const downloadUrl = await createSupabaseDownloadUrl({ path: remotePath, bucket: sb.bucket }).catch((error) => null);
+  return {
+    storage: 'supabase',
+    provider: 'supabase',
+    name: filename,
+    type: contentType,
+    size: buffer.length,
+    bucket: sb.bucket,
+    path: remotePath,
+    downloadUrl,
+    url: downloadUrl,
+    signedUrlExpires: sb.publicBucket ? null : Number(sb.signedUrlExpires || 3600),
+    uploadedAt: new Date().toISOString(),
+    note: sb.publicBucket ? 'Arquivo enviado para bucket público do Supabase Storage.' : 'Arquivo enviado para bucket privado do Supabase Storage; links de download são assinados e temporários.',
+    providerResponse: { key: payload.Key || payload.key || null, id: payload.Id || payload.id || null },
+  };
 }
 
 async function uploadToTeraBox({ filename, contentType, buffer, purpose = 'arquivos' }) {
@@ -1745,8 +2012,8 @@ async function sendWhatsAppNotification({ to, message }) {
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: true, credentials: true }));
 app.use(morgan('tiny'));
-app.use(express.json({ limit: process.env.JSON_LIMIT || '12mb' }));
-app.use(express.urlencoded({ extended: true, limit: process.env.JSON_LIMIT || '12mb' }));
+app.use(express.json({ limit: process.env.JSON_LIMIT || '80mb' }));
+app.use(express.urlencoded({ extended: true, limit: process.env.JSON_LIMIT || '80mb' }));
 app.use(session({
   secret: process.env.SESSION_SECRET || 'troque-esta-chave-em-producao',
   resave: false,
@@ -1850,13 +2117,20 @@ function requireDatabaseReady(req, res, next) {
 }
 
 function isSyndicOrSubsyndicSession(user = {}) {
-  const role = String(user.role || '').trim().toLowerCase();
-  const staffRole = String(user.staffRole || user.originalRole || '').trim().toLowerCase();
-  if (['sindico', 'subsindico'].includes(role)) return true;
-  if (['sindico', 'subsindico'].includes(staffRole)) return true;
+  const role = roleKey(user.role || '');
+  const staffRole = roleKey(user.staffRole || user.originalRole || '');
+  if (role === 'sindico') return true;
+  if (['sindico', 'subsindico', 'administrador', 'admin'].includes(staffRole)) return true;
+  if (user.isAdmin || user.systemAdmin) return true;
   const staff = user.email ? findStaffByEmail(user.email) : null;
-  const storedStaffRole = String(staff?.role || '').trim().toLowerCase();
-  return Boolean(staff && staffAvailable(staff) && ['sindico', 'subsindico'].includes(storedStaffRole));
+  return Boolean(staff && staffAvailable(staff) && staffIsAdministrator(staff));
+}
+
+function requireAuthenticatedUser(req, res, next) {
+  if (!req.session?.user?.role) {
+    return res.status(401).json({ ok: false, error: 'Faça login para acessar arquivos.' });
+  }
+  return next();
 }
 
 function requireSyndicUser(req, res, next) {
@@ -1916,6 +2190,9 @@ async function handleLogin(req, res) {
       residentId: null,
       staffId: null,
       staffRole: 'sindico',
+      originalRole: 'sindico',
+      isAdmin: true,
+      allowedTabs: [],
       bootstrap: true,
       demo: false,
     };
@@ -1939,14 +2216,17 @@ async function handleLogin(req, res) {
   if (target.staff && !staffAvailable(target.staff)) return res.status(403).send('Usuário de equipe indisponível, afastado, ausente ou de férias. O acesso/mensagens estão bloqueados enquanto durar a indisponibilidade.');
 
   const user = {
-    id: target.resident?.id || target.staff?.id || `user-${Date.now()}`,
+    id: target.staff?.id || target.resident?.id || `user-${Date.now()}`,
     role,
-    name: target.resident?.name || target.staff?.name || requested.name || email,
+    name: target.staff?.name || target.resident?.name || requested.name || email,
     email,
     apartment: target.resident?.apartment || '',
     residentId: target.resident?.id || account.residentId || null,
     staffId: target.staff?.id || account.staffId || null,
     staffRole: target.staff?.role || '',
+    originalRole: target.staff?.role || '',
+    isAdmin: Boolean(target.staff && staffIsAdministrator(target.staff)),
+    allowedTabs: normalizeAllowedTabs(target.staff?.allowedTabs),
     mustChangePassword: Boolean(account.mustChangePassword),
     bootstrap: false,
     demo: false,
@@ -2004,23 +2284,27 @@ app.post('/auth/accounts/approve-resident', requireDatabaseReady, requireSyndicU
     const apartment = String(req.body?.apartment || '').trim();
     if (!email || !residentId) return res.status(400).send('E-mail e ID do morador são obrigatórios.');
     const account = await authAccountByEmail(email);
+    const staff = findStaffByEmail(email);
+    const finalRole = staff ? staffRoleToAppRole(staff) : (account?.role || 'morador');
+    const finalStaffId = staff?.id || account?.staffId || null;
     if (account) {
       if (!databaseReady) {
         await upsertAuthAccount({
           email,
-          role: 'morador',
+          role: finalRole,
           residentId,
+          staffId: finalStaffId,
           passwordHash: account.passwordHash,
           active: true,
           mustChangePassword: Boolean(account.mustChangePassword),
-          metadata: { ...(account.metadata || {}), residentId, apartment, approvedAt: new Date().toISOString() },
+          metadata: { ...(account.metadata || {}), residentId, staffId: finalStaffId, apartment, approvedAt: new Date().toISOString(), preservedAdmin: Boolean(staff && staffIsAdministrator(staff)) },
         });
       } else {
-        await query(`update auth_accounts set role='morador', resident_id=?, active=true, updated_at=now(), metadata=json_set(coalesce(metadata, json_object()), '$.apartment', ?) where email=?`, [residentId, apartment, email]);
+        await query(`update auth_accounts set role=?, resident_id=?, staff_id=?, active=true, updated_at=now(), metadata=json_set(coalesce(metadata, json_object()), '$.apartment', ?, '$.residentId', ?, '$.staffId', ?) where email=?`, [finalRole, residentId, finalStaffId, apartment, residentId, finalStaffId, email]);
       }
     } else {
       const temp = temporaryPassword();
-      await upsertAuthAccount({ email, role: 'morador', residentId, password: temp, active: true, mustChangePassword: true, metadata: { residentId, apartment, source: 'admin-approval-temp' } });
+      await upsertAuthAccount({ email, role: finalRole, residentId, staffId: finalStaffId, password: temp, active: true, mustChangePassword: true, metadata: { residentId, staffId: finalStaffId, apartment, source: staff ? 'admin-resident-approval-temp' : 'admin-approval-temp' } });
       const resident = findResidentByEmail(email) || { name: req.body?.name || 'morador' };
       try { await sendTemporaryPassword(email, temp, resident.name); } catch (error) { console.warn('Não foi possível enviar senha temporária:', error.message); }
     }
@@ -2030,10 +2314,17 @@ app.post('/auth/accounts/approve-resident', requireDatabaseReady, requireSyndicU
 
 app.post('/auth/password/admin-reset', requireDatabaseReady, requireSyndicUser, async (req, res) => {
   try {
+    if (databaseReady) store = await loadStoreFromDatabase();
     const email = normalizeEmail(req.body?.email || '');
     if (!email) return res.status(400).send('Informe o e-mail do usuário.');
-    const target = resolveAccountTarget(email, req.body?.role || '');
-    if (!target.resident && !target.staff) return res.status(404).send('Usuário não encontrado em moradores aprovados ou equipe ativa.');
+    let target = resolveAccountTarget(email, req.body?.role || '', { residentId: req.body?.residentId, staffId: req.body?.staffId });
+    if (!target.resident && !target.staff) {
+      target = fallbackTargetFromAdminReset(req.body || {}, email) || target;
+    }
+    if (!target.resident && !target.staff) {
+      return res.status(404).send('Usuário não encontrado em moradores aprovados ou equipe ativa. Confira se o cadastro possui e-mail e se já foi salvo no banco.');
+    }
+    target = await ensureAdminResetTargetInState(target, email, req.body || {});
     const role = target.role;
     const temp = temporaryPassword();
     await upsertAuthAccount({
@@ -2044,12 +2335,18 @@ app.post('/auth/password/admin-reset', requireDatabaseReady, requireSyndicUser, 
       password: temp,
       active: true,
       mustChangePassword: true,
-      metadata: { source: 'admin-reset', resetBy: req.session.user?.email || '', at: new Date().toISOString() },
+      metadata: {
+        source: target.fallback ? 'admin-reset-direct-target' : 'admin-reset',
+        resetBy: req.session.user?.email || '',
+        at: new Date().toISOString(),
+        targetName: target.resident?.name || target.staff?.name || '',
+        apartment: target.resident?.apartment || '',
+      },
     });
     let emailSent = false, emailError = '';
     try { await sendTemporaryPassword(email, temp, target.resident?.name || target.staff?.name || 'usuário'); emailSent = true; }
     catch (error) { emailError = error.message; }
-    res.json({ ok: true, email, role, temporaryPassword: temp, emailSent, emailError });
+    res.json({ ok: true, email, role, temporaryPassword: temp, emailSent, emailError, fallback: Boolean(target.fallback) });
   } catch (error) { res.status(400).send(error.message); }
 });
 
@@ -2198,7 +2495,7 @@ app.post('/api/integrations/storage', requireDatabaseReady, requireSyndicUser, a
   }
 });
 
-app.post('/api/storage/upload', requireDatabaseReady, async (req, res) => {
+app.post('/api/storage/upload', requireDatabaseReady, requireAuthenticatedUser, async (req, res) => {
   try {
     const config = effectiveStorageConfig(store.storageConfig || {});
     const { filename, dataUrl, purpose, entityId } = req.body || {};
@@ -2207,7 +2504,9 @@ app.post('/api/storage/upload', requireDatabaseReady, async (req, res) => {
     const limit = Number(config.maxUploadMb || 10) * 1024 * 1024;
     if (parsed.buffer.length > limit) throw new Error(`Arquivo maior que o limite de ${config.maxUploadMb || 10} MB.`);
     let result;
-    if (config.provider === 'terabox') {
+    if (config.provider === 'supabase') {
+      result = await uploadToSupabase({ filename, contentType: parsed.contentType, buffer: parsed.buffer, purpose });
+    } else if (config.provider === 'terabox') {
       result = await uploadToTeraBox({ filename, contentType: parsed.contentType, buffer: parsed.buffer, purpose });
     } else {
       result = { storage: 'metadata-only', name: filename, type: parsed.contentType, size: parsed.buffer.length, uploadedAt: new Date().toISOString(), note: 'Armazenamento externo desativado; arquivo não foi salvo.' };
@@ -2220,6 +2519,20 @@ app.post('/api/storage/upload', requireDatabaseReady, async (req, res) => {
       details: { purpose, storage: result.storage, path: result.path, size: result.size },
     }, req.session?.user || {});
     res.json({ ok: true, file: result });
+  } catch (error) {
+    res.status(400).send(error.message);
+  }
+});
+
+
+app.get('/api/storage/download', requireDatabaseReady, requireAuthenticatedUser, async (req, res) => {
+  try {
+    const objectPath = req.query.path || req.query.objectPath;
+    const bucket = req.query.bucket || undefined;
+    if (!objectPath) return res.status(400).send('Informe path do arquivo.');
+    const url = await createSupabaseDownloadUrl({ path: objectPath, bucket });
+    if (String(req.query.json || '') === '1') return res.json({ ok: true, url });
+    return res.redirect(url);
   } catch (error) {
     res.status(400).send(error.message);
   }

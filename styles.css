@@ -1587,3 +1587,21 @@ body.vr-authenticated [data-login-screen] {
   visibility: hidden !important;
   pointer-events: none !important;
 }
+
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.form-card__fieldset {
+  border: 1px solid rgba(45, 66, 48, 0.16);
+  border-radius: 16px;
+  padding: 14px;
+  margin: 8px 0;
+}
+.form-card__fieldset legend {
+  padding: 0 6px;
+  font-weight: 800;
+  color: var(--green-dark);
+}

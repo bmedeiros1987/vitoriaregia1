@@ -15,6 +15,7 @@ const keys = {
   serviceRequests: `${STORE_PREFIX}serviceRequests`,
   contactMessages: `${STORE_PREFIX}contactMessages`,
   financeRecords: `${STORE_PREFIX}financeRecords`,
+  cloudFiles: `${STORE_PREFIX}cloudFiles`,
   settings: `${STORE_PREFIX}settings`,
 };
 
@@ -112,6 +113,84 @@ const roles = {
   portaria: { label: 'Portaria', title: 'Painel da Portaria' },
 };
 
+const ADMIN_STAFF_ROLES = new Set(['sindico', 'subsindico', 'administrador', 'admin']);
+const ALWAYS_ALLOWED_TABS = new Set(['dashboard']);
+const TAB_LABELS = {
+  dashboard: 'Dashboard',
+  aprovacoes: 'Aprovações',
+  moradores: 'Moradores',
+  equipe: 'Usuários',
+  escala: 'Escala',
+  'meu-cadastro': 'Meu cadastro',
+  reservas: 'Reservas',
+  calendario: 'Calendário',
+  financeiro: 'Financeiro',
+  servicos: 'Serviços',
+  contato: 'Contato',
+  portaria: 'Portaria',
+  'visitantes-recorrentes': 'Visitantes recorrentes',
+  encomendas: 'Encomendas',
+  'atividades-portaria': 'Logs da portaria',
+  arquivos: 'Arquivos',
+  comunicados: 'Comunicados',
+  'app-android': 'App Android',
+  configuracoes: 'Configurações',
+};
+
+function roleKey(value = '') {
+  return String(value || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+function staffIsAdministrator(person = {}) {
+  const role = roleKey(person?.role || person);
+  return Boolean(person?.isAdmin || person?.admin || person?.systemAdmin || person?.accessRole === 'admin' || ADMIN_STAFF_ROLES.has(role));
+}
+function staffAppRole(person = {}) {
+  if (staffIsAdministrator(person)) return 'sindico';
+  const role = roleKey(person?.role || person);
+  if (role === 'porteiro' || role === 'portaria') return 'portaria';
+  return 'morador';
+}
+function normalizeAllowedTabs(value) {
+  const source = Array.isArray(value) ? value : String(value || '').split(',');
+  return source.map((item) => String(item || '').trim()).filter(Boolean).filter((item, index, arr) => arr.indexOf(item) === index);
+}
+function tabIdFromElement(el) {
+  if (!el) return '';
+  if (el.dataset?.tabId) return el.dataset.tabId;
+  const href = el.getAttribute?.('href') || '';
+  if (href.startsWith('#')) return href.slice(1);
+  if (el.id) return el.id;
+  return '';
+}
+function currentStaffAllowedTabs() {
+  if (!session?.role || session.bootstrap) return null;
+  const person = currentStaffRecord();
+  // O síndico principal mantém acesso completo para não se bloquear acidentalmente.
+  // Permissões por abas se aplicam a subsíndicos, porteiros e administradores delegados.
+  if (roleKey(person?.role) === 'sindico') return null;
+  const source = person?.allowedTabs ?? session.allowedTabs;
+  const tabs = normalizeAllowedTabs(source);
+  return tabs.length ? new Set([...tabs, ...ALWAYS_ALLOWED_TABS]) : null;
+}
+function tabAllowed(tabId = '') {
+  if (!tabId) return true;
+  const allowedTabs = currentStaffAllowedTabs();
+  if (!allowedTabs) return true;
+  return allowedTabs.has(tabId);
+}
+function elementAllowed(el) {
+  if (!el) return true;
+  return roleAllowed(el.dataset?.roles || '', tabIdFromElement(el));
+}
+function sectionAllowed(section) {
+  return Boolean(section && roleAllowed(section.dataset?.roles || '', section.id) && (!section.hasAttribute('data-schedule-manager') || canManageSchedule()));
+}
+function allowedTabsLabel(tabs = []) {
+  const list = normalizeAllowedTabs(tabs);
+  if (!list.length) return 'Padrão do perfil';
+  return list.map((id) => TAB_LABELS[id] || id).join(', ');
+}
+
 const defaultSettings = {
   condominiumName: 'Condomínio Vitória Régia',
   payee: 'Condomínio Vitória Régia\nInforme CNPJ, banco, agência e conta nas configurações.',
@@ -205,6 +284,14 @@ function clearAppLocalCache() {
   Object.values(keys).forEach((key) => localStorage.removeItem(key));
   localStorage.removeItem(`${STORE_PREFIX}seeded`);
 }
+async function flushBackendStateWrites() {
+  try {
+    await stateWriteQueue;
+  } catch (error) {
+    console.warn('Ainda há dados locais sem confirmação no banco:', error.message);
+  }
+}
+
 function write(key, value) {
   if (REQUIRE_BACKEND && !backendAvailable && !suppressBackendSync) {
     showBackendRequiredBanner();
@@ -334,8 +421,16 @@ async function saveStorageConfigFromForm(form) {
   const data = formDataOf(form, '[data-notification-settings-form]');
   const payload = {
     enabled: Boolean(data.get('storageEnabled')),
-    provider: data.get('storageProvider') || 'terabox',
+    provider: data.get('storageProvider') || 'supabase',
     maxUploadMb: Number(data.get('storageMaxUploadMb') || 10),
+    supabase: {
+      url: data.get('supabaseUrl')?.trim() || '',
+      serviceRoleKey: data.get('supabaseServiceRoleKey') || '',
+      bucket: data.get('supabaseBucket')?.trim() || 'vitoria-regia',
+      folder: data.get('supabaseFolder')?.trim() || 'documentos',
+      publicBucket: Boolean(data.get('supabasePublicBucket')),
+      signedUrlExpires: Number(data.get('supabaseSignedUrlExpires') || 3600),
+    },
     terabox: {
       baseUrl: data.get('teraboxBaseUrl')?.trim() || 'https://www.terabox.com',
       uploadBaseUrl: data.get('teraboxUploadBaseUrl')?.trim() || '',
@@ -483,7 +578,7 @@ function mergeLocalCacheWithBackendState(backendState = {}) {
   const mergeKeys = [
     'pendingResidents', 'residents', 'bookings', 'packages', 'packageLabelMemory', 'visitors',
     'recurringVisitors', 'notices', 'staff', 'staffSchedules', 'services', 'serviceRequests',
-    'contactMessages', 'financeRecords',
+    'contactMessages', 'financeRecords', 'cloudFiles',
   ];
   let recovered = false;
   for (const name of mergeKeys) {
@@ -663,6 +758,8 @@ function getContactMessages() { return read(keys.contactMessages, []); }
 function saveContactMessages(value) { write(keys.contactMessages, value); }
 function getFinanceRecords() { return read(keys.financeRecords, []); }
 function saveFinanceRecords(value) { write(keys.financeRecords, value); }
+function getCloudFiles() { return read(keys.cloudFiles, []); }
+function saveCloudFiles(value) { write(keys.cloudFiles, value); }
 
 function seedDemo() {
   // Modo demo removido. O sistema operacional não popula dados fictícios.
@@ -672,7 +769,7 @@ function seedDemo() {
 
 function fillApartmentSelects() {
   const html = apartments().map((apt) => `<option value="${apt}">${apt}</option>`).join('');
-  $$('[data-login-apartment], [data-signup-apartment], [data-resident-apartment], [data-booking-apartment], [data-visitor-apartment], [data-package-apartment], [data-recurring-visitor-apartment]').forEach((select) => {
+  $$('[data-login-apartment], [data-signup-apartment], [data-resident-apartment], [data-booking-apartment], [data-visitor-apartment], [data-package-apartment], [data-recurring-visitor-apartment], [data-cloud-file-apartment]').forEach((select) => {
     select.innerHTML = html;
   });
   $$('[data-recurring-unit-filter]').forEach((select) => {
@@ -698,9 +795,10 @@ function fillSpaceSelects() {
 }
 
 function currentRole() { return session?.role || 'morador'; }
-function roleAllowed(rolesCsv) {
-  if (!rolesCsv) return true;
-  return rolesCsv.split(',').map((item) => item.trim()).includes(currentRole());
+function roleAllowed(rolesCsv, tabId = '') {
+  const rolesList = String(rolesCsv || '').split(',').map((item) => item.trim()).filter(Boolean);
+  const baseAllowed = !rolesList.length || rolesList.includes(currentRole());
+  return baseAllowed && tabAllowed(tabId);
 }
 
 function currentStaffRecord() {
@@ -798,14 +896,14 @@ function isSyndic() {
 function isResident() { return currentRole() === 'morador'; }
 
 function applyPermissions() {
-  $$('[data-roles]').forEach((el) => el.classList.toggle('is-role-hidden', !roleAllowed(el.dataset.roles)));
+  $$('[data-roles]').forEach((el) => el.classList.toggle('is-role-hidden', !elementAllowed(el)));
   $$('[data-schedule-manager]').forEach((el) => el.classList.toggle('is-role-hidden', !canManageSchedule()));
   const profileName = $('[data-profile-name]');
   const profileUnit = $('[data-profile-unit]');
-  if (profileName) profileName.textContent = session ? `${roles[currentRole()].label}` : 'Não autenticado';
+  if (profileName) profileName.textContent = session ? `${roles[currentRole()]?.label || 'Usuário'}` : 'Não autenticado';
   if (profileUnit) profileUnit.textContent = session?.apartment ? `Unidade ${session.apartment} • ${session.name || ''}` : (session?.name || 'Acesso administrativo');
   const title = $('[data-page-title]');
-  if (title) title.textContent = roles[currentRole()].title;
+  if (title) title.textContent = roles[currentRole()]?.title || 'Sistema';
   const heroTitle = $('[data-hero-title]');
   const heroText = $('[data-hero-text]');
   if (heroTitle) heroTitle.textContent = currentRole() === 'portaria' ? 'Portaria inteligente e integrada.' : currentRole() === 'sindico' ? 'Painel completo de gestão do síndico.' : 'Área do morador simples e segura.';
@@ -1025,8 +1123,8 @@ function updateActiveSection() {
   if (!enforceLoginGate()) return;
   let id = (location.hash || '#dashboard').replace('#', '');
   let section = document.getElementById(id);
-  if (!section || !roleAllowed(section.dataset.roles) || (section.hasAttribute('data-schedule-manager') && !canManageSchedule())) {
-    section = $$('[data-section]').find((sec) => roleAllowed(sec.dataset.roles) && (!sec.hasAttribute('data-schedule-manager') || canManageSchedule()));
+  if (!sectionAllowed(section)) {
+    section = $$('[data-section]').find((sec) => sectionAllowed(sec));
     id = section?.id || 'dashboard';
     if (location.hash !== `#${id}`) history.replaceState(null, '', `#${id}`);
   }
@@ -1163,6 +1261,7 @@ function renderAll() {
   renderServiceRequests();
   renderSettings();
   renderActivityLogs();
+  renderCloudFiles();
 }
 
 function renderKpis() {
@@ -1261,7 +1360,7 @@ function renderResidents() {
           <div class="item-row">
             <div>
               <div class="item-title">${escapeHTML(resident.name)} ${resident.primaryBilling ? '<span class="badge badge--approved">Principal para boletos</span>' : ''}</div>
-              <div class="item-sub">${escapeHTML(resident.email)} • ${escapeHTML(resident.whatsapp)}${resident.cpfCnpj ? ` • CPF/CNPJ: ${escapeHTML(resident.cpfCnpj)}` : ''}<br>Vínculo: ${escapeHTML(resident.residentType || 'Morador')}${resident.relationship ? ` • Relação: ${escapeHTML(resident.relationship)}` : ''} • ${resident.hasPet ? 'Possui pet' : 'Sem pet informado'}${resident.notes ? `<br>${escapeHTML(resident.notes)}` : ''}</div>
+              <div class="item-sub">${escapeHTML(resident.email)} • ${escapeHTML(resident.whatsapp)}${resident.cpfCnpj ? ` • CPF/CNPJ: ${escapeHTML(resident.cpfCnpj)}` : ''}<br>Vínculo: ${escapeHTML(resident.residentType || 'Morador')}${resident.relationship ? ` • Relação: ${escapeHTML(resident.relationship)}` : ''} • ${resident.hasPet ? 'Possui pet' : 'Sem pet informado'}${resident.photoMeta ? `<br>Foto: ${cloudFileAction(resident.photoMeta, 'Baixar foto')}` : ''}${resident.notes ? `<br>${escapeHTML(resident.notes)}` : ''}</div>
             </div>
             <span class="status status--approved">Aprovado</span>
           </div>
@@ -1282,12 +1381,16 @@ function renderResidents() {
 }
 
 function setupResidents() {
-  $('[data-resident-form]')?.addEventListener('submit', (event) => {
+  $('[data-resident-form]')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
+    const residentId = uid('resident');
+    const msg = $('[data-resident-message]');
+    const photoFile = data.get('profilePhoto');
+    if (msg && photoFile?.size) msg.textContent = 'Enviando foto do morador para a nuvem...';
     const resident = {
-      id: uid('resident'),
+      id: residentId,
       name: data.get('name').trim(),
       email: data.get('email').trim(),
       whatsapp: data.get('whatsapp').trim(),
@@ -1299,20 +1402,21 @@ function setupResidents() {
       primaryBilling: Boolean(data.get('primaryBilling')), 
       unitRented: Boolean(data.get('unitRented')),
       notes: data.get('notes').trim(),
+      photoMeta: photoFile?.size ? await fileMeta(photoFile, `moradores/${data.get('apartment') || 'sem-unidade'}`, residentId) : null,
       status: 'approved',
       createdAt: nowISO(),
       approvedAt: nowISO(),
     };
     const residents = getResidents();
     if (residents.some((item) => item.apartment === resident.apartment && item.email === resident.email)) {
-      $('[data-resident-message]').textContent = 'Este e-mail já está cadastrado para a unidade.';
+      if (msg) msg.textContent = 'Este e-mail já está cadastrado para a unidade.';
       return;
     }
     residents.unshift(resident);
     saveResidents(residents);
     form.reset();
     fillApartmentSelects();
-    $('[data-resident-message]').textContent = 'Morador aprovado e cadastrado. Se marcado como principal, ele receberá os boletos da unidade.';
+    if (msg) msg.textContent = resident.photoMeta?.storage === 'supabase' ? 'Morador cadastrado e foto salva na nuvem. O banco guardou apenas metadados.' : (resident.photoMeta ? 'Morador cadastrado. Sem storage ativo, o banco guardou apenas metadados da foto.' : 'Morador aprovado e cadastrado. Se marcado como principal, ele receberá os boletos da unidade.');
     renderAll();
   });
   $('[data-resident-search]')?.addEventListener('input', renderResidents);
@@ -1414,18 +1518,21 @@ function renderMyResident() {
   }
   if (listBox) {
     listBox.innerHTML = unitResidents.length ? unitResidents.map((item) => `<div class="item resident-card">
-      <div class="item-row"><div><div class="item-title">${escapeHTML(item.name)} ${item.primaryBilling ? '<span class="badge badge--approved">Principal boletos</span>' : ''}</div><div class="item-sub">${escapeHTML(item.email)} • ${escapeHTML(item.whatsapp)}<br>Vínculo: ${escapeHTML(item.residentType || 'Morador')}${item.relationship ? ` • Relação: ${escapeHTML(item.relationship)}` : ''} • ${item.hasPet ? 'Possui pet' : 'Sem pet informado'} • ${item.unitRented ? 'Unidade alugada' : 'Unidade não marcada como alugada'}</div></div><span class="status status--approved">Aprovado</span></div>
+      <div class="item-row"><div><div class="item-title">${escapeHTML(item.name)} ${item.primaryBilling ? '<span class="badge badge--approved">Principal boletos</span>' : ''}</div><div class="item-sub">${escapeHTML(item.email)} • ${escapeHTML(item.whatsapp)}<br>Vínculo: ${escapeHTML(item.residentType || 'Morador')}${item.relationship ? ` • Relação: ${escapeHTML(item.relationship)}` : ''} • ${item.hasPet ? 'Possui pet' : 'Sem pet informado'} • ${item.unitRented ? 'Unidade alugada' : 'Unidade não marcada como alugada'}${item.photoMeta ? `<br>Foto: ${cloudFileAction(item.photoMeta, 'Baixar foto')}` : ''}</div></div><span class="status status--approved">Aprovado</span></div>
     </div>`).join('') : empty('Nenhum morador aprovado nesta unidade.');
   }
 }
 function setupMyResident() {
   const form = $('[data-my-resident-form]');
-  form?.addEventListener('submit', (event) => {
+  form?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const data = new FormData(form);
     const id = data.get('id');
     const current = getResidents().find((resident) => resident.id === id);
     if (!current || !canEditResident(current)) { $('[data-my-resident-message]').textContent = 'Você não tem permissão para alterar este cadastro.'; return; }
+    const msg = $('[data-my-resident-message]');
+    const photoFile = data.get('profilePhoto');
+    if (msg && photoFile?.size) msg.textContent = 'Enviando foto para a nuvem...';
     const patch = {
       name: data.get('name').trim(),
       email: data.get('email').trim(),
@@ -1437,6 +1544,7 @@ function setupMyResident() {
       primaryBilling: Boolean(data.get('primaryBilling')), 
       unitRented: Boolean(data.get('unitRented')),
       notes: data.get('notes').trim(),
+      photoMeta: photoFile?.size ? await fileMeta(photoFile, `moradores/${current.apartment || session?.apartment || 'sem-unidade'}`, id) : current.photoMeta || null,
     };
     updateResidentById(id, patch);
     if (patch.primaryBilling) setPrimaryResident(id);
@@ -1445,7 +1553,8 @@ function setupMyResident() {
       clearStoredSession();
       applyPermissions();
     }
-    $('[data-my-resident-message]').textContent = 'Cadastro atualizado e sincronizado com o banco.';
+    if (form.elements.profilePhoto) form.elements.profilePhoto.value = '';
+    if (msg) msg.textContent = patch.photoMeta?.storage === 'supabase' ? 'Cadastro atualizado. Foto salva na nuvem e banco mantido leve.' : (photoFile?.size ? 'Cadastro atualizado. Sem storage ativo, apenas metadados da foto foram salvos.' : 'Cadastro atualizado e sincronizado com o banco.');
     renderAll();
   });
 }
@@ -2177,7 +2286,7 @@ function renderRecurringVisitors() {
             <div class="item-sub">
               ${escapeHTML(service)} • Dias: ${escapeHTML(weekdayListLabel(item.weekdays))}<br>
               ${escapeHTML(item.document || 'sem documento')} • ${escapeHTML(item.phone || 'sem telefone')} • ${item.validUntil ? `válido até ${escapeHTML(item.validUntil)}` : 'sem validade definida'}
-              ${item.photoMeta ? `<br>Foto/metadados: ${escapeHTML(item.photoMeta.name || 'arquivo')}` : ''}
+              ${item.photoMeta ? `<br>Foto: ${cloudFileAction(item.photoMeta, 'Baixar foto')}` : ''}
               ${item.notes ? `<br>${escapeHTML(item.notes)}` : ''}
             </div>
           </div>
@@ -2279,7 +2388,7 @@ function renderVisitors() {
       <div class="item-row">
         <div style="display:flex;gap:12px;align-items:flex-start">
           <div class="visitor-avatar">${escapeHTML(visitor.name.charAt(0) || 'V')}</div>
-          <div><div class="item-title">${escapeHTML(visitor.name)} • Unidade ${escapeHTML(visitor.apartment)}</div><div class="item-sub">${escapeHTML(visitor.type)} • ${escapeHTML(visitor.document || 'sem documento')} • ${formatDateTime(visitor.createdAt)}${visitor.photoMeta ? ` • Foto registrada: ${escapeHTML(visitor.photoMeta.name || 'arquivo')}` : ''}${visitor.notes ? `<br>${escapeHTML(visitor.notes)}` : ''}</div></div>
+          <div><div class="item-title">${escapeHTML(visitor.name)} • Unidade ${escapeHTML(visitor.apartment)}</div><div class="item-sub">${escapeHTML(visitor.type)} • ${escapeHTML(visitor.document || 'sem documento')} • ${formatDateTime(visitor.createdAt)}${visitor.photoMeta ? ` • Foto: ${cloudFileAction(visitor.photoMeta, 'Baixar foto')}` : ''}${visitor.notes ? `<br>${escapeHTML(visitor.notes)}` : ''}</div></div>
         </div>
       </div>
       <div class="item-actions">
@@ -2915,12 +3024,18 @@ function setupPackages() {
       if (form?.apartment) form.apartment.value = aptButton.dataset.usePackageApartment || '';
     }
   });
-  $('[data-package-form]')?.addEventListener('submit', (event) => {
+  $('[data-package-form]')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
+    const packageId = uid('package');
+    const statusMsg = $('[data-package-message]');
+    const explicitPhoto = data.get('packagePhoto');
+    const scannedLabelImage = data.get('labelImage');
+    const photoFile = explicitPhoto?.size ? explicitPhoto : scannedLabelImage;
+    if (statusMsg && photoFile?.size) statusMsg.textContent = 'Enviando foto da encomenda/etiqueta para a nuvem...';
     const pkg = {
-      id: uid('package'),
+      id: packageId,
       apartment: data.get('apartment'),
       recipient: data.get('recipient').trim(),
       carrier: data.get('carrier').trim(),
@@ -2928,6 +3043,7 @@ function setupPackages() {
       labelText: data.get('labelText')?.trim() || '',
       storageLocation: data.get('storageLocation')?.trim() || '',
       packageType: data.get('packageType') || 'Encomenda',
+      photoMeta: photoFile?.size ? await fileMeta(photoFile, `encomendas/${data.get('apartment') || 'sem-unidade'}`, packageId) : null,
       notes: data.get('notes').trim(),
       status: 'open',
       createdAt: nowISO(),
@@ -2937,7 +3053,10 @@ function setupPackages() {
     logPortariaActivity('Registrou encomenda', { ...pkg, summary: `Encomenda registrada para ${pkg.recipient} na unidade ${pkg.apartment}` }, 'encomenda');
     const recipients = residentsForPackageNotification(pkg.apartment);
     const msg = packageMessage(pkg);
-    $('[data-package-message]').textContent = recipients.length ? `Encomenda registrada. E-mail será enviado a ${recipients.length} morador(es) da unidade.` : 'Encomenda registrada. Nenhum e-mail aprovado localizado para a unidade.';
+    if (statusMsg) {
+      const photoStatus = pkg.photoMeta?.storage === 'supabase' ? ' Foto salva na nuvem.' : (pkg.photoMeta ? ' Foto não enviada ao storage; apenas metadados foram mantidos.' : '');
+      statusMsg.textContent = recipients.length ? `Encomenda registrada.${photoStatus} E-mail será enviado a ${recipients.length} morador(es) da unidade.` : `Encomenda registrada.${photoStatus} Nenhum e-mail aprovado localizado para a unidade.`;
+    }
     form.reset(); fillApartmentSelects();
     const result = $('[data-package-scan-result]');
     if (result) { result.hidden = true; result.innerHTML = ''; }
@@ -2965,7 +3084,7 @@ function renderPackages() {
     const resident = approvedResidentByApartment(pkg.apartment);
     const msg = packageMessage(pkg);
     return `<div class="item">
-      <div class="item-row"><div><div class="item-title">Unidade ${escapeHTML(pkg.apartment)} • ${escapeHTML(pkg.recipient)}</div><div class="item-sub">${escapeHTML(pkg.packageType || 'Encomenda')} • ${escapeHTML(pkg.carrier || 'Transportadora não informada')} • ${escapeHTML(pkg.code || 'sem código')} • Cadastro no sistema: ${formatDateTime(pkg.createdAt)}${pkg.notifiedAt ? `<br>Morador notificado em: ${formatDateTime(pkg.notifiedAt)}` : pkg.notificationStatus === 'failed' ? `<br>Falha ao notificar: ${escapeHTML(pkg.notificationResult || 'verifique e-mail')}` : '<br>Aguardando notificação ao morador'}${pkg.deliveredAt ? `<br>Retirada registrada em: ${formatDateTime(pkg.deliveredAt)}` : ''}${pkg.storageLocation && !isResident() ? `<br>Local: ${escapeHTML(pkg.storageLocation)}` : ''}${pkg.notes ? `<br>${escapeHTML(pkg.notes)}` : ''}</div></div><span class="status status--${pkg.status === 'delivered' ? 'approved' : pkg.notifiedAt ? 'pending' : 'rejected'}">${pkg.status === 'delivered' ? 'Retirada' : pkg.notifiedAt ? 'Aguardando retirada' : 'Aguardando notificação'}</span></div>
+      <div class="item-row"><div><div class="item-title">Unidade ${escapeHTML(pkg.apartment)} • ${escapeHTML(pkg.recipient)}</div><div class="item-sub">${escapeHTML(pkg.packageType || 'Encomenda')} • ${escapeHTML(pkg.carrier || 'Transportadora não informada')} • ${escapeHTML(pkg.code || 'sem código')} • Cadastro no sistema: ${formatDateTime(pkg.createdAt)}${pkg.notifiedAt ? `<br>Morador notificado em: ${formatDateTime(pkg.notifiedAt)}` : pkg.notificationStatus === 'failed' ? `<br>Falha ao notificar: ${escapeHTML(pkg.notificationResult || 'verifique e-mail')}` : '<br>Aguardando notificação ao morador'}${pkg.deliveredAt ? `<br>Retirada registrada em: ${formatDateTime(pkg.deliveredAt)}` : ''}${pkg.storageLocation && !isResident() ? `<br>Local: ${escapeHTML(pkg.storageLocation)}` : ''}${pkg.photoMeta ? `<br>Foto/etiqueta: ${cloudFileAction(pkg.photoMeta, 'Baixar foto')}` : ''}${pkg.notes ? `<br>${escapeHTML(pkg.notes)}` : ''}</div></div><span class="status status--${pkg.status === 'delivered' ? 'approved' : pkg.notifiedAt ? 'pending' : 'rejected'}">${pkg.status === 'delivered' ? 'Retirada' : pkg.notifiedAt ? 'Aguardando retirada' : 'Aguardando notificação'}</span></div>
       ${isResident() ? '' : `<div class="item-actions">${recipients.length ? `<button class="btn btn--success btn--sm" data-auto-package-email="${pkg.id}">Auto e-mail (${recipients.length})</button><a class="btn btn--outline btn--sm" href="mailto:${encodeURIComponent(recipients.map((r) => r.email).join(','))}?subject=${encodeURIComponent('Encomenda na portaria')}&body=${encodeURIComponent(msg)}">Manual e-mail (${recipients.length})</a>` : ''}${resident ? `<button class="btn btn--success btn--sm" data-auto-package-whatsapp="${pkg.id}">Auto WhatsApp principal</button><a class="btn btn--outline btn--sm" target="_blank" href="${whatsAppLink(resident.whatsapp, msg)}">Manual WhatsApp principal</a>` : ''}<button class="btn btn--success btn--sm" data-deliver-package="${pkg.id}" ${!pkg.notifiedAt ? 'disabled title="Notifique o morador antes de marcar retirada"' : ''}>Marcar retirada</button></div>`}
     </div>`;
   }).join('') : empty('Nenhuma encomenda pendente.');
@@ -3099,7 +3218,8 @@ function onDutyPorters(date = todayLocalISO(), shift = currentShift()) {
 }
 function availableStaffByRole(roleList, date = todayLocalISO()) {
   const roles = Array.isArray(roleList) ? roleList : [roleList];
-  return getStaff().filter((item) => roles.includes(item.role) && staffAvailable(item, date));
+  const wantsAdmin = roles.some((role) => ['sindico', 'subsindico', 'administrador', 'admin'].includes(roleKey(role)));
+  return getStaff().filter((item) => (roles.includes(item.role) || (wantsAdmin && staffIsAdministrator(item))) && staffAvailable(item, date));
 }
 function recipientHintForTarget(target) {
   if (target === 'portaria') {
@@ -3114,7 +3234,10 @@ function recipientHintForTarget(target) {
 }
 
 function roleLabel(role) {
-  return { sindico: 'Síndico', subsindico: 'Subsíndico', porteiro: 'Porteiro' }[role] || role || '-';
+  return { sindico: 'Síndico', subsindico: 'Subsíndico', porteiro: 'Porteiro', administrador: 'Administrador' }[role] || role || '-';
+}
+function renderStaffAllowedTabs(item = {}) {
+  return `<div class="item-sub"><strong>Abas permitidas:</strong> ${escapeHTML(allowedTabsLabel(item.allowedTabs))}</div>`;
 }
 function activeStaffFor(target) {
   if (target === 'sindico') return availableStaffByRole(['sindico', 'subsindico']);
@@ -3138,6 +3261,8 @@ function setupStaff() {
       id: uid('staff'),
       name: data.get('name').trim(),
       role: data.get('role'),
+      isAdmin: Boolean(data.get('isAdmin')) || ['sindico', 'subsindico'].includes(roleKey(data.get('role'))),
+      allowedTabs: normalizeAllowedTabs(data.getAll('allowedTabs')),
       email: data.get('email').trim(),
       whatsapp: data.get('whatsapp').trim(),
       active: Boolean(data.get('active')),
@@ -3164,8 +3289,9 @@ function renderStaff() {
     <div class="item">
       <div class="item-row">
         <div>
-          <div class="item-title">${escapeHTML(item.name)} <span class="badge">${escapeHTML(roleLabel(item.role))}</span> ${item.active === false ? '<span class="badge badge--danger">Inativo</span>' : '<span class="badge badge--approved">Ativo</span>'} <span class="status status--${staffStatusClass(item.status)}">${escapeHTML(staffStatusLabel(item.status))}</span></div>
+          <div class="item-title">${escapeHTML(item.name)} <span class="badge">${escapeHTML(roleLabel(item.role))}</span> ${staffIsAdministrator(item) ? '<span class="badge badge--approved">Administrador</span>' : ''} ${item.active === false ? '<span class="badge badge--danger">Inativo</span>' : '<span class="badge badge--approved">Ativo</span>'} <span class="status status--${staffStatusClass(item.status)}">${escapeHTML(staffStatusLabel(item.status))}</span></div>
           <div class="item-sub">E-mail: ${escapeHTML(item.email || 'não informado')} • WhatsApp: ${escapeHTML(item.whatsapp || 'não informado')}</div>
+          ${renderStaffAllowedTabs(item)}
           ${(item.awayFrom || item.awayTo) ? `<div class="item-sub">Período informado: ${escapeHTML(item.awayFrom || '-')} até ${escapeHTML(item.awayTo || '-')}</div>` : ''}
           ${!staffAvailable(item) ? `<div class="item-sub"><strong>Bloqueado para mensagens automáticas enquanto estiver ${escapeHTML(staffStatusLabel(item.status).toLowerCase())}.</strong></div>` : ''}
           ${item.canManageSchedule ? `<div class="item-sub"><strong>Autorizado a alterar escala.</strong></div>` : ''}
@@ -3187,15 +3313,20 @@ function editStaff(id) {
   const role = prompt('Perfil (sindico, subsindico ou porteiro):', item.role) ?? item.role;
   const email = prompt('E-mail:', item.email || '') ?? item.email;
   const whatsapp = prompt('WhatsApp:', item.whatsapp || '') ?? item.whatsapp;
+  const isAdminAnswer = prompt('Administrador do sistema? (sim/não):', staffIsAdministrator(item) ? 'sim' : 'não') ?? (staffIsAdministrator(item) ? 'sim' : 'não');
+  const isAdmin = /^s/i.test(String(isAdminAnswer).trim()) || ['sindico', 'subsindico'].includes(roleKey(role));
+  const tabsAnswer = prompt('Abas permitidas, separadas por vírgula. Deixe em branco para usar o padrão do perfil. Ex.: dashboard, moradores, encomendas, arquivos', normalizeAllowedTabs(item.allowedTabs).join(', ')) ?? normalizeAllowedTabs(item.allowedTabs).join(', ');
+  const allowedTabs = normalizeAllowedTabs(tabsAnswer);
   const status = prompt('Situação (disponivel, afastado, ausente ou ferias):', item.status || 'disponivel') ?? item.status;
   const awayFrom = prompt('Início do afastamento/ausência/férias (AAAA-MM-DD), se houver:', item.awayFrom || '') ?? item.awayFrom;
   const awayTo = prompt('Fim do afastamento/ausência/férias (AAAA-MM-DD), se houver:', item.awayTo || '') ?? item.awayTo;
   const notes = prompt('Observações:', item.notes || '') ?? item.notes;
-  const canManageSchedule = confirm('Autorizar este usuário a alterar a escala?');
-  const active = confirm('Manter este cadastro ativo? Clique em Cancelar para inativar/excluir do recebimento.');
-  saveStaff(getStaff().map((staff) => staff.id === id ? { ...staff, name: name.trim(), role: String(role || item.role).trim(), email: String(email || '').trim(), whatsapp: String(whatsapp || '').trim(), status: String(status || 'disponivel').trim(), awayFrom: String(awayFrom || '').trim(), awayTo: String(awayTo || '').trim(), notes: String(notes || '').trim(), canManageSchedule, active, updatedAt: nowISO() } : staff));
-  logActivity('Alterou cadastro de equipe', { entityId: id, summary: `Cadastro de ${name} alterado`, role, canManageSchedule }, 'equipe');
-  fillStaffScheduleSelects(); renderAll();
+  const canManageScheduleAnswer = prompt('Autorizar este usuário a alterar/importar escala? (sim/não):', item.canManageSchedule ? 'sim' : 'não') ?? (item.canManageSchedule ? 'sim' : 'não');
+  const activeAnswer = prompt('Cadastro ativo no sistema? (sim/não):', item.active === false ? 'não' : 'sim') ?? (item.active === false ? 'não' : 'sim');
+  const canManageSchedule = /^s/i.test(String(canManageScheduleAnswer).trim());
+  const active = !/^n/i.test(String(activeAnswer).trim());
+  saveStaff(getStaff().map((staff) => staff.id === id ? { ...staff, name: name.trim(), role: String(role || item.role).trim(), isAdmin, allowedTabs, email: String(email || '').trim(), whatsapp: String(whatsapp || '').trim(), status: String(status || 'disponivel').trim(), awayFrom: String(awayFrom || '').trim(), awayTo: String(awayTo || '').trim(), notes: String(notes || '').trim(), canManageSchedule, active, updatedAt: nowISO() } : staff));
+  renderAll();
 }
 function removeStaff(id) {
   if (!isSyndic()) return;
@@ -3515,6 +3646,9 @@ function updateServiceRequest(id, status) {
 
 
 function setupNotificationForms() {
+  $('[data-cloud-file-form]')?.addEventListener('submit', handleCloudFileSubmit);
+  $('[data-cloud-file-search]')?.addEventListener('input', renderCloudFiles);
+
   $('[data-notification-rules-form]')?.addEventListener('submit', (event) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -3632,6 +3766,85 @@ function setupNotificationForms() {
   });
 }
 
+
+function cloudFileVisibleToCurrentUser(file) {
+  if (!file) return false;
+  if (isSyndic() || currentRole() === 'portaria') return true;
+  if (!isResident()) return false;
+  if (file.visibility === 'admin') return false;
+  if (file.visibility === 'unit') return String(file.apartment || '') === String(session?.apartment || '');
+  return true;
+}
+
+function cloudDownloadHref(file) {
+  if (!file) return '#';
+  const storage = file.file?.storage || file.storage;
+  const path = file.file?.path || file.path;
+  const bucket = file.file?.bucket || file.bucket;
+  if (storage === 'supabase' && path) {
+    const params = new URLSearchParams({ path });
+    if (bucket) params.set('bucket', bucket);
+    return `${BACKEND_API}/api/storage/download?${params.toString()}`;
+  }
+  return file.file?.downloadUrl || file.file?.url || file.downloadUrl || file.url || '#';
+}
+
+function fileSizeLabel(size) {
+  const bytes = Number(size || 0);
+  if (!bytes) return '-';
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+function renderCloudFiles() {
+  const box = $('[data-cloud-files-list]');
+  if (!box) return;
+  const search = normalizeText($('[data-cloud-file-search]')?.value || '');
+  const files = getCloudFiles()
+    .filter(cloudFileVisibleToCurrentUser)
+    .filter((item) => !search || normalizeText(`${item.title} ${item.category} ${item.apartment || ''} ${item.notes || ''} ${item.file?.name || ''}`).includes(search))
+    .sort((a, b) => new Date(b.createdAt || b.uploadedAt || 0) - new Date(a.createdAt || a.uploadedAt || 0));
+  box.innerHTML = files.length ? files.map((item) => {
+    const file = item.file || {};
+    const href = cloudDownloadHref(item);
+    const canDownload = href && href !== '#' && file.storage !== 'metadata-only';
+    const visibility = item.visibility === 'admin' ? 'Síndico/portaria' : item.visibility === 'unit' ? `Unidade ${item.apartment || '-'}` : 'Todos';
+    return `<div class="item"><div class="item-row"><div><div class="item-title">☁️ ${escapeHTML(item.title || file.name || 'Arquivo')}</div><div class="item-sub">${escapeHTML(item.category || 'Arquivo')} • ${escapeHTML(visibility)} • ${fileSizeLabel(file.size)} • ${escapeHTML(file.storage || 'metadata-only')}<br>${escapeHTML(file.name || '')}${item.notes ? `<br>${escapeHTML(item.notes)}` : ''}${file.note ? `<br><small>${escapeHTML(file.note)}</small>` : ''}</div></div><div class="mini-actions">${canDownload ? `<a class="btn btn--outline btn--sm" href="${escapeHTML(href)}" target="_blank" rel="noopener">Baixar</a>` : '<span class="status status--pending">Sem arquivo</span>'}${(isSyndic() || currentRole() === 'portaria') ? `<button class="btn btn--danger btn--sm" type="button" data-remove-cloud-file="${escapeHTML(item.id)}">Remover</button>` : ''}</div></div></div>`;
+  }).join('') : empty('Nenhum arquivo disponível para o seu perfil.');
+}
+
+async function handleCloudFileSubmit(event) {
+  event.preventDefault();
+  const form = asFormElement(event.currentTarget, '[data-cloud-file-form]');
+  const msg = $('[data-cloud-file-message]');
+  const data = new FormData(form);
+  const file = data.get('file');
+  if (!file || !file.size) { if (msg) msg.textContent = 'Selecione um arquivo.'; return; }
+  const id = uid('cloud-file');
+  if (msg) { msg.textContent = 'Enviando arquivo para o storage externo...'; msg.style.color = 'var(--muted)'; }
+  const visibility = isResident() ? 'unit' : (data.get('visibility') || 'all');
+  const apartment = isResident() ? session?.apartment : (data.get('apartment') || '');
+  const meta = await fileMeta(file, `documentos/${data.get('category') || 'arquivos'}`, id);
+  const item = {
+    id,
+    title: data.get('title')?.trim() || file.name,
+    category: data.get('category') || 'Documentos',
+    apartment,
+    visibility,
+    notes: data.get('notes')?.trim() || '',
+    file: meta,
+    createdBy: session?.email || session?.name || '',
+    createdRole: currentRole(),
+    createdAt: nowISO(),
+  };
+  saveCloudFiles([item, ...getCloudFiles()]);
+  form.reset();
+  fillApartmentSelects();
+  renderAll();
+  if (msg) { msg.textContent = meta.storage === 'metadata-only' ? 'Metadados salvos. Configure Supabase Storage para salvar o arquivo real.' : 'Arquivo enviado e registrado com sucesso.'; msg.style.color = meta.storage === 'metadata-only' ? 'var(--orange)' : 'var(--green)'; }
+}
+
 function renderNotificationRules() {
   const form = $('[data-notification-rules-form]');
   if (!form) return;
@@ -3708,7 +3921,17 @@ function renderNotificationSettings() {
   }
   if (form.storageEnabled) {
     form.storageEnabled.checked = Boolean(storage.enabled);
-    form.storageProvider.value = storage.provider || 'terabox';
+    form.storageProvider.value = storage.provider || 'supabase';
+    const sb = storage.supabase || {};
+    if (form.supabaseUrl) form.supabaseUrl.value = sb.url || '';
+    if (form.supabaseServiceRoleKey) {
+      form.supabaseServiceRoleKey.value = '';
+      form.supabaseServiceRoleKey.placeholder = sb.serviceRoleKeySaved ? 'Service Role Key salva — deixe em branco para manter' : 'Service Role Key do Supabase';
+    }
+    if (form.supabaseBucket) form.supabaseBucket.value = sb.bucket || 'vitoria-regia';
+    if (form.supabaseFolder) form.supabaseFolder.value = sb.folder || 'documentos';
+    if (form.supabasePublicBucket) form.supabasePublicBucket.checked = Boolean(sb.publicBucket);
+    if (form.supabaseSignedUrlExpires) form.supabaseSignedUrlExpires.value = sb.signedUrlExpires || 3600;
     const tb = storage.terabox || {};
     form.teraboxBaseUrl.value = tb.baseUrl || 'https://www.terabox.com';
     form.teraboxUploadBaseUrl.value = tb.uploadBaseUrl || '';
@@ -3723,7 +3946,7 @@ function renderNotificationSettings() {
       <div><strong>E-mail:</strong> ${email.enabled ? 'ativado' : 'desativado'} • provedor: ${escapeHTML(email.provider || 'smtp')} ${email.provider === 'mailersend' ? (email.mailersend?.apiKeySaved ? '• token MailerSend salvo' : '• token MailerSend não salvo') : (email.passwordSaved ? '• senha SMTP salva' : '• senha SMTP não salva')}</div>
       <div><strong>WhatsApp:</strong> ${whatsapp.enabled ? 'ativado' : 'desativado'} • provedor: ${escapeHTML(whatsapp.provider || 'meta')} ${whatsapp.provider === 'evolution' ? (whatsapp.evolution?.apiKeySaved ? '• API Key Evolution salva' : '• API Key Evolution não salva') : (whatsapp.provider === 'periskope' ? (whatsapp.periskope?.apiKeySaved ? '• API Key Periskope salva' : '• API Key Periskope não salva') : (whatsapp.tokenSaved ? '• token Meta salvo' : '• token Meta não salvo'))}</div>
       <div><strong>Asaas:</strong> ${asaas.enabled ? 'ativado' : 'desativado'} • ${escapeHTML(asaas.environment || 'sandbox')} ${asaas.apiKeySaved ? '• API Key salva' : '• API Key não salva'}</div>
-      <div><strong>Storage:</strong> ${storage.enabled ? 'ativado' : 'desativado'} • ${escapeHTML(storage.provider || 'metadata-only')} ${storage.terabox?.accessTokenSaved ? '• token TeraBox salvo' : '• token TeraBox não salvo'}</div>
+      <div><strong>Storage:</strong> ${storage.enabled ? 'ativado' : 'desativado'} • ${escapeHTML(storage.provider || 'metadata-only')} ${storage.provider === 'supabase' ? (storage.supabase?.serviceRoleKeySaved ? '• Service Role Supabase salva' : '• Service Role Supabase não salva') : (storage.terabox?.accessTokenSaved ? '• token TeraBox salvo' : '• token TeraBox não salvo')}</div>
       <div><small>Para funcionar em produção, o backend precisa estar rodando com banco inicializado e as credenciais corretas.</small></div>`;
   }
 }
@@ -3823,20 +4046,67 @@ async function fileToDataURL(file) {
     reader.readAsDataURL(file);
   });
 }
+function compactCloudFileMeta(file = {}) {
+  if (!file || typeof file !== 'object') return null;
+  const meta = {
+    storage: file.storage || file.provider || 'metadata-only',
+    provider: file.provider || file.storage || 'metadata-only',
+    name: file.name || file.filename || '',
+    type: file.type || file.contentType || '',
+    size: Number(file.size || 0),
+    bucket: file.bucket || '',
+    path: file.path || file.objectPath || '',
+    uploadedAt: file.uploadedAt || nowISO(),
+    signedUrlExpires: file.signedUrlExpires || null,
+    fsId: file.fsId || '',
+    md5: file.md5 || '',
+    uploadError: file.uploadError || '',
+    note: file.note || '',
+  };
+  Object.keys(meta).forEach((key) => {
+    if (meta[key] === '' || meta[key] === null || meta[key] === undefined || Number.isNaN(meta[key])) delete meta[key];
+  });
+  return meta;
+}
+
+function cloudFileDirectHref(meta = {}) {
+  if (!meta) return '#';
+  const storage = meta.file?.storage || meta.storage;
+  const objectPath = meta.file?.path || meta.path;
+  const bucket = meta.file?.bucket || meta.bucket;
+  if (storage === 'supabase' && objectPath) {
+    const params = new URLSearchParams({ path: objectPath });
+    if (bucket) params.set('bucket', bucket);
+    return `${BACKEND_API}/api/storage/download?${params.toString()}`;
+  }
+  return meta.file?.downloadUrl || meta.file?.url || meta.downloadUrl || meta.url || '#';
+}
+
+function cloudFileAction(meta, label = 'Baixar arquivo') {
+  if (!meta) return '';
+  const href = cloudFileDirectHref(meta);
+  const canDownload = href && href !== '#' && meta.storage !== 'metadata-only';
+  const title = meta.name ? ` (${escapeHTML(meta.name)})` : '';
+  if (canDownload) return `<a class="text-link" href="${escapeHTML(href)}" target="_blank" rel="noopener">${escapeHTML(label)}</a>${title}`;
+  if (meta.uploadError) return `<span class="status status--rejected">Arquivo não enviado</span>`;
+  if (meta.name) return `<span class="status status--pending">Metadados do arquivo salvos</span>${title}`;
+  return '';
+}
+
 async function fileMeta(file, purpose = 'arquivos', entityId = '') {
   if (!file || !file.size) return null;
-  const basic = { name: file.name, type: file.type, size: file.size, uploadedAt: nowISO(), storage: 'metadata-only', note: 'Arquivo/foto não foi salvo no banco de dados.' };
-  if (!backendAvailable) return { ...basic, note: 'Backend indisponível; arquivo não foi enviado ao storage externo.' };
+  const basic = compactCloudFileMeta({ name: file.name, type: file.type, size: file.size, storage: 'metadata-only', note: 'Arquivo/foto não foi salvo no banco de dados.' });
+  if (!backendAvailable) return compactCloudFileMeta({ ...basic, note: 'Backend indisponível; arquivo não foi enviado ao storage externo.' });
   try {
     const dataUrl = await fileToDataURL(file);
     const response = await apiRequest('/api/storage/upload', {
       method: 'POST',
       body: JSON.stringify({ filename: file.name, dataUrl, purpose, entityId }),
     });
-    return response.file || basic;
+    return compactCloudFileMeta(response.file || basic);
   } catch (error) {
     console.warn('Falha ao enviar arquivo ao storage externo:', error.message);
-    return { ...basic, uploadError: error.message, note: `Falha ao enviar ao storage externo: ${error.message}` };
+    return compactCloudFileMeta({ ...basic, uploadError: error.message, note: `Falha ao enviar ao storage externo: ${error.message}` });
   }
 }
 
@@ -3854,13 +4124,42 @@ function exportCSV(filename, rows) {
 async function resetUserPassword(ref) {
   if (!isSyndic()) { alert('Apenas o síndico pode gerar senha temporária.'); return; }
   const [type, id] = String(ref || '').split(':');
-  const item = type === 'staff' ? getStaff().find((p) => p.id === id) : getResidents().find((p) => p.id === id);
-  if (!item?.email) { alert('Usuário sem e-mail cadastrado.'); return; }
-  if (!confirm(`Gerar senha temporária para ${item.name} (${item.email})?`)) return;
+  const isStaffTarget = type === 'staff';
+  let item = isStaffTarget ? getStaff().find((p) => p.id === id) : getResidents().find((p) => p.id === id);
+  if (!item) { alert('Usuário não encontrado na lista atual. Atualize a página e tente novamente.'); return; }
+
+  let email = normalizeEmail(item.email || '');
+  if (!email) {
+    const typed = prompt(`Informe o e-mail de acesso para ${item.name || 'este usuário'} antes de gerar a senha temporária:`);
+    email = normalizeEmail(typed || '');
+    if (!email) { alert('Para gerar senha temporária, o usuário precisa ter um e-mail de login cadastrado.'); return; }
+    if (isStaffTarget) {
+      const staff = getStaff().map((person) => person.id === id ? { ...person, email, updatedAt: nowISO() } : person);
+      saveStaff(staff);
+      item = staff.find((person) => person.id === id) || { ...item, email };
+    } else {
+      const residents = getResidents().map((resident) => resident.id === id ? { ...resident, email, updatedAt: nowISO() } : resident);
+      saveResidents(residents);
+      item = residents.find((resident) => resident.id === id) || { ...item, email };
+    }
+  }
+
+  if (!confirm(`Gerar senha temporária para ${item.name || email} (${email})?`)) return;
   try {
-    const result = await adminResetUserPassword({ email: item.email, role: type === 'staff' ? item.role : 'morador' });
+    await flushBackendStateWrites();
+    const result = await adminResetUserPassword({
+      email,
+      role: isStaffTarget ? item.role : 'morador',
+      targetType: isStaffTarget ? 'staff' : 'resident',
+      staffId: isStaffTarget ? item.id : null,
+      residentId: isStaffTarget ? null : item.id,
+      name: item.name || '',
+      apartment: item.apartment || '',
+      whatsapp: item.whatsapp || item.phone || '',
+      cpfCnpj: item.cpfCnpj || '',
+    });
     const sent = result.emailSent ? 'A senha também foi enviada por e-mail.' : `Não foi possível enviar por e-mail: ${result.emailError || 'verifique as configurações de e-mail'}.`;
-    alert(`Senha temporária gerada para ${item.email}:\n\n${result.temporaryPassword}\n\n${sent}\nO usuário deverá trocar a senha no próximo acesso.`);
+    alert(`Senha temporária gerada para ${email}:\n\n${result.temporaryPassword}\n\n${sent}\nO usuário deverá trocar a senha no próximo acesso.`);
   } catch (error) {
     const message = error.message || 'Não foi possível gerar senha temporária.';
     if (/s[ií]ndico|sub/i.test(message) || /403/.test(message)) {
@@ -3881,7 +4180,7 @@ function handleDocumentClick(event) {
     ['data-select-recurring-unit', (apt) => { const filter = $('[data-recurring-unit-filter]'); if (filter) filter.value = apt; renderRecurringVisitors(); }],
     ['data-register-recurring-visitor', registerRecurringVisitorEntry], ['data-toggle-recurring-visitor', toggleRecurringVisitor], ['data-remove-recurring-visitor', removeRecurringVisitor],
     ['data-remove-visitor', (id) => { const v = getVisitors().find((item) => item.id === id); saveVisitors(getVisitors().filter((item) => item.id !== id)); if (v) logPortariaActivity('Removeu visitante', { ...v, summary: `Visitante ${v.name} removido da unidade ${v.apartment}` }, 'visitante'); renderAll(); }],
-    ['data-deliver-package', deliverPackage], ['data-remove-notice', (id) => { saveNotices(getNotices().filter((item) => item.id !== id)); renderAll(); }],
+    ['data-deliver-package', deliverPackage], ['data-remove-cloud-file', (id) => { saveCloudFiles(getCloudFiles().filter((item) => item.id !== id)); renderAll(); }], ['data-remove-notice', (id) => { saveNotices(getNotices().filter((item) => item.id !== id)); renderAll(); }],
     ['data-remove-space', removeSpace],
     ['data-auto-visitor-whatsapp', (id) => notifyVisitorById(id, ['whatsapp'])], ['data-auto-visitor-email', (id) => notifyVisitorById(id, ['email'])],
     ['data-auto-package-whatsapp', (id) => notifyPackageById(id, ['whatsapp'])], ['data-auto-package-email', (id) => notifyPackageById(id, ['email'])],
