@@ -772,7 +772,7 @@ function renderBookingItem(booking) {
   const docLinks = [booking.residentDocument, booking.managerDocument].filter(Boolean).map((doc) => `<span class="badge">📎 ${escapeHTML(doc.name)}</span>`).join(' ');
   const actions = isSyndic() ? `
     ${booking.status === 'pending' ? `<button class="btn btn--success btn--sm" data-approve-booking="${booking.id}">Validar</button>` : ''}
-    <button class="btn btn--outline btn--sm" data-boleto-booking="${booking.id}">Gerar boleto</button>
+    <button class="btn btn--outline btn--sm" data-boleto-booking="${booking.id}">Gerar boleto Asaas</button>
     <label class="btn btn--outline btn--sm">Upload doc.<input type="file" hidden data-manager-doc="${booking.id}" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"></label>
     <button class="btn btn--outline btn--sm" data-edit-booking="${booking.id}">Modificar</button>
     <button class="btn btn--danger btn--sm" data-cancel-booking="${booking.id}">Cancelar</button>
@@ -804,7 +804,17 @@ async function approveBooking(id) {
     return updated;
   }));
   renderAll();
-  if (updated) await maybeNotifyResident({ email: updated.residentEmail, whatsapp: updated.residentWhatsapp, name: updated.residentName }, 'bookingStatus', 'Reserva validada — Condomínio Vitória Régia', `Olá, ${updated.residentName}. Sua reserva de ${updated.spaceName} para ${formatDate(updated.date)} (${updated.period}) foi validada pelo síndico.`);
+  if (updated) {
+    try {
+      if (await shouldUseAsaas()) {
+        await generateAsaasBoletoForBooking(updated.id, { silent: true });
+        updated = getBookings().find((item) => item.id === id) || updated;
+      }
+    } catch (error) {
+      alert(`Reserva validada, mas o boleto Asaas não foi gerado automaticamente: ${error.message}`);
+    }
+    await maybeNotifyResident({ email: updated.residentEmail, whatsapp: updated.residentWhatsapp, name: updated.residentName }, 'bookingStatus', 'Reserva validada — Condomínio Vitória Régia', `Olá, ${updated.residentName}. Sua reserva de ${updated.spaceName} para ${formatDate(updated.date)} (${updated.period}) foi validada pelo síndico.${updated.boleto?.invoiceUrl ? ` Boleto: ${updated.boleto.invoiceUrl}` : ''}`);
+  }
 }
 async function cancelBooking(id) {
   const reason = prompt('Motivo do cancelamento:', 'Cancelado pelo síndico');
@@ -897,12 +907,42 @@ function renderFinance() {
         <span class="status status--${statusClass(booking.status)}">${statusLabel(booking.status)}</span>
       </div>
       <div class="item-actions">
-        ${isSyndic() || booking.boleto ? `<button class="btn btn--outline btn--sm" data-boleto-booking="${booking.id}">${booking.boleto ? 'Ver boleto' : 'Gerar boleto'}</button>` : `<span class="badge">Aguardando boleto do síndico</span>`}
+        ${isSyndic() || booking.boleto ? `<button class="btn btn--outline btn--sm" data-boleto-booking="${booking.id}">${booking.boleto?.provider === 'asaas' ? 'Ver boleto Asaas' : 'Gerar boleto Asaas'}</button>` : `<span class="badge">Aguardando boleto do síndico</span>`}
         ${isSyndic() ? `<button class="btn btn--success btn--sm" data-mark-paid="${booking.id}">Marcar pago</button>` : ''}
       </div>
     </div>`).join('') : empty('Nenhuma cobrança de reserva.');
   if (currentBoletoBookingId) renderBoletoPreview(currentBoletoBookingId);
 }
+async function shouldUseAsaas() {
+  if (!backendAvailable || !isSyndic()) return false;
+  if (!asaasConfig) await loadAsaasConfig();
+  return Boolean(asaasConfig?.enabled && asaasConfig?.apiKeySaved);
+}
+
+async function generateAsaasBoletoForBooking(id, options = {}) {
+  const preview = $('[data-boleto-preview]');
+  const residentPrompt = options.promptCpf !== false;
+  let bookings = getBookings();
+  let booking = bookings.find((item) => item.id === id);
+  if (!booking) throw new Error('Reserva não encontrada.');
+  if (!await shouldUseAsaas()) {
+    throw new Error('Asaas não está ativo ou API Key não foi salva no backend/Render.');
+  }
+  if (preview && !options.silent) preview.innerHTML = '<div class="empty-state">Gerando boleto bancário registrado no Asaas...</div>';
+  const resident = approvedResidentByApartment(booking.apartment) || {};
+  let cpfCnpj = booking.residentCpfCnpj || resident.cpfCnpj || '';
+  if (!cpfCnpj && residentPrompt) cpfCnpj = prompt('Informe CPF/CNPJ do responsável para gerar o boleto Asaas:') || '';
+  if (!cpfCnpj) throw new Error('CPF/CNPJ é obrigatório para gerar boleto Asaas. Cadastre o CPF/CNPJ do morador ou informe no momento da geração.');
+  const response = await apiRequest(`/api/asaas/payments/booking/${encodeURIComponent(id)}`, {
+    method: 'POST',
+    body: JSON.stringify({ cpfCnpj }),
+  });
+  booking = response.booking || booking;
+  bookings = getBookings().map((item) => item.id === id ? booking : item);
+  saveBookings(bookings);
+  return booking;
+}
+
 async function renderBoletoPreview(id) {
   const preview = $('[data-boleto-preview]');
   if (!preview) return;
@@ -911,33 +951,20 @@ async function renderBoletoPreview(id) {
   if (!booking) return;
   currentBoletoBookingId = id;
 
-  if (!booking.boleto && backendAvailable && isSyndic()) {
-    if (!asaasConfig) await loadAsaasConfig();
-    if (asaasConfig?.enabled) {
-      try {
-        preview.innerHTML = '<div class="empty-state">Gerando boleto registrado no Asaas...</div>';
-        const resident = approvedResidentByApartment(booking.apartment) || {};
-        let cpfCnpj = booking.residentCpfCnpj || resident.cpfCnpj || '';
-        if (!cpfCnpj) cpfCnpj = prompt('Informe CPF/CNPJ do responsável para gerar o boleto Asaas:') || '';
-        if (!cpfCnpj) throw new Error('CPF/CNPJ é obrigatório para gerar boleto Asaas.');
-        const response = await apiRequest(`/api/asaas/payments/booking/${encodeURIComponent(id)}`, {
-          method: 'POST',
-          body: JSON.stringify({ cpfCnpj }),
-        });
-        booking = response.booking || booking;
-        bookings = getBookings().map((item) => item.id === id ? booking : item);
-        saveBookings(bookings);
-      } catch (error) {
-        preview.innerHTML = `<div class="empty-state">Erro ao gerar boleto Asaas: ${escapeHTML(error.message)}</div>`;
-        return;
-      }
+  const boletoIsRealAsaas = booking.boleto?.provider === 'asaas' && booking.boleto?.paymentId;
+  if (!boletoIsRealAsaas && backendAvailable && isSyndic()) {
+    try {
+      booking = await generateAsaasBoletoForBooking(id);
+      bookings = getBookings();
+    } catch (error) {
+      preview.innerHTML = `<div class="empty-state">Não foi possível gerar boleto bancário real no Asaas: ${escapeHTML(error.message)}<br><br>Verifique em Configurações se o Asaas está ativado, com ambiente correto, API Key salva e CPF/CNPJ do morador.</div>`;
+      return;
     }
   }
 
   if (!booking.boleto) {
-    booking = { ...booking, boleto: generateBoleto(booking) };
-    bookings = bookings.map((item) => item.id === id ? booking : item);
-    saveBookings(bookings);
+    preview.innerHTML = '<div class="empty-state">Boleto ainda não gerado. O síndico precisa gerar pelo Asaas.</div>';
+    return;
   }
 
   const settings = getSettings();
@@ -951,7 +978,7 @@ async function renderBoletoPreview(id) {
 
   preview.innerHTML = `
     <div class="boleto">
-      <div class="boleto-head"><strong>${escapeHTML(settings.condominiumName)}</strong><span>${isAsaas ? 'Boleto Asaas de Reserva' : 'Recibo/Boleto de Reserva'}</span></div>
+      <div class="boleto-head"><strong>${escapeHTML(settings.condominiumName)}</strong><span>${isAsaas ? 'Boleto Asaas de Reserva' : 'Documento interno — não é boleto bancário'}</span></div>
       <div class="boleto-grid">
         <div class="boleto-cell"><small>Beneficiário</small><strong>${escapeHTML(settings.payee).replaceAll('\n', '<br>')}</strong></div>
         <div class="boleto-cell"><small>Pagador</small><strong>Unidade ${escapeHTML(booking.apartment)}<br>${escapeHTML(booking.residentName || '')}</strong></div>
@@ -963,7 +990,7 @@ async function renderBoletoPreview(id) {
       </div>
       <div class="boleto-line">${escapeHTML(boleto.line || '')}</div>
       ${links}
-      <p class="boleto-warning">${escapeHTML(boleto.note || '')}</p>
+      <p class="boleto-warning">${escapeHTML(boleto.note || (isAsaas ? '' : 'Este documento não é boleto bancário registrado. Gere pelo Asaas para cobrança real.'))}</p>
       <p><strong>Assinatura digital:</strong> ${booking.signed ? `assinado pelo morador em ${formatDateTime(booking.signedAt)} com a declaração “Assino e dou fé”.` : 'pendente.'}</p>
     </div>`;
 }

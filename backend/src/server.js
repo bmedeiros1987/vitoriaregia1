@@ -285,9 +285,30 @@ function sanitizeConfig(config) {
   };
 }
 
+function envAsaasEnabled() {
+  return String(process.env.ASAAS_ENABLED || 'false').toLowerCase() === 'true';
+}
+
+function effectiveAsaasConfig(config = store.asaasConfig || DEFAULT_ASAAS_CONFIG) {
+  const merged = deepMerge(DEFAULT_ASAAS_CONFIG, config || {});
+  const envKey = process.env.ASAAS_API_KEY || '';
+  const key = merged.apiKey || envKey;
+  return {
+    ...merged,
+    apiKey: key,
+    enabled: Boolean(merged.enabled || (envAsaasEnabled() && key)),
+    environment: ['production', 'sandbox'].includes(merged.environment) ? merged.environment : (process.env.ASAAS_ENVIRONMENT || 'sandbox'),
+  };
+}
+
 function sanitizeAsaasConfig(config) {
-  const asaas = config || DEFAULT_ASAAS_CONFIG;
-  return { ...asaas, apiKey: '', apiKeySaved: Boolean(asaas.apiKey) };
+  const asaas = effectiveAsaasConfig(config || DEFAULT_ASAAS_CONFIG);
+  return {
+    ...asaas,
+    apiKey: '',
+    apiKeySaved: Boolean(asaas.apiKey),
+    apiKeySource: (config?.apiKey ? 'saved' : (process.env.ASAAS_API_KEY ? 'env' : 'none')),
+  };
 }
 
 async function saveAsaasConfig(incoming = {}) {
@@ -307,7 +328,8 @@ async function saveAsaasConfig(incoming = {}) {
 }
 
 function asaasBaseUrl(config = store.asaasConfig || DEFAULT_ASAAS_CONFIG) {
-  return config.environment === 'production' ? 'https://api.asaas.com/v3' : 'https://api-sandbox.asaas.com/v3';
+  const effective = effectiveAsaasConfig(config);
+  return effective.environment === 'production' ? 'https://api.asaas.com/v3' : 'https://api-sandbox.asaas.com/v3';
 }
 
 function onlyDigits(value = '') {
@@ -315,13 +337,12 @@ function onlyDigits(value = '') {
 }
 
 function asaasApiKey() {
-  const config = store.asaasConfig || DEFAULT_ASAAS_CONFIG;
-  return config.apiKey || process.env.ASAAS_API_KEY || '';
+  return effectiveAsaasConfig().apiKey || '';
 }
 
 async function asaasRequest(path, options = {}) {
-  const config = store.asaasConfig || DEFAULT_ASAAS_CONFIG;
-  if (!config.enabled) throw new Error('Integração Asaas desativada nas configurações.');
+  const config = effectiveAsaasConfig();
+  if (!config.enabled) throw new Error('Integração Asaas desativada nas configurações ou variável ASAAS_ENABLED não definida.');
   const key = asaasApiKey();
   if (!key) throw new Error('API Key do Asaas não configurada.');
   const response = await fetch(`${asaasBaseUrl(config)}${path}`, {
@@ -344,7 +365,7 @@ function addDaysISO(dateValue, amount) {
   return d.toISOString().slice(0, 10);
 }
 
-function asaasDueDateForBooking(booking, config = store.asaasConfig || DEFAULT_ASAAS_CONFIG) {
+function asaasDueDateForBooking(booking, config = effectiveAsaasConfig()) {
   const due = addDaysISO(booking.date, -Math.abs(Number(config.dueDaysBeforeReservation || 2)));
   const today = new Date().toISOString().slice(0, 10);
   return due < today ? today : due;
@@ -378,6 +399,7 @@ async function getOrCreateAsaasCustomer(booking, cpfCnpj) {
       cpfCnpj: document,
       email: booking.residentEmail || resident.email || undefined,
       mobilePhone: onlyDigits(booking.residentWhatsapp || resident.whatsapp || '' ) || undefined,
+      notificationDisabled: false,
       externalReference,
       observations: `Cliente criado pelo Sistema Vitória Régia - unidade ${booking.apartment}`,
     },
@@ -385,7 +407,7 @@ async function getOrCreateAsaasCustomer(booking, cpfCnpj) {
 }
 
 async function createAsaasBoletoForBooking(bookingId, cpfCnpj) {
-  const config = store.asaasConfig || DEFAULT_ASAAS_CONFIG;
+  const config = effectiveAsaasConfig();
   const bookings = store.state?.bookings || [];
   const booking = bookings.find((item) => item.id === bookingId);
   if (!booking) throw new Error('Reserva não encontrada.');
@@ -597,7 +619,7 @@ app.get('/api/health', async (req, res) => {
     database: db,
     frontendDir: FRONTEND_DIR,
     email: { enabled: Boolean(email.enabled), user: email.user || null, passwordSaved: Boolean(email.password) },
-    asaas: { enabled: Boolean((store.asaasConfig || DEFAULT_ASAAS_CONFIG).enabled), environment: (store.asaasConfig || DEFAULT_ASAAS_CONFIG).environment, apiKeySaved: Boolean((store.asaasConfig || DEFAULT_ASAAS_CONFIG).apiKey) },
+    asaas: { enabled: Boolean(effectiveAsaasConfig().enabled), environment: effectiveAsaasConfig().environment, apiKeySaved: Boolean(effectiveAsaasConfig().apiKey), apiKeySource: (store.asaasConfig?.apiKey ? 'saved' : (process.env.ASAAS_API_KEY ? 'env' : 'none')) },
   });
 });
 
@@ -706,12 +728,28 @@ app.post('/api/integrations/asaas', async (req, res) => {
 app.post('/api/integrations/test-asaas', async (req, res) => {
   try {
     const result = await asaasRequest('/customers?limit=1');
-    res.json({ ok: true, environment: (store.asaasConfig || DEFAULT_ASAAS_CONFIG).environment, totalCount: result.totalCount ?? null });
+    res.json({ ok: true, environment: effectiveAsaasConfig().environment, totalCount: result.totalCount ?? null });
   } catch (error) {
     await logNotification({ channel: 'asaas', recipient: '', subject: 'Teste Asaas', message: '', status: 'error', error: error.message });
     res.status(400).send(error.message);
   }
 });
+app.get('/api/integrations/asaas/debug', async (req, res) => {
+  try {
+    const config = effectiveAsaasConfig();
+    res.json({
+      ok: true,
+      enabled: Boolean(config.enabled),
+      environment: config.environment,
+      apiKeySaved: Boolean(config.apiKey),
+      apiKeySource: (store.asaasConfig?.apiKey ? 'saved' : (process.env.ASAAS_API_KEY ? 'env' : 'none')),
+      baseUrl: asaasBaseUrl(config),
+    });
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message });
+  }
+});
+
 
 app.post('/api/asaas/payments/booking/:id', async (req, res) => {
   try {

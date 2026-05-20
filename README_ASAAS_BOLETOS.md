@@ -63,3 +63,25 @@ Nunca envie a API Key do Asaas para o GitHub. Use somente as variáveis de ambie
 ## Webhook
 
 Cadastre no Asaas a URL `https://SEU-SITE.onrender.com/api/asaas/webhook` e defina o token de autenticação igual à variável `ASAAS_WEBHOOK_TOKEN`. O backend valida o header `asaas-access-token` enviado pelo Asaas.
+
+
+## Correção importante desta versão
+
+Esta versão não gera mais o boleto interno/demonstrativo quando o Asaas estiver configurado. Ao clicar em **Gerar boleto Asaas** ou ao validar uma reserva, o sistema chama o backend em `/api/asaas/payments/booking/:id`, cria/consulta o cliente no Asaas e emite cobrança `billingType: BOLETO`.
+
+Variáveis mínimas no Render:
+
+```env
+ASAAS_ENABLED=true
+ASAAS_ENVIRONMENT=production
+ASAAS_API_KEY=sua_api_key_nova_do_asaas
+ASAAS_WEBHOOK_TOKEN=token_configurado_no_webhook_asaas
+```
+
+Para conferir se o backend reconheceu o Asaas, acesse:
+
+```text
+https://SEU-SITE.onrender.com/api/integrations/asaas/debug
+```
+
+O resultado precisa mostrar `enabled: true`, `apiKeySaved: true` e `environment: production` para boleto real de produção.
