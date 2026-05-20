@@ -328,6 +328,23 @@ async function destroyBackendSession() {
   if (!backendAvailable) return;
   try { await apiRequest('/auth/logout', { method: 'POST' }); } catch {}
 }
+async function getBackendSession() {
+  if (!backendAvailable) return null;
+  try {
+    const data = await apiRequest('/api/me');
+    return data?.user || null;
+  } catch {
+    return null;
+  }
+}
+function cleanAuthQueryParams() {
+  const url = new URL(window.location.href);
+  if (url.searchParams.has('auth') || url.searchParams.has('authError')) {
+    url.searchParams.delete('auth');
+    url.searchParams.delete('authError');
+    window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+  }
+}
 function uid(prefix) { return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`; }
 function todayISO() { return new Date().toISOString().slice(0, 10); }
 function nowISO() { return new Date().toISOString(); }
@@ -500,9 +517,12 @@ function authSetup() {
     const role = roleSelect.value;
     unitWrap.style.display = role === 'morador' ? 'grid' : 'none';
     if (bootstrapPasswordWrap) bootstrapPasswordWrap.style.display = role === 'sindico' ? 'grid' : 'none';
-    googleLink.href = `/auth/google?role=${encodeURIComponent(role)}`;
+    const params = new URLSearchParams({ role });
+    if (role === 'morador') params.set('apartment', $('[data-login-apartment]')?.value || '');
+    googleLink.href = `/auth/google?${params.toString()}`;
   }
   roleSelect.addEventListener('change', syncRoleUI);
+  $('[data-login-apartment]')?.addEventListener('change', syncRoleUI);
   syncRoleUI();
 
   loginForm.addEventListener('submit', async (event) => {
@@ -2231,6 +2251,14 @@ async function init() {
   document.addEventListener('click', handleDocumentClick);
   document.addEventListener('change', handleDocumentChange);
   document.addEventListener('input', (event) => { if (event.target.matches('[data-activity-log-search]')) renderActivityLogsFromCache(); });
+  const url = new URL(window.location.href);
+  const authError = url.searchParams.get('authError');
+  const serverUser = await getBackendSession();
+  if (backendAvailable && serverUser?.role) {
+    cleanAuthQueryParams();
+    startSession(serverUser);
+    return;
+  }
   const saved = read(keys.session, null);
   if (backendAvailable && saved?.role) {
     try {
@@ -2241,6 +2269,11 @@ async function init() {
     }
   } else {
     endSession();
+  }
+  if (authError) {
+    const message = $('[data-login-message]');
+    if (message) message.textContent = authError;
+    cleanAuthQueryParams();
   }
 }
 

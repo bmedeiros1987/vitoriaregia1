@@ -3,6 +3,7 @@ require('dotenv').config();
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const crypto = require('crypto');
 const express = require('express');
 const session = require('express-session');
 const helmet = require('helmet');
@@ -10,12 +11,16 @@ const cors = require('cors');
 const morgan = require('morgan');
 const nodemailer = require('nodemailer');
 
-const { getPool, hasDatabaseConfig, query, testConnection } = require('./db');
+const { getPool, hasDatabaseConfig, query, testConnection, rowsOf } = require('./db');
 const { initDatabase } = require('./schema');
 
 const app = express();
 const PORT = Number(process.env.PORT || 10000);
 const APP_URL = process.env.APP_URL || `http://localhost:${PORT}`;
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
+const GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL || `${APP_URL.replace(/\/$/, '')}/auth/google/callback`;
+const GOOGLE_AUTH_ENABLED = String(process.env.GOOGLE_AUTH_ENABLED || 'true').toLowerCase() !== 'false';
 const DATA_FILE = process.env.DATA_FILE || path.join(os.tmpdir(), 'vitoria-regia-state.json');
 const FRONTEND_DIR = process.env.FRONTEND_DIR
   ? path.resolve(process.env.FRONTEND_DIR)
@@ -260,7 +265,7 @@ async function saveStoreToDatabase(nextStore) {
 }
 
 async function loadStoreFromDatabase() {
-  const stateResult = await query(`select value from app_meta where key = 'state'`);
+  const stateResult = await query(`select value from app_meta where ` + "`key`" + ` = 'state'`);
   const configResult = await query(`select config from notification_config where id = 1`);
   const asaasConfigResult = await query(`select config from asaas_config where id = 1`);
   const logsResult = await query(`
@@ -271,10 +276,10 @@ async function loadStoreFromDatabase() {
   `);
 
   return normalizeStore({
-    state: fromJson(stateResult.rows[0]?.value, DEFAULT_STATE),
-    notificationConfig: fromJson(configResult.rows[0]?.config, DEFAULT_NOTIFICATION_CONFIG),
-    asaasConfig: fromJson(asaasConfigResult.rows[0]?.config, DEFAULT_ASAAS_CONFIG),
-    notificationLogs: logsResult.rows || [],
+    state: fromJson(rowsOf(stateResult)[0]?.value, DEFAULT_STATE),
+    notificationConfig: fromJson(rowsOf(configResult)[0]?.config, DEFAULT_NOTIFICATION_CONFIG),
+    asaasConfig: fromJson(rowsOf(asaasConfigResult)[0]?.config, DEFAULT_ASAAS_CONFIG),
+    notificationLogs: rowsOf(logsResult),
   });
 }
 
@@ -357,6 +362,111 @@ function bootstrapAdminAvailable() {
   if (!BOOTSTRAP_ADMIN_ENABLED || !BOOTSTRAP_ADMIN_EMAIL || !BOOTSTRAP_ADMIN_PASSWORD) return false;
   if (BOOTSTRAP_DISABLE_AFTER_FIRST_SINDICO && hasActiveNonBootstrapSindico()) return false;
   return true;
+}
+
+
+function googleOAuthConfigured() {
+  return Boolean(GOOGLE_AUTH_ENABLED && GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET && GOOGLE_CALLBACK_URL);
+}
+
+function redirectWithAuthError(res, message) {
+  const url = new URL(APP_URL || '/');
+  url.searchParams.set('authError', message || 'Não foi possível autenticar com Google.');
+  return res.redirect(url.toString());
+}
+
+function makeOAuthState(req, data = {}) {
+  const state = crypto.randomBytes(24).toString('hex');
+  req.session.googleOAuth = {
+    state,
+    role: data.role || 'morador',
+    apartment: data.apartment || '',
+    createdAt: Date.now(),
+  };
+  return state;
+}
+
+function readOAuthState(req, receivedState) {
+  const saved = req.session?.googleOAuth || null;
+  delete req.session.googleOAuth;
+  if (!saved || !receivedState || saved.state !== receivedState) return null;
+  if (Date.now() - Number(saved.createdAt || 0) > 10 * 60 * 1000) return null;
+  return saved;
+}
+
+async function exchangeGoogleCode(code) {
+  const body = new URLSearchParams({
+    code,
+    client_id: GOOGLE_CLIENT_ID,
+    client_secret: GOOGLE_CLIENT_SECRET,
+    redirect_uri: GOOGLE_CALLBACK_URL,
+    grant_type: 'authorization_code',
+  });
+  const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+  });
+  const tokenData = await tokenResponse.json().catch(() => ({}));
+  if (!tokenResponse.ok) throw new Error(tokenData.error_description || tokenData.error || 'Falha ao trocar código do Google.');
+  if (!tokenData.access_token) throw new Error('Google não retornou access_token.');
+  return tokenData;
+}
+
+async function fetchGoogleProfile(accessToken) {
+  const profileResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const profile = await profileResponse.json().catch(() => ({}));
+  if (!profileResponse.ok) throw new Error(profile.error_description || profile.error || 'Falha ao obter perfil Google.');
+  if (!profile.email) throw new Error('Conta Google não retornou e-mail.');
+  if (profile.email_verified === false) throw new Error('O e-mail da Conta Google não está verificado.');
+  return profile;
+}
+
+function buildUserFromGoogleProfile(profile, oauthState) {
+  const requestedRole = oauthState?.role || 'morador';
+  const email = normalizeEmail(profile.email || '');
+  const name = profile.name || profile.given_name || email;
+  const apartment = oauthState?.apartment || '';
+  const role = allowedRole(email, requestedRole);
+
+  if (requestedRole === 'sindico' && role !== 'sindico') {
+    const error = new Error('E-mail Google não autorizado para acesso de síndico/administração.');
+    error.statusCode = 403;
+    throw error;
+  }
+  if (requestedRole === 'portaria' && role !== 'portaria') {
+    const error = new Error('E-mail Google não autorizado para acesso de portaria.');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  let resident = null;
+  if (role === 'morador' && REQUIRE_APPROVED_RESIDENT) {
+    resident = findApprovedResident({ email, apartment });
+    if (!resident) {
+      const error = new Error('Cadastro de morador não aprovado ou não localizado para este e-mail Google.');
+      error.statusCode = 403;
+      throw error;
+    }
+  }
+
+  const staff = activeStaffByEmail(email);
+  return {
+    id: resident?.id || staff?.id || `google-${profile.sub || Date.now()}`,
+    role,
+    name: resident?.name || staff?.name || name,
+    email: resident?.email || staff?.email || email,
+    apartment: resident?.apartment || apartment || '',
+    residentId: resident?.id || null,
+    staffId: staff?.id || null,
+    authProvider: 'google',
+    googleSub: profile.sub || null,
+    picture: profile.picture || null,
+    bootstrap: false,
+    demo: false,
+  };
 }
 
 function matchesBootstrapAdmin(email, password) {
@@ -1073,6 +1183,13 @@ app.get('/api/health', async (req, res) => {
       disablesAfterFirstSindico: BOOTSTRAP_DISABLE_AFTER_FIRST_SINDICO,
       activeSindicoExists: hasActiveNonBootstrapSindico(),
     },
+    googleOAuth: {
+      enabled: GOOGLE_AUTH_ENABLED,
+      configured: googleOAuthConfigured(),
+      clientIdSaved: Boolean(GOOGLE_CLIENT_ID),
+      clientSecretSaved: Boolean(GOOGLE_CLIENT_SECRET),
+      callbackUrl: GOOGLE_CALLBACK_URL,
+    },
   });
 });
 
@@ -1081,7 +1198,7 @@ app.get('/api/db/status', async (req, res) => {
     configured: hasDatabaseConfig(),
     ready: databaseReady,
     requireDatabase: REQUIRE_DATABASE,
-    mode: databaseReady ? 'postgresql' : 'unavailable',
+    mode: databaseReady ? 'mysql' : 'unavailable',
   };
   if (hasDatabaseConfig()) {
     try { result.connection = await testConnection(); }
@@ -1192,6 +1309,49 @@ function handleLogin(req, res) {
   req.session.user = user;
   res.json({ user });
 }
+
+app.get('/auth/google', requireDatabaseReady, (req, res) => {
+  try {
+    if (!googleOAuthConfigured()) {
+      return redirectWithAuthError(res, 'Login Google não configurado. Informe GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET e GOOGLE_CALLBACK_URL no Render.');
+    }
+    const requestedRole = ['morador', 'sindico', 'portaria'].includes(String(req.query.role || 'morador')) ? String(req.query.role || 'morador') : 'morador';
+    const apartment = String(req.query.apartment || '').trim();
+    const state = makeOAuthState(req, { role: requestedRole, apartment });
+    const params = new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      redirect_uri: GOOGLE_CALLBACK_URL,
+      response_type: 'code',
+      scope: 'openid email profile',
+      access_type: 'offline',
+      prompt: 'select_account',
+      state,
+    });
+    return res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
+  } catch (error) {
+    return redirectWithAuthError(res, error.message);
+  }
+});
+
+app.get('/auth/google/callback', requireDatabaseReady, async (req, res) => {
+  try {
+    if (req.query.error) return redirectWithAuthError(res, `Google recusou o login: ${req.query.error}`);
+    const oauthState = readOAuthState(req, req.query.state);
+    if (!oauthState) return redirectWithAuthError(res, 'Sessão de login Google expirada ou inválida. Tente novamente.');
+    if (!req.query.code) return redirectWithAuthError(res, 'Google não retornou o código de autenticação.');
+    const tokenData = await exchangeGoogleCode(String(req.query.code));
+    const profile = await fetchGoogleProfile(tokenData.access_token);
+    const user = buildUserFromGoogleProfile(profile, oauthState);
+    req.session.user = user;
+    const url = new URL(APP_URL || '/');
+    url.searchParams.set('auth', 'google');
+    return res.redirect(url.toString());
+  } catch (error) {
+    console.error('Falha no login Google:', error.message);
+    return redirectWithAuthError(res, error.message || 'Falha no login Google.');
+  }
+});
+
 app.post('/auth/login', requireDatabaseReady, handleLogin);
 app.post('/auth/demo', (req, res) => {
   if (!ALLOW_LEGACY_DEMO_LOGIN) return res.status(410).send('Login demo desativado nesta versão operacional. Use /auth/login.');
@@ -1363,7 +1523,7 @@ app.get('/api/notifications/logs', async (req, res) => {
   try {
     if (databaseReady) {
       const result = await query(`select id, channel, recipient, subject, message, status, error, provider_response as "providerResponse", created_at as "createdAt" from notification_logs order by created_at desc limit 200`);
-      return res.json({ ok: true, logs: result.rows });
+      return res.json({ ok: true, logs: rowsOf(result) });
     }
     res.json({ ok: true, logs: store.notificationLogs || [] });
   } catch (error) {
@@ -1389,7 +1549,7 @@ app.get('/api/activity-logs', requireDatabaseReady, requireSyndicUser, async (re
       order by created_at desc
       limit 500
     `);
-    res.json({ ok: true, logs: result.rows });
+    res.json({ ok: true, logs: rowsOf(result) });
   } catch (error) {
     res.status(500).send(error.message);
   }
@@ -1406,7 +1566,7 @@ app.post('/api/activity-logs', requireDatabaseReady, requirePortariaOrSyndicUser
 
 async function rowsFromPayload(table) {
   const result = await query(`select payload from ${table} order by created_at desc`);
-  return result.rows.map((row) => row.payload);
+  return rowsOf(result).map((row) => row.payload);
 }
 
 app.get('/api/residents', async (req, res) => {

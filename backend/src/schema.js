@@ -1,4 +1,4 @@
-const { query } = require('./db');
+const { query, rowsOf } = require('./db');
 
 async function run(sql) {
   await query(sql);
@@ -243,10 +243,14 @@ async function createIndex(table, name, columns) {
       `select count(1) as count from information_schema.statistics where table_schema = database() and table_name = ? and index_name = ?`,
       [table, name]
     );
-    if (Number(existing.rows?.[0]?.count || 0) === 0) {
+    const count = Number(rowsOf(existing)[0]?.count || 0);
+    if (count === 0) {
       await query(`create index ${name} on ${table} (${columns})`);
     }
   } catch (error) {
+    // Em MySQL/Aiven, se duas inicializações ocorrerem próximas, o índice pode já existir.
+    // Isso não é erro fatal e não deve derrubar o backend.
+    if (error && (error.code === 'ER_DUP_KEYNAME' || String(error.message || '').includes('Duplicate key name'))) return;
     console.warn(`Aviso: não foi possível criar índice ${name}: ${error.message}`);
   }
 }
