@@ -96,6 +96,24 @@ function applyBackendState(state = {}) {
     suppressBackendSync = false;
   }
 }
+
+function asFormElement(source, fallbackSelector) {
+  if (source instanceof HTMLFormElement) return source;
+  if (source?.target instanceof HTMLFormElement) return source.target;
+  if (source?.currentTarget instanceof HTMLFormElement) return source.currentTarget;
+  if (source instanceof HTMLElement) {
+    const closestForm = source.closest('form');
+    if (closestForm instanceof HTMLFormElement) return closestForm;
+  }
+  const fallback = fallbackSelector ? $(fallbackSelector) : null;
+  if (fallback instanceof HTMLFormElement) return fallback;
+  throw new Error('Formulário de integrações não encontrado. Atualize a página e tente novamente.');
+}
+
+function formDataOf(source, fallbackSelector) {
+  return new FormData(asFormElement(source, fallbackSelector));
+}
+
 async function apiRequest(path, options = {}) {
   const headers = { ...(options.headers || {}) };
   if (options.body && !(options.body instanceof FormData)) headers['Content-Type'] = headers['Content-Type'] || 'application/json';
@@ -145,7 +163,7 @@ async function loadAsaasConfig() {
 }
 
 async function saveAsaasConfigFromForm(form) {
-  const data = new FormData(form);
+  const data = formDataOf(form, '[data-notification-settings-form]');
   const payload = {
     enabled: Boolean(data.get('asaasEnabled')),
     environment: data.get('asaasEnvironment') || 'sandbox',
@@ -164,7 +182,7 @@ function notificationRules() {
   return { ...defaultSettings.notificationRules, ...(getSettings().notificationRules || {}) };
 }
 async function saveNotificationConfigFromForm(form) {
-  const data = new FormData(form);
+  const data = formDataOf(form, '[data-notification-settings-form]');
   const payload = {
     email: {
       enabled: Boolean(data.get('emailEnabled')),
@@ -1102,16 +1120,15 @@ function setupNotificationForms() {
   $('[data-notification-settings-form]')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const msg = $('[data-notification-settings-message]');
-    if (!backendAvailable) { msg.textContent = 'Backend indisponível. Publique o Web Service no Render para salvar integrações.'; return; }
-    msg.textContent = 'Salvando integrações...';
+    if (!backendAvailable) { if (msg) msg.textContent = 'Backend indisponível. Publique o Web Service no Render para salvar integrações.'; return; }
+    if (msg) msg.textContent = 'Salvando integrações...';
     try {
-      await saveNotificationConfigFromForm(event.currentTarget);
-      await saveAsaasConfigFromForm(event.currentTarget);
-      msg.textContent = 'Integrações salvas com segurança no backend.';
-      msg.style.color = 'var(--green)';
+      const form = asFormElement(event.currentTarget, '[data-notification-settings-form]');
+      await saveNotificationConfigFromForm(form);
+      await saveAsaasConfigFromForm(form);
+      if (msg) { msg.textContent = 'Integrações salvas com segurança no backend.'; msg.style.color = 'var(--green)'; }
     } catch (error) {
-      msg.textContent = `Erro ao salvar integrações: ${error.message}`;
-      msg.style.color = 'var(--red)';
+      if (msg) { msg.textContent = `Erro ao salvar integrações: ${error.message}`; msg.style.color = 'var(--red)'; } else { alert(`Erro ao salvar integrações: ${error.message}`); }
     }
   });
 
@@ -1121,7 +1138,7 @@ function setupNotificationForms() {
     if (!backendAvailable) { msg.textContent = 'Backend indisponível.'; return; }
     try {
       await saveNotificationConfigFromForm(form);
-      const to = new FormData(form).get('testEmailTo');
+      const to = formDataOf(form, '[data-notification-settings-form]').get('testEmailTo');
       msg.textContent = 'Enviando e-mail de teste...';
       const response = await apiRequest('/api/integrations/test-email', { method: 'POST', body: JSON.stringify({ to }) });
       msg.textContent = `E-mail de teste enviado. ID: ${response.messageId || 'ok'}`;
@@ -1138,7 +1155,7 @@ function setupNotificationForms() {
     if (!backendAvailable) { msg.textContent = 'Backend indisponível.'; return; }
     try {
       await saveNotificationConfigFromForm(form);
-      const to = new FormData(form).get('testWhatsappTo');
+      const to = formDataOf(form, '[data-notification-settings-form]').get('testWhatsappTo');
       msg.textContent = 'Enviando WhatsApp de teste...';
       await apiRequest('/api/integrations/test-whatsapp', { method: 'POST', body: JSON.stringify({ to }) });
       msg.textContent = 'WhatsApp de teste enviado pela API configurada.';
