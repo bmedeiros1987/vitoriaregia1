@@ -55,6 +55,8 @@ const DEFAULT_STATE = {
   settings: null,
 };
 
+const DEFAULT_AUTH_ACCOUNTS = [];
+
 const ALLOWED_STATE_KEYS = new Set(Object.keys(DEFAULT_STATE).filter((key) => key !== 'session'));
 
 const DEFAULT_NOTIFICATION_CONFIG = {
@@ -143,7 +145,7 @@ function ensureDir(filePath) {
 function readJsonFileFallback() {
   try {
     if (!fs.existsSync(DATA_FILE)) {
-      return { state: DEFAULT_STATE, notificationConfig: DEFAULT_NOTIFICATION_CONFIG, asaasConfig: DEFAULT_ASAAS_CONFIG, storageConfig: DEFAULT_STORAGE_CONFIG, notificationLogs: [] };
+      return { state: DEFAULT_STATE, notificationConfig: DEFAULT_NOTIFICATION_CONFIG, asaasConfig: DEFAULT_ASAAS_CONFIG, storageConfig: DEFAULT_STORAGE_CONFIG, notificationLogs: [], activityLogs: [], authAccounts: DEFAULT_AUTH_ACCOUNTS };
     }
     const parsed = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
     return {
@@ -151,11 +153,13 @@ function readJsonFileFallback() {
       notificationConfig: deepMerge(DEFAULT_NOTIFICATION_CONFIG, parsed.notificationConfig || {}),
       asaasConfig: deepMerge(DEFAULT_ASAAS_CONFIG, parsed.asaasConfig || {}),
       notificationLogs: Array.isArray(parsed.notificationLogs) ? parsed.notificationLogs : [],
+      activityLogs: Array.isArray(parsed.activityLogs) ? parsed.activityLogs : [],
       storageConfig: deepMerge(DEFAULT_STORAGE_CONFIG, parsed.storageConfig || {}),
+      authAccounts: Array.isArray(parsed.authAccounts) ? parsed.authAccounts : DEFAULT_AUTH_ACCOUNTS,
     };
   } catch (error) {
     console.warn('Não foi possível ler arquivo local, usando estado vazio:', error.message);
-    return { state: DEFAULT_STATE, notificationConfig: DEFAULT_NOTIFICATION_CONFIG, asaasConfig: DEFAULT_ASAAS_CONFIG, storageConfig: DEFAULT_STORAGE_CONFIG, notificationLogs: [] };
+    return { state: DEFAULT_STATE, notificationConfig: DEFAULT_NOTIFICATION_CONFIG, asaasConfig: DEFAULT_ASAAS_CONFIG, storageConfig: DEFAULT_STORAGE_CONFIG, notificationLogs: [], activityLogs: [], authAccounts: DEFAULT_AUTH_ACCOUNTS };
   }
 }
 
@@ -171,6 +175,8 @@ function normalizeStore(raw = {}) {
     asaasConfig: deepMerge(DEFAULT_ASAAS_CONFIG, raw.asaasConfig || {}),
     storageConfig: deepMerge(DEFAULT_STORAGE_CONFIG, raw.storageConfig || {}),
     notificationLogs: Array.isArray(raw.notificationLogs) ? raw.notificationLogs : [],
+    activityLogs: Array.isArray(raw.activityLogs) ? raw.activityLogs : [],
+    authAccounts: Array.isArray(raw.authAccounts) ? raw.authAccounts : DEFAULT_AUTH_ACCOUNTS,
   };
 }
 
@@ -467,18 +473,71 @@ function temporaryPassword() {
   return `VR-${a}-${b}`;
 }
 
+function fallbackAuthAccounts() {
+  if (!Array.isArray(store.authAccounts)) store.authAccounts = [];
+  return store.authAccounts;
+}
+
+function normalizeAuthAccountRow(account = {}) {
+  return {
+    email: normalizeEmail(account.email || ''),
+    role: account.role || 'morador',
+    residentId: account.residentId || account.resident_id || null,
+    staffId: account.staffId || account.staff_id || null,
+    passwordHash: account.passwordHash || account.password_hash || '',
+    mustChangePassword: Boolean(account.mustChangePassword ?? account.must_change_password),
+    active: Boolean(account.active),
+    lastLoginAt: account.lastLoginAt || account.last_login_at || null,
+    metadata: fromJson(account.metadata, account.metadata || {}),
+    createdAt: account.createdAt || account.created_at || new Date().toISOString(),
+    updatedAt: account.updatedAt || account.updated_at || new Date().toISOString(),
+  };
+}
+
+async function persistFallbackAuthAccounts() {
+  if (databaseReady) return;
+  if (REQUIRE_DATABASE) throw new Error('Banco obrigatório indisponível. Salvamento local/demo está desativado.');
+  writeJsonFileFallback(store);
+}
+
 async function authAccountByEmail(email) {
-  if (!databaseReady) return null;
   const normalized = normalizeEmail(email);
   if (!normalized) return null;
+  if (!databaseReady) {
+    const account = fallbackAuthAccounts().map(normalizeAuthAccountRow).find((item) => item.email === normalized);
+    return account || null;
+  }
   const result = await query(`select email, role, resident_id as "residentId", staff_id as "staffId", password_hash as "passwordHash", must_change_password as "mustChangePassword", active, last_login_at as "lastLoginAt", metadata from auth_accounts where email = ? limit 1`, [normalized]);
-  return rowsOf(result)[0] || null;
+  const row = rowsOf(result)[0];
+  return row ? normalizeAuthAccountRow(row) : null;
 }
 
 async function upsertAuthAccount({ email, role = 'morador', residentId = null, staffId = null, password, passwordHash, active = false, mustChangePassword = false, metadata = {} }) {
   const normalized = normalizeEmail(email);
   if (!normalized) throw new Error('E-mail obrigatório para criar acesso.');
   const finalHash = passwordHash || makePasswordHash(password || temporaryPassword());
+  if (!databaseReady) {
+    const accounts = fallbackAuthAccounts();
+    const now = new Date().toISOString();
+    const existingIndex = accounts.findIndex((item) => normalizeEmail(item.email || '') === normalized);
+    const existing = existingIndex >= 0 ? normalizeAuthAccountRow(accounts[existingIndex]) : {};
+    const next = {
+      ...existing,
+      email: normalized,
+      role,
+      residentId: residentId || null,
+      staffId: staffId || null,
+      passwordHash: finalHash,
+      mustChangePassword: Boolean(mustChangePassword),
+      active: Boolean(active),
+      metadata: metadata || {},
+      createdAt: existing.createdAt || now,
+      updatedAt: now,
+    };
+    if (existingIndex >= 0) accounts[existingIndex] = next; else accounts.unshift(next);
+    await persistFallbackAuthAccounts();
+    return authAccountByEmail(normalized);
+  }
   await query(
     `insert into auth_accounts (email, role, resident_id, staff_id, password_hash, must_change_password, active, metadata, created_at, updated_at)
      values ($1,$2,$3,$4,$5,$6,$7,$8,now(),now())
@@ -489,7 +548,19 @@ async function upsertAuthAccount({ email, role = 'morador', residentId = null, s
 }
 
 async function touchAuthLogin(email) {
-  try { await query(`update auth_accounts set last_login_at=now(), updated_at=now() where email = ?`, [normalizeEmail(email)]); } catch (_) {}
+  const normalized = normalizeEmail(email);
+  try {
+    if (!databaseReady) {
+      const accounts = fallbackAuthAccounts();
+      const index = accounts.findIndex((item) => normalizeEmail(item.email || '') === normalized);
+      if (index >= 0) {
+        accounts[index] = { ...normalizeAuthAccountRow(accounts[index]), lastLoginAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+        await persistFallbackAuthAccounts();
+      }
+      return;
+    }
+    await query(`update auth_accounts set last_login_at=now(), updated_at=now() where email = ?`, [normalized]);
+  } catch (_) {}
 }
 
 function staffRoleToAppRole(role = '') {
@@ -1717,12 +1788,19 @@ async function recordActivityLog(entry = {}, user = {}) {
   const entityId = String(entry.entityId || '').slice(0, 120);
   const apartment = String(entry.apartment || details.apartment || '').slice(0, 20);
   const summary = String(entry.summary || '').slice(0, 500);
+  const log = { id, actorName, actorEmail, actorRole, action, entityType, entityId, apartment, summary, details, createdAt: new Date().toISOString() };
+  if (!databaseReady) {
+    if (!Array.isArray(store.activityLogs)) store.activityLogs = [];
+    store.activityLogs = [log, ...store.activityLogs].slice(0, 1000);
+    if (!REQUIRE_DATABASE) writeJsonFileFallback(store);
+    return log;
+  }
   await query(
     `insert into activity_logs (id, actor_name, actor_email, actor_role, action, entity_type, entity_id, apartment, summary, details, created_at)
      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,now())`,
     [id, actorName, actorEmail, actorRole, action, entityType, entityId, apartment, summary, toJson(details)]
   );
-  return { id, actorName, actorEmail, actorRole, action, entityType, entityId, apartment, summary, details, createdAt: new Date().toISOString() };
+  return log;
 }
 
 async function handleLogin(req, res) {
@@ -1827,7 +1905,19 @@ app.post('/auth/accounts/approve-resident', requireDatabaseReady, requireSyndicU
     if (!email || !residentId) return res.status(400).send('E-mail e ID do morador são obrigatórios.');
     const account = await authAccountByEmail(email);
     if (account) {
-      await query(`update auth_accounts set role='morador', resident_id=?, active=true, updated_at=now(), metadata=json_set(coalesce(metadata, json_object()), '$.apartment', ?) where email=?`, [residentId, apartment, email]);
+      if (!databaseReady) {
+        await upsertAuthAccount({
+          email,
+          role: 'morador',
+          residentId,
+          passwordHash: account.passwordHash,
+          active: true,
+          mustChangePassword: Boolean(account.mustChangePassword),
+          metadata: { ...(account.metadata || {}), residentId, apartment, approvedAt: new Date().toISOString() },
+        });
+      } else {
+        await query(`update auth_accounts set role='morador', resident_id=?, active=true, updated_at=now(), metadata=json_set(coalesce(metadata, json_object()), '$.apartment', ?) where email=?`, [residentId, apartment, email]);
+      }
     } else {
       const temp = temporaryPassword();
       await upsertAuthAccount({ email, role: 'morador', residentId, password: temp, active: true, mustChangePassword: true, metadata: { residentId, apartment, source: 'admin-approval-temp' } });
@@ -2164,6 +2254,9 @@ app.get('/api/notifications/logs', async (req, res) => {
 
 app.get('/api/activity-logs', requireDatabaseReady, requireSyndicUser, async (req, res) => {
   try {
+    if (!databaseReady) {
+      return res.json({ ok: true, logs: Array.isArray(store.activityLogs) ? store.activityLogs : [] });
+    }
     const result = await query(`
       select id,
              actor_name as "actorName",

@@ -18,6 +18,8 @@ const keys = {
   settings: `${STORE_PREFIX}settings`,
 };
 
+const TAB_AUTH_KEY = `${STORE_PREFIX}tabAuthenticated`;
+
 const BACKEND_API = window.VR_API_BASE || '';
 const REQUIRE_BACKEND = true;
 const REQUIRE_APPROVED_RESIDENT = true;
@@ -32,6 +34,22 @@ const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selec
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const dateFormatter = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium' });
 const dateTimeFormatter = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+
+function setAuthLocked(locked = true) {
+  document.documentElement.classList.toggle('auth-locked', Boolean(locked));
+}
+function markTabAuthenticated() {
+  try { sessionStorage.setItem(TAB_AUTH_KEY, 'true'); } catch (_) {}
+}
+function clearTabAuthentication() {
+  try { sessionStorage.removeItem(TAB_AUTH_KEY); } catch (_) {}
+}
+function isTabAuthenticated() {
+  try { return sessionStorage.getItem(TAB_AUTH_KEY) === 'true'; } catch (_) { return false; }
+}
+function clearStoredSession() {
+  try { localStorage.removeItem(keys.session); } catch (_) {}
+}
 
 const roles = {
   morador: { label: 'Morador', title: 'Área do Morador' },
@@ -439,6 +457,9 @@ function toISODate(date) { return new Date(date.getTime() - date.getTimezoneOffs
 function escapeHTML(value = '') {
   return String(value).replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#039;', '"': '&quot;' }[char]));
 }
+function normalizeEmail(value = '') {
+  return String(value || '').trim().toLowerCase();
+}
 function normalizeText(value = '') {
   return String(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
@@ -670,7 +691,9 @@ function applyPermissions() {
 
 function startSession(data) {
   session = data;
-  write(keys.session, session);
+  markTabAuthenticated();
+  clearStoredSession();
+  setAuthLocked(false);
   $('[data-login-screen]').hidden = true;
   $('[data-app]').hidden = false;
   applyPermissions();
@@ -680,7 +703,9 @@ function startSession(data) {
 }
 function endSession() {
   session = null;
-  remove(keys.session);
+  clearTabAuthentication();
+  clearStoredSession();
+  setAuthLocked(true);
   $('[data-login-screen]').hidden = false;
   $('[data-app]').hidden = true;
   location.hash = '';
@@ -696,7 +721,7 @@ async function promptPasswordChangeIfNeeded() {
     try {
       await changeOwnPassword({ newPassword: first, confirmPassword: second });
       session = { ...session, mustChangePassword: false };
-      write(keys.session, session);
+      clearStoredSession();
       alert('Senha alterada com sucesso.');
     } catch (error) {
       alert(error.message || 'Não foi possível alterar a senha.');
@@ -1292,7 +1317,7 @@ function setupMyResident() {
     if (patch.primaryBilling) setPrimaryResident(id);
     if (session?.residentId === id || session?.email === current.email) {
       session = { ...session, name: patch.name, email: patch.email, apartment: current.apartment, residentId: id };
-      write(keys.session, session);
+      clearStoredSession();
       applyPermissions();
     }
     $('[data-my-resident-message]').textContent = 'Cadastro atualizado e sincronizado com o banco.';
@@ -3755,6 +3780,12 @@ function handleDocumentChange(event) {
 function setupPrint() { $('[data-print-boleto]')?.addEventListener('click', () => window.print()); }
 
 async function init() {
+  setAuthLocked(true);
+  session = null;
+  clearStoredSession();
+  if ($('[data-login-screen]')) $('[data-login-screen]').hidden = false;
+  if ($('[data-app]')) $('[data-app]').hidden = true;
+
   await loadBackendState();
   if (!backendAvailable && REQUIRE_BACKEND) {
     clearAppLocalCache();
@@ -3790,16 +3821,15 @@ async function init() {
   document.addEventListener('input', (event) => { if (event.target.matches('[data-activity-log-search]')) renderActivityLogsFromCache(); });
   const url = new URL(window.location.href);
   const authError = url.searchParams.get('authError');
-  const serverUser = await getBackendSession();
+  const serverUser = backendAvailable && isTabAuthenticated() ? await getBackendSession() : null;
   if (backendAvailable && serverUser?.role) {
     cleanAuthQueryParams();
     await loadBackendState();
     startSession(serverUser);
     return;
   }
-  // Segurança: não reabre o aplicativo usando apenas localStorage.
-  // O acesso precisa vir de uma sessão válida no backend ou de novo login com senha.
-  remove(keys.session);
+  // Segurança: a página inicial nunca reabre o dashboard com sessão antiga de localStorage
+  // ou cookie de outra aba. Só a aba que acabou de autenticar pode restaurar a sessão.
   endSession();
   if (authError) {
     const message = $('[data-login-message]');
