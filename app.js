@@ -54,6 +54,8 @@ let currentBoletoBookingId = null;
 let currentVisitorPhoto = '';
 let notificationConfig = null;
 let notificationConfigLoading = false;
+let asaasConfig = null;
+let asaasConfigLoading = false;
 
 function apartments() {
   const list = [];
@@ -122,6 +124,41 @@ async function loadNotificationConfig() {
   } finally {
     notificationConfigLoading = false;
   }
+}
+
+async function loadAsaasConfig() {
+  if (!backendAvailable || !isSyndic() || asaasConfigLoading) return asaasConfig;
+  asaasConfigLoading = true;
+  try {
+    const data = await apiRequest('/api/integrations/asaas');
+    asaasConfig = data.config || null;
+    renderNotificationSettings();
+    return asaasConfig;
+  } catch (error) {
+    asaasConfig = null;
+    const status = $('[data-integration-status]');
+    if (status) status.innerHTML += `<div class="empty-state">Não foi possível carregar Asaas: ${escapeHTML(error.message)}</div>`;
+    return null;
+  } finally {
+    asaasConfigLoading = false;
+  }
+}
+
+async function saveAsaasConfigFromForm(form) {
+  const data = new FormData(form);
+  const payload = {
+    enabled: Boolean(data.get('asaasEnabled')),
+    environment: data.get('asaasEnvironment') || 'sandbox',
+    apiKey: data.get('asaasApiKey') || '',
+    dueDaysBeforeReservation: Number(data.get('asaasDueDays') || 2),
+    fineValue: Number(data.get('asaasFine') || 0),
+    interestValue: Number(data.get('asaasInterest') || 0),
+    notificationEnabled: true,
+  };
+  const response = await apiRequest('/api/integrations/asaas', { method: 'POST', body: JSON.stringify(payload) });
+  asaasConfig = response.config;
+  renderNotificationSettings();
+  return response;
 }
 function notificationRules() {
   return { ...defaultSettings.notificationRules, ...(getSettings().notificationRules || {}) };
@@ -395,12 +432,12 @@ function authSetup() {
     const apartment = role === 'morador' ? form.get('apartment') : '';
     if (role === 'morador') {
       const approved = getResidents().find((resident) => resident.apartment === apartment || (email && resident.email === email));
-      const payload = { role, name: approved?.name || name, email: approved?.email || email, apartment: approved?.apartment || apartment, residentId: approved?.id || null, demo: true };
+      const payload = { role, name: approved?.name || name, email: approved?.email || email, apartment: approved?.apartment || apartment, residentId: approved?.id || null, demo: false };
       await createBackendSession(payload);
       startSession(payload);
       return;
     }
-    const payload = { role, name, email, apartment: '', demo: true };
+    const payload = { role, name, email, apartment: '', demo: false };
     await createBackendSession(payload);
     startSession(payload);
   });
@@ -413,6 +450,7 @@ function authSetup() {
       name: form.get('name').trim(),
       email: form.get('email').trim(),
       whatsapp: form.get('whatsapp').trim(),
+      cpfCnpj: (form.get('cpfCnpj') || '').replace(/\D/g, ''),
       apartment: form.get('apartment'),
       status: 'pending',
       createdAt: nowISO(),
@@ -451,7 +489,7 @@ function navigationSetup() {
   $('[data-sidebar-shadow]')?.addEventListener('click', closeMenu);
   $$('[data-logout]').forEach((btn) => btn.addEventListener('click', async () => { await destroyBackendSession(); endSession(); }));
   $('[data-reset-demo]')?.addEventListener('click', () => {
-    if (!confirm('Restaurar todos os dados demonstrativos?')) return;
+    if (!confirm('Limpar os dados locais deste navegador?')) return;
     Object.values(keys).forEach(remove);
     localStorage.removeItem(`${STORE_PREFIX}seeded`);
     seedDemo(true);
@@ -543,7 +581,7 @@ function renderPendingResidents() {
       <div class="item-row">
         <div>
           <div class="item-title">${escapeHTML(item.name)} • Unidade ${escapeHTML(item.apartment)}</div>
-          <div class="item-sub">${escapeHTML(item.email)} • ${escapeHTML(item.whatsapp)}<br>Solicitado em ${formatDateTime(item.createdAt)}</div>
+          <div class="item-sub">${escapeHTML(item.email)} • ${escapeHTML(item.whatsapp)}${item.cpfCnpj ? ` • CPF/CNPJ: ${escapeHTML(item.cpfCnpj)}` : ''}<br>Solicitado em ${formatDateTime(item.createdAt)}</div>
         </div>
         <span class="status status--pending">Pendente</span>
       </div>
@@ -559,13 +597,13 @@ function renderResidents() {
   if (!box) return;
   const search = normalizeText($('[data-resident-search]')?.value || '');
   let list = getResidents().slice().sort((a, b) => a.apartment.localeCompare(b.apartment, 'pt-BR', { numeric: true }));
-  if (search) list = list.filter((item) => normalizeText(`${item.name} ${item.email} ${item.whatsapp} ${item.apartment}`).includes(search));
+  if (search) list = list.filter((item) => normalizeText(`${item.name} ${item.email} ${item.whatsapp} ${item.apartment} ${item.cpfCnpj || ''}`).includes(search));
   box.innerHTML = list.length ? list.map((resident) => `
     <div class="item">
       <div class="item-row">
         <div>
           <div class="item-title">Unidade ${escapeHTML(resident.apartment)} • ${escapeHTML(resident.name)}</div>
-          <div class="item-sub">${escapeHTML(resident.email)} • ${escapeHTML(resident.whatsapp)}${resident.notes ? `<br>${escapeHTML(resident.notes)}` : ''}</div>
+          <div class="item-sub">${escapeHTML(resident.email)} • ${escapeHTML(resident.whatsapp)}${resident.cpfCnpj ? ` • CPF/CNPJ: ${escapeHTML(resident.cpfCnpj)}` : ''}${resident.notes ? `<br>${escapeHTML(resident.notes)}` : ''}</div>
         </div>
         <span class="status status--approved">Aprovado</span>
       </div>
@@ -589,6 +627,7 @@ function setupResidents() {
       name: data.get('name').trim(),
       email: data.get('email').trim(),
       whatsapp: data.get('whatsapp').trim(),
+      cpfCnpj: (data.get('cpfCnpj') || '').replace(/\D/g, ''),
       apartment: data.get('apartment'),
       notes: data.get('notes').trim(),
       status: 'approved',
@@ -663,6 +702,7 @@ function setupBookings() {
       residentName: resident.name || session?.name || 'Morador',
       residentEmail: resident.email || session?.email || '',
       residentWhatsapp: resident.whatsapp || '',
+      residentCpfCnpj: resident.cpfCnpj || '',
       fee: Number(space.fee || 0),
       notes: data.get('notes').trim(),
       status: 'pending',
@@ -822,7 +862,7 @@ function generateBoleto(booking) {
     dueDate: toISODate(due),
     amount: Number(booking.fee || 0),
     line,
-    note: 'Boleto demonstrativo. Para pagamento real, integrar banco/ASAAS/Gerencianet/Itaú/Sicredi etc.',
+    note: 'Cobrança interna da reserva. Para boleto bancário registrado, integrar banco ou provedor de pagamentos.',
   };
 }
 function renderFinance() {
@@ -839,41 +879,77 @@ function renderFinance() {
         <span class="status status--${statusClass(booking.status)}">${statusLabel(booking.status)}</span>
       </div>
       <div class="item-actions">
-        <button class="btn btn--outline btn--sm" data-boleto-booking="${booking.id}">${booking.boleto ? 'Ver boleto' : 'Gerar boleto'}</button>
+        ${isSyndic() || booking.boleto ? `<button class="btn btn--outline btn--sm" data-boleto-booking="${booking.id}">${booking.boleto ? 'Ver boleto' : 'Gerar boleto'}</button>` : `<span class="badge">Aguardando boleto do síndico</span>`}
         ${isSyndic() ? `<button class="btn btn--success btn--sm" data-mark-paid="${booking.id}">Marcar pago</button>` : ''}
       </div>
     </div>`).join('') : empty('Nenhuma cobrança de reserva.');
   if (currentBoletoBookingId) renderBoletoPreview(currentBoletoBookingId);
 }
-function renderBoletoPreview(id) {
+async function renderBoletoPreview(id) {
   const preview = $('[data-boleto-preview]');
   if (!preview) return;
   let bookings = getBookings();
   let booking = bookings.find((item) => item.id === id);
   if (!booking) return;
+  currentBoletoBookingId = id;
+
+  if (!booking.boleto && backendAvailable && isSyndic()) {
+    if (!asaasConfig) await loadAsaasConfig();
+    if (asaasConfig?.enabled) {
+      try {
+        preview.innerHTML = '<div class="empty-state">Gerando boleto registrado no Asaas...</div>';
+        const resident = approvedResidentByApartment(booking.apartment) || {};
+        let cpfCnpj = booking.residentCpfCnpj || resident.cpfCnpj || '';
+        if (!cpfCnpj) cpfCnpj = prompt('Informe CPF/CNPJ do responsável para gerar o boleto Asaas:') || '';
+        if (!cpfCnpj) throw new Error('CPF/CNPJ é obrigatório para gerar boleto Asaas.');
+        const response = await apiRequest(`/api/asaas/payments/booking/${encodeURIComponent(id)}`, {
+          method: 'POST',
+          body: JSON.stringify({ cpfCnpj }),
+        });
+        booking = response.booking || booking;
+        bookings = getBookings().map((item) => item.id === id ? booking : item);
+        saveBookings(bookings);
+      } catch (error) {
+        preview.innerHTML = `<div class="empty-state">Erro ao gerar boleto Asaas: ${escapeHTML(error.message)}</div>`;
+        return;
+      }
+    }
+  }
+
   if (!booking.boleto) {
     booking = { ...booking, boleto: generateBoleto(booking) };
     bookings = bookings.map((item) => item.id === id ? booking : item);
     saveBookings(bookings);
   }
-  currentBoletoBookingId = id;
+
   const settings = getSettings();
+  const boleto = booking.boleto || {};
+  const isAsaas = boleto.provider === 'asaas';
+  const links = isAsaas ? `
+    <div class="item-actions boleto-actions">
+      ${boleto.bankSlipUrl ? `<a class="btn btn--primary btn--sm" href="${escapeHTML(boleto.bankSlipUrl)}" target="_blank" rel="noopener">Abrir PDF do boleto</a>` : ''}
+      ${boleto.invoiceUrl ? `<a class="btn btn--outline btn--sm" href="${escapeHTML(boleto.invoiceUrl)}" target="_blank" rel="noopener">Abrir fatura Asaas</a>` : ''}
+    </div>` : '';
+
   preview.innerHTML = `
     <div class="boleto">
-      <div class="boleto-head"><strong>${escapeHTML(settings.condominiumName)}</strong><span>Recibo/Boleto de Reserva</span></div>
+      <div class="boleto-head"><strong>${escapeHTML(settings.condominiumName)}</strong><span>${isAsaas ? 'Boleto Asaas de Reserva' : 'Recibo/Boleto de Reserva'}</span></div>
       <div class="boleto-grid">
         <div class="boleto-cell"><small>Beneficiário</small><strong>${escapeHTML(settings.payee).replaceAll('\n', '<br>')}</strong></div>
         <div class="boleto-cell"><small>Pagador</small><strong>Unidade ${escapeHTML(booking.apartment)}<br>${escapeHTML(booking.residentName || '')}</strong></div>
-        <div class="boleto-cell"><small>Valor</small><strong>${money.format(Number(booking.boleto.amount || 0))}</strong></div>
+        <div class="boleto-cell"><small>Valor</small><strong>${money.format(Number(boleto.amount || 0))}</strong></div>
         <div class="boleto-cell"><small>Espaço</small><strong>${escapeHTML(booking.spaceName)}</strong></div>
         <div class="boleto-cell"><small>Data / período</small><strong>${formatDate(booking.date)}<br>${escapeHTML(booking.period)}</strong></div>
-        <div class="boleto-cell"><small>Vencimento</small><strong>${formatDate(booking.boleto.dueDate)}</strong></div>
+        <div class="boleto-cell"><small>Vencimento</small><strong>${formatDate(boleto.dueDate)}</strong></div>
+        ${isAsaas ? `<div class="boleto-cell"><small>Status Asaas</small><strong>${escapeHTML(boleto.status || 'PENDING')}</strong></div>` : ''}
       </div>
-      <div class="boleto-line">${escapeHTML(booking.boleto.line)}</div>
-      <p class="boleto-warning">${escapeHTML(booking.boleto.note)}</p>
+      <div class="boleto-line">${escapeHTML(boleto.line || '')}</div>
+      ${links}
+      <p class="boleto-warning">${escapeHTML(boleto.note || '')}</p>
       <p><strong>Assinatura digital:</strong> ${booking.signed ? `assinado pelo morador em ${formatDateTime(booking.signedAt)} com a declaração “Assino e dou fé”.` : 'pendente.'}</p>
     </div>`;
 }
+
 async function markPaid(id) {
   let updated = null;
   saveBookings(getBookings().map((booking) => {
@@ -1026,10 +1102,11 @@ function setupNotificationForms() {
   $('[data-notification-settings-form]')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const msg = $('[data-notification-settings-message]');
-    if (!backendAvailable) { msg.textContent = 'Backend indisponível. Rode o backend para salvar integrações.'; return; }
+    if (!backendAvailable) { msg.textContent = 'Backend indisponível. Publique o Web Service no Render para salvar integrações.'; return; }
     msg.textContent = 'Salvando integrações...';
     try {
       await saveNotificationConfigFromForm(event.currentTarget);
+      await saveAsaasConfigFromForm(event.currentTarget);
       msg.textContent = 'Integrações salvas com segurança no backend.';
       msg.style.color = 'var(--green)';
     } catch (error) {
@@ -1071,6 +1148,22 @@ function setupNotificationForms() {
       msg.style.color = 'var(--red)';
     }
   });
+
+  $('[data-test-asaas]')?.addEventListener('click', async () => {
+    const form = $('[data-notification-settings-form]');
+    const msg = $('[data-notification-settings-message]');
+    if (!backendAvailable) { msg.textContent = 'Backend indisponível.'; return; }
+    try {
+      await saveAsaasConfigFromForm(form);
+      msg.textContent = 'Testando conexão com Asaas...';
+      const response = await apiRequest('/api/integrations/test-asaas', { method: 'POST', body: JSON.stringify({}) });
+      msg.textContent = `Asaas conectado em ambiente ${response.environment}.`;
+      msg.style.color = 'var(--green)';
+    } catch (error) {
+      msg.textContent = `Erro no teste Asaas: ${error.message}`;
+      msg.style.color = 'var(--red)';
+    }
+  });
 }
 
 function renderNotificationRules() {
@@ -1090,6 +1183,7 @@ function renderNotificationSettings() {
   if (!form || !notificationConfig) return;
   const email = notificationConfig.email || {};
   const whatsapp = notificationConfig.whatsapp || {};
+  const asaas = asaasConfig || {};
   form.emailEnabled.checked = Boolean(email.enabled);
   form.smtpHost.value = email.host || 'smtp.gmail.com';
   form.smtpPort.value = email.port || 465;
@@ -1105,11 +1199,21 @@ function renderNotificationSettings() {
   form.whatsappToken.value = '';
   form.whatsappToken.placeholder = whatsapp.tokenSaved ? 'Token salvo — deixe em branco para manter' : 'Token da Meta';
   form.whatsappCountryCode.value = whatsapp.countryCode || '55';
+  if (form.asaasEnabled) {
+    form.asaasEnabled.checked = Boolean(asaas.enabled);
+    form.asaasEnvironment.value = asaas.environment || 'sandbox';
+    form.asaasApiKey.value = '';
+    form.asaasApiKey.placeholder = asaas.apiKeySaved ? 'API Key salva — deixe em branco para manter' : 'API Key do Asaas';
+    form.asaasDueDays.value = asaas.dueDaysBeforeReservation ?? 2;
+    form.asaasFine.value = asaas.fineValue ?? 2;
+    form.asaasInterest.value = asaas.interestValue ?? 1;
+  }
   const status = $('[data-integration-status]');
   if (status) {
     status.innerHTML = `
       <div><strong>E-mail:</strong> ${email.enabled ? 'ativado' : 'desativado'} ${email.passwordSaved ? '• senha salva' : '• senha não salva'}</div>
       <div><strong>WhatsApp:</strong> ${whatsapp.enabled ? 'ativado' : 'desativado'} ${whatsapp.tokenSaved ? '• token salvo' : '• token não salvo'}</div>
+      <div><strong>Asaas:</strong> ${asaas.enabled ? 'ativado' : 'desativado'} • ${escapeHTML(asaas.environment || 'sandbox')} ${asaas.apiKeySaved ? '• API Key salva' : '• API Key não salva'}</div>
       <div><small>Para funcionar em produção, o backend precisa estar rodando com banco inicializado e as credenciais corretas.</small></div>`;
   }
 }
@@ -1163,6 +1267,7 @@ function setupSettings() {
 function renderSettings() {
   renderNotificationRules();
   if (isSyndic() && backendAvailable && !notificationConfig) loadNotificationConfig();
+  if (isSyndic() && backendAvailable && !asaasConfig) loadAsaasConfig();
   renderNotificationSettings();
   const form = $('[data-settings-form]');
   const editor = $('[data-spaces-editor]');
@@ -1213,7 +1318,7 @@ function handleDocumentClick(event) {
   const actionMap = [
     ['data-approve-resident', approveResident], ['data-reject-resident', rejectResident], ['data-remove-resident', removeResident],
     ['data-approve-booking', approveBooking], ['data-cancel-booking', cancelBooking], ['data-edit-booking', editBooking],
-    ['data-boleto-booking', (id) => { renderBoletoPreview(id); location.hash = '#financeiro'; }], ['data-mark-paid', markPaid],
+    ['data-boleto-booking', async (id) => { location.hash = '#financeiro'; await renderBoletoPreview(id); }], ['data-mark-paid', markPaid],
     ['data-remove-visitor', (id) => { saveVisitors(getVisitors().filter((item) => item.id !== id)); renderAll(); }],
     ['data-deliver-package', deliverPackage], ['data-remove-notice', (id) => { saveNotices(getNotices().filter((item) => item.id !== id)); renderAll(); }],
     ['data-remove-space', removeSpace],
@@ -1251,7 +1356,7 @@ async function init() {
   setupPackages();
   setupNotices();
   setupSettings();
-  if (backendAvailable) await loadNotificationConfig();
+  if (backendAvailable) { await loadNotificationConfig(); await loadAsaasConfig(); }
   setupPrint();
   document.addEventListener('click', handleDocumentClick);
   document.addEventListener('change', handleDocumentChange);

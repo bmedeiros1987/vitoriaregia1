@@ -41,7 +41,7 @@
       <form class="auth-form" data-login-form autocomplete="off">
         <span class="eyebrow">Acesso ao sistema</span>
         <h1>Escolha o perfil de acesso.</h1>
-        <p>Para produção, o login com Google pode ser ativado no backend. Nesta versão, o acesso demonstrativo separa as permissões de morador, síndico e portaria.</p>
+        <p>Acesse conforme seu perfil. Os dados são salvos no banco operacional do condomínio quando o backend estiver publicado.</p>
 
         <label>
           <span>Perfil</span>
@@ -68,7 +68,7 @@
         </label>
 
         <div class="split-buttons">
-          <button class="btn btn--primary" type="submit">Acessar demo</button>
+          <button class="btn btn--primary" type="submit">Acessar</button>
           <a class="btn btn--outline" data-google-login href="/auth/google?role=morador">Entrar com Google</a>
         </div>
         <p class="form-hint" data-login-message>O botão Google funciona quando o backend Node estiver publicado e configurado com OAuth.</p>
@@ -90,6 +90,10 @@
         <label>
           <span>Telefone / WhatsApp</span>
           <input name="whatsapp" type="tel" required placeholder="(61) 99999-9999" />
+        </label>
+        <label>
+          <span>CPF/CNPJ do responsável</span>
+          <input name="cpfCnpj" inputmode="numeric" placeholder="Somente números — usado para boleto Asaas" />
         </label>
         <label>
           <span>Apartamento</span>
@@ -142,7 +146,7 @@
           <h1 data-page-title>Dashboard</h1>
         </div>
         <div class="topbar-actions">
-          <button class="btn btn--outline btn--sm" type="button" data-reset-demo data-roles="sindico">Restaurar demo</button>
+          <button class="btn btn--outline btn--sm" type="button" data-reset-demo data-roles="sindico">Limpar dados locais</button>
           <button class="btn btn--ghost btn--sm" type="button" data-logout>Sair</button>
         </div>
       </header>
@@ -152,7 +156,7 @@
           <div>
             <span class="eyebrow">Sistema premium integrado</span>
             <h2 data-hero-title>Gestão completa do condomínio.</h2>
-            <p data-hero-text>Controle de acesso, cadastros, reservas, calendário, documentos, boletos demonstrativos e portaria com permissões por perfil.</p>
+            <p data-hero-text>Controle de acesso, cadastros, reservas, calendário, documentos, cobranças de reserva e portaria com permissões por perfil.</p>
             <div class="hero-actions">
               <a href="#reservas" data-shortcut="reservas" class="btn btn--primary" data-roles="morador,sindico">Solicitar reserva</a>
               <a href="#portaria" data-shortcut="portaria" class="btn btn--glass" data-roles="sindico,portaria">Registrar visitante</a>
@@ -201,6 +205,7 @@
             <label><span>Nome</span><input name="name" required /></label>
             <label><span>E-mail</span><input name="email" type="email" required /></label>
             <label><span>WhatsApp</span><input name="whatsapp" type="tel" required /></label>
+            <label><span>CPF/CNPJ do responsável</span><input name="cpfCnpj" inputmode="numeric" placeholder="Obrigatório para boleto Asaas" /></label>
             <label><span>Apartamento</span><select name="apartment" required data-resident-apartment></select></label>
             <label><span>Observações</span><textarea name="notes" rows="3"></textarea></label>
             <button class="btn btn--primary" type="submit">Salvar morador aprovado</button>
@@ -264,7 +269,7 @@
 
       <section id="financeiro" class="section" data-section data-roles="morador,sindico">
         <div class="section-head">
-          <div><span class="eyebrow">Cobranças</span><h2>Boletos de reserva</h2><p>O síndico define a taxa, gera boleto demonstrativo e controla pagamento/validação.</p></div>
+          <div><span class="eyebrow">Cobranças</span><h2>Boletos de reserva</h2><p>O síndico define a taxa, gera cobrança de reserva e controla pagamento/validação.</p></div>
         </div>
         <div class="content-grid">
           <article class="panel">
@@ -272,9 +277,9 @@
             <div data-finance-list class="list"></div>
           </article>
           <article class="panel">
-            <div class="panel-header"><div><span class="eyebrow">Documento</span><h2>Boleto demonstrativo</h2></div><button class="btn btn--outline btn--sm" data-print-boleto type="button">Imprimir</button></div>
+            <div class="panel-header"><div><span class="eyebrow">Documento</span><h2>Cobrança de reserva</h2></div><button class="btn btn--outline btn--sm" data-print-boleto type="button">Imprimir</button></div>
             <div class="boleto-preview" data-boleto-preview>
-              <div class="empty-state">Selecione uma reserva para gerar o boleto demonstrativo.</div>
+              <div class="empty-state">Selecione uma reserva para gerar o cobrança de reserva.</div>
             </div>
           </article>
         </div>
@@ -334,7 +339,7 @@
       </section>
 
       <section id="configuracoes" class="section" data-section data-roles="sindico">
-        <div class="section-head"><div><span class="eyebrow">Administração</span><h2>Configurações do síndico</h2><p>Defina valores de taxa, textos, dados para boleto demonstrativo e regras de reserva.</p></div></div>
+        <div class="section-head"><div><span class="eyebrow">Administração</span><h2>Configurações do síndico</h2><p>Defina valores de taxa, textos, dados para cobrança de reserva e regras de reserva.</p></div></div>
         <div class="content-grid content-grid--two">
           <form class="panel form-card" data-settings-form autocomplete="off">
             <label><span>Nome do condomínio</span><input name="condominiumName" /></label>
@@ -383,6 +388,16 @@
               <label><span>Token permanente ou temporário</span><input name="whatsappToken" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter o token salvo" /></label>
               <div class="form-row"><label><span>Código do país</span><input name="whatsappCountryCode" placeholder="55" /></label><label><span>WhatsApp para teste</span><input name="testWhatsappTo" placeholder="61999999999" /></label></div>
               <button class="btn btn--outline" type="button" data-test-whatsapp>Enviar WhatsApp de teste</button>
+            </div>
+
+            <div class="integration-card">
+              <h3>Asaas — boletos bancários</h3>
+              <label class="checkline"><input type="checkbox" name="asaasEnabled" /> <span>Ativar geração automática de boleto Asaas para reservas.</span></label>
+              <div class="form-row"><label><span>Ambiente</span><select name="asaasEnvironment"><option value="sandbox">Sandbox / testes</option><option value="production">Produção</option></select></label><label><span>Vencimento</span><input name="asaasDueDays" type="number" min="0" step="1" placeholder="2" /></label></div>
+              <label><span>API Key Asaas</span><input name="asaasApiKey" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter a chave salva" /></label>
+              <div class="form-row"><label><span>Multa após vencimento (%)</span><input name="asaasFine" type="number" min="0" step="0.01" placeholder="2" /></label><label><span>Juros ao mês (%)</span><input name="asaasInterest" type="number" min="0" step="0.01" placeholder="1" /></label></div>
+              <p class="form-hint">O boleto será registrado no Asaas usando CPF/CNPJ do morador. A API Key deve ficar apenas no Render, nunca no GitHub.</p>
+              <button class="btn btn--outline" type="button" data-test-asaas>Testar conexão Asaas</button>
             </div>
 
             <button class="btn btn--primary" type="submit">Salvar integrações</button>

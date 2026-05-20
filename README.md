@@ -163,3 +163,17 @@ npm start
 ```
 
 As credenciais de e-mail e WhatsApp podem ser preenchidas pela própria tela de Configurações do síndico. Elas são salvas no banco na tabela `app_settings`. Em produção, restrinja o acesso ao perfil de síndico e use HTTPS.
+
+
+## Banco operacional
+
+Esta versão inclui backend PostgreSQL/Aiven. Veja o arquivo `README_BANCO_OPERACIONAL.md` para configurar o Render, criar tabelas e salvar dados reais do sistema.
+
+Configuração rápida no Render:
+
+```bash
+Build Command: cd backend && npm install
+Start Command: cd backend && npm start
+```
+
+As senhas devem ficar apenas em **Environment Variables** do Render, nunca no GitHub.

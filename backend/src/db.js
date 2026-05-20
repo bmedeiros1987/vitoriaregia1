@@ -1,51 +1,75 @@
-require('dotenv').config();
 const fs = require('fs');
-const path = require('path');
 const { Pool } = require('pg');
 
-function readFileIfExists(filePath) {
+function bool(value, fallback = false) {
+  if (value === undefined || value === null || value === '') return fallback;
+  return ['1', 'true', 'yes', 'sim', 'on'].includes(String(value).toLowerCase());
+}
+
+function readOptionalFile(filePath) {
   if (!filePath) return undefined;
-  const resolved = path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath);
-  return fs.existsSync(resolved) ? fs.readFileSync(resolved, 'utf8') : undefined;
-}
-
-function buildSSL() {
-  if ((process.env.PGSSLMODE || '').toLowerCase() === 'disable') return false;
-
-  const ca = readFileIfExists(process.env.PGSSL_CA_PATH);
-  const cert = readFileIfExists(process.env.PGSSL_CERT_PATH);
-  const key = readFileIfExists(process.env.PGSSL_KEY_PATH);
-
-  if (ca || cert || key) {
-    const ssl = {
-      rejectUnauthorized: Boolean(ca),
-      ca,
-      cert,
-      key,
-    };
-    Object.keys(ssl).forEach((field) => ssl[field] === undefined && delete ssl[field]);
-    return ssl;
+  try {
+    return fs.readFileSync(filePath, 'utf8');
+  } catch (error) {
+    console.warn(`Aviso: não foi possível ler arquivo SSL ${filePath}: ${error.message}`);
+    return undefined;
   }
+}
 
-  if ((process.env.PGSSLMODE || '').toLowerCase() === 'require') {
-    return { rejectUnauthorized: false };
+function sslConfig() {
+  const sslMode = String(process.env.PGSSLMODE || process.env.PG_SSLMODE || '').toLowerCase();
+  const useSsl = bool(process.env.PGSSL, false) || sslMode === 'require' || sslMode === 'verify-ca' || sslMode === 'verify-full';
+  if (!useSsl) return undefined;
+
+  const ca = process.env.PGSSL_CA || readOptionalFile(process.env.PGSSL_CA_PATH);
+  const cert = process.env.PGSSL_CERT || readOptionalFile(process.env.PGSSL_CERT_PATH);
+  const key = process.env.PGSSL_KEY || readOptionalFile(process.env.PGSSL_KEY_PATH);
+
+  return {
+    rejectUnauthorized: bool(process.env.PGSSL_REJECT_UNAUTHORIZED, false),
+    ...(ca ? { ca } : {}),
+    ...(cert ? { cert } : {}),
+    ...(key ? { key } : {}),
+  };
+}
+
+function hasDatabaseConfig() {
+  return Boolean(process.env.DATABASE_URL || process.env.PGHOST);
+}
+
+let pool = null;
+
+function getPool() {
+  if (!hasDatabaseConfig()) return null;
+  if (pool) return pool;
+
+  if (process.env.DATABASE_URL) {
+    pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: sslConfig() });
+  } else {
+    pool = new Pool({
+      host: process.env.PGHOST,
+      port: Number(process.env.PGPORT || 5432),
+      database: process.env.PGDATABASE,
+      user: process.env.PGUSER,
+      password: process.env.PGPASSWORD,
+      ssl: sslConfig(),
+      max: Number(process.env.PGPOOL_MAX || 5),
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000,
+    });
   }
-
-  return false;
+  return pool;
 }
 
-function createPool(overrides = {}) {
-  return new Pool({
-    host: overrides.host || process.env.PGHOST,
-    port: Number(overrides.port || process.env.PGPORT || 5432),
-    database: overrides.database || process.env.PGDATABASE || 'defaultdb',
-    user: overrides.user || process.env.PGUSER || 'avnadmin',
-    password: overrides.password || process.env.PGPASSWORD,
-    ssl: buildSSL(),
-    max: Number(process.env.PGPOOL_MAX || 10),
-  });
+async function query(text, params) {
+  const db = getPool();
+  if (!db) throw new Error('Banco de dados não configurado. Configure PGHOST/PGDATABASE/PGUSER/PGPASSWORD ou DATABASE_URL.');
+  return db.query(text, params);
 }
 
-const pool = createPool();
+async function testConnection() {
+  const result = await query('select now() as now, current_database() as database, current_user as user');
+  return result.rows[0];
+}
 
-module.exports = { pool, createPool };
+module.exports = { getPool, hasDatabaseConfig, query, testConnection };
