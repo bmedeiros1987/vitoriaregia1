@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#061a33" />
+  <meta name="description" content="Sistema completo para gestão do Condomínio Vitória Régia." />
+  <title>Vitória Régia | Sistema Condominial</title>
+  <link rel="icon" href="assets/logo-vitoria-regia.svg" type="image/svg+xml" />
+  <link rel="manifest" href="site.webmanifest" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <section class="login-screen" data-login-screen>
+    <div class="login-visual">
+      <img src="assets/condominio-fachada.png" alt="Fachada do Condomínio Vitória Régia" class="login-building" />
+      <div class="visual-card visual-card--top">
+        <strong>Gestão completa</strong>
+        <span>Reservas, portaria, aprovações e calendário em uma única plataforma.</span>
+      </div>
+      <div class="visual-card visual-card--bottom">
+        <strong>11 andares • 33 unidades</strong>
+        <span>Unidades de 101 a 1103, com validação pelo síndico.</span>
+      </div>
+    </div>
+
+    <div class="login-card">
+      <div class="brand-header">
+        <img src="assets/logo-vitoria-regia.svg" alt="Logo Vitória Régia" />
+        <div>
+          <strong>Vitória Régia</strong>
+          <span>Sistema Condominial</span>
+        </div>
+      </div>
+
+      <div class="login-tabs" role="tablist" aria-label="Acesso">
+        <button class="login-tab is-active" type="button" data-auth-tab="login">Entrar</button>
+        <button class="login-tab" type="button" data-auth-tab="signup">Solicitar cadastro</button>
+      </div>
+
+      <form class="auth-form" data-login-form autocomplete="off">
+        <span class="eyebrow">Acesso ao sistema</span>
+        <h1>Escolha o perfil de acesso.</h1>
+        <p>Para produção, o login com Google pode ser ativado no backend. Nesta versão, o acesso demonstrativo separa as permissões de morador, síndico e portaria.</p>
+
+        <label>
+          <span>Perfil</span>
+          <select name="role" data-login-role>
+            <option value="morador">Morador</option>
+            <option value="sindico">Síndico / Administração</option>
+            <option value="portaria">Portaria</option>
+          </select>
+        </label>
+
+        <label data-login-unit-wrap>
+          <span>Unidade</span>
+          <select name="apartment" data-login-apartment></select>
+        </label>
+
+        <label>
+          <span>Nome ou identificação</span>
+          <input name="name" placeholder="Ex.: Bruno Saraiva" />
+        </label>
+
+        <label>
+          <span>E-mail</span>
+          <input name="email" type="email" placeholder="seu@email.com" />
+        </label>
+
+        <div class="split-buttons">
+          <button class="btn btn--primary" type="submit">Acessar demo</button>
+          <a class="btn btn--outline" data-google-login href="/auth/google?role=morador">Entrar com Google</a>
+        </div>
+        <p class="form-hint" data-login-message>O botão Google funciona quando o backend Node estiver publicado e configurado com OAuth.</p>
+      </form>
+
+      <form class="auth-form is-hidden" data-signup-form autocomplete="off">
+        <span class="eyebrow">Cadastro de morador</span>
+        <h1>Solicitar liberação ao síndico.</h1>
+        <p>O acesso só fica ativo após aprovação do síndico. Informe e-mail, WhatsApp e apartamento.</p>
+
+        <label>
+          <span>Nome completo</span>
+          <input name="name" required placeholder="Nome do morador responsável" />
+        </label>
+        <label>
+          <span>E-mail</span>
+          <input name="email" type="email" required placeholder="morador@email.com" />
+        </label>
+        <label>
+          <span>Telefone / WhatsApp</span>
+          <input name="whatsapp" type="tel" required placeholder="(61) 99999-9999" />
+        </label>
+        <label>
+          <span>Apartamento</span>
+          <select name="apartment" required data-signup-apartment></select>
+        </label>
+        <label class="checkline">
+          <input type="checkbox" required name="terms" />
+          <span>Declaro que as informações são verdadeiras e solicito a validação do meu cadastro pelo síndico.</span>
+        </label>
+        <button class="btn btn--primary btn--full" type="submit">Enviar solicitação</button>
+        <p class="form-hint" data-signup-message>Após enviar, entre como síndico para aprovar ou recusar.</p>
+      </form>
+    </div>
+  </section>
+
+  <div class="app" data-app hidden>
+    <aside class="sidebar" data-sidebar>
+      <div class="brand-block">
+        <img src="assets/logo-vitoria-regia.svg" alt="Vitória Régia" />
+        <div>
+          <strong>Vitória Régia</strong>
+          <span>Gestão Condominial</span>
+        </div>
+      </div>
+      <nav class="nav" aria-label="Menu do sistema">
+        <a href="#dashboard" data-nav data-roles="morador,sindico,portaria" class="is-active"><span>▣</span> Dashboard</a>
+        <a href="#aprovacoes" data-nav data-roles="sindico"><span>✅</span> Aprovações</a>
+        <a href="#moradores" data-nav data-roles="sindico"><span>🏠</span> Moradores</a>
+        <a href="#reservas" data-nav data-roles="morador,sindico"><span>📅</span> Reservas</a>
+        <a href="#calendario" data-nav data-roles="morador,sindico"><span>🗓️</span> Calendário</a>
+        <a href="#financeiro" data-nav data-roles="morador,sindico"><span>💳</span> Financeiro</a>
+        <a href="#portaria" data-nav data-roles="sindico,portaria"><span>🛡️</span> Portaria</a>
+        <a href="#encomendas" data-nav data-roles="sindico,portaria"><span>📦</span> Encomendas</a>
+        <a href="#comunicados" data-nav data-roles="morador,sindico,portaria"><span>📣</span> Comunicados</a>
+        <a href="#configuracoes" data-nav data-roles="sindico"><span>⚙️</span> Configurações</a>
+      </nav>
+      <div class="sidebar-profile">
+        <small>Perfil atual</small>
+        <strong data-profile-name>Não autenticado</strong>
+        <span data-profile-unit>Selecione um perfil</span>
+      </div>
+    </aside>
+    <div class="sidebar-shadow" data-sidebar-shadow></div>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" type="button" data-menu-open aria-label="Abrir menu">☰</button>
+        <div>
+          <small data-current-date></small>
+          <h1 data-page-title>Dashboard</h1>
+        </div>
+        <div class="topbar-actions">
+          <button class="btn btn--outline btn--sm" type="button" data-reset-demo data-roles="sindico">Restaurar demo</button>
+          <button class="btn btn--ghost btn--sm" type="button" data-logout>Sair</button>
+        </div>
+      </header>
+
+      <section id="dashboard" class="section is-active" data-section data-roles="morador,sindico,portaria">
+        <div class="hero">
+          <div>
+            <span class="eyebrow">Sistema premium integrado</span>
+            <h2 data-hero-title>Gestão completa do condomínio.</h2>
+            <p data-hero-text>Controle de acesso, cadastros, reservas, calendário, documentos, boletos demonstrativos e portaria com permissões por perfil.</p>
+            <div class="hero-actions">
+              <a href="#reservas" data-shortcut="reservas" class="btn btn--primary" data-roles="morador,sindico">Solicitar reserva</a>
+              <a href="#portaria" data-shortcut="portaria" class="btn btn--glass" data-roles="sindico,portaria">Registrar visitante</a>
+            </div>
+          </div>
+          <div class="hero-image">
+            <img src="assets/condominio-fachada.png" alt="Fachada Vitória Régia" />
+            <div class="badge-float"><strong data-kpi-today>0</strong><span>agenda hoje</span></div>
+          </div>
+        </div>
+
+        <div class="kpi-grid">
+          <article class="kpi"><span>👤</span><small>Cadastros pendentes</small><strong data-kpi-pending-residents>0</strong><em>aguardando síndico</em></article>
+          <article class="kpi"><span>📅</span><small>Reservas pré-agendadas</small><strong data-kpi-pending-bookings>0</strong><em>bloqueiam datas</em></article>
+          <article class="kpi"><span>✅</span><small>Reservas validadas</small><strong data-kpi-approved-bookings>0</strong><em>ocupadas</em></article>
+          <article class="kpi"><span>📦</span><small>Encomendas</small><strong data-kpi-packages>0</strong><em>aguardando retirada</em></article>
+        </div>
+
+        <div class="content-grid">
+          <article class="panel">
+            <div class="panel-header"><div><span class="eyebrow">Próximas datas</span><h2>Resumo de reservas</h2></div><a href="#calendario" data-shortcut="calendario" class="text-link">Abrir calendário</a></div>
+            <div data-dashboard-bookings class="list compact-list"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-header"><div><span class="eyebrow">Comunicados</span><h2>Últimas publicações</h2></div><a href="#comunicados" data-shortcut="comunicados" class="text-link">Ver todos</a></div>
+            <div data-dashboard-notices class="list compact-list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="aprovacoes" class="section" data-section data-roles="sindico">
+        <div class="section-head">
+          <div><span class="eyebrow">Exclusivo do síndico</span><h2>Aprovação de cadastros</h2><p>Valide ou recuse o acesso de moradores. Somente aprovados ficam liberados para uso oficial.</p></div>
+        </div>
+        <div class="panel"><div data-pending-residents class="list"></div></div>
+      </section>
+
+      <section id="moradores" class="section" data-section data-roles="sindico">
+        <div class="section-head">
+          <div><span class="eyebrow">Cadastro oficial</span><h2>Moradores e unidades</h2><p>Unidades disponíveis: 101, 102, 103, 201... até 1103.</p></div>
+          <button class="btn btn--outline" type="button" data-export-residents>Exportar CSV</button>
+        </div>
+        <div class="content-grid content-grid--two">
+          <form class="panel form-card" data-resident-form autocomplete="off">
+            <div class="panel-header"><div><span class="eyebrow">Novo morador</span><h2>Cadastrar manualmente</h2></div></div>
+            <label><span>Nome</span><input name="name" required /></label>
+            <label><span>E-mail</span><input name="email" type="email" required /></label>
+            <label><span>WhatsApp</span><input name="whatsapp" type="tel" required /></label>
+            <label><span>Apartamento</span><select name="apartment" required data-resident-apartment></select></label>
+            <label><span>Observações</span><textarea name="notes" rows="3"></textarea></label>
+            <button class="btn btn--primary" type="submit">Salvar morador aprovado</button>
+            <p class="form-hint" data-resident-message></p>
+          </form>
+          <article class="panel">
+            <div class="panel-header"><div><span class="eyebrow">Lista</span><h2>Moradores aprovados</h2></div><input class="search" data-resident-search placeholder="Buscar por nome, apto ou e-mail" /></div>
+            <div data-residents-list class="list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="reservas" class="section" data-section data-roles="morador,sindico">
+        <div class="section-head">
+          <div><span class="eyebrow">Áreas comuns</span><h2>Reservas e validação</h2><p>O pedido entra como pré-agendado, bloqueia a data e só vira ocupado após validação do síndico.</p></div>
+        </div>
+        <div class="content-grid content-grid--two">
+          <form class="panel form-card" data-booking-form autocomplete="off">
+            <div class="panel-header"><div><span class="eyebrow">Solicitação</span><h2>Reservar espaço</h2></div></div>
+            <label><span>Espaço</span><select name="space" required data-space-select></select></label>
+            <div class="form-row">
+              <label><span>Data</span><input name="date" type="date" required /></label>
+              <label><span>Período</span><select name="period" required><option>Manhã</option><option>Tarde</option><option>Noite</option><option>Integral</option></select></label>
+            </div>
+            <div class="form-row">
+              <label><span>Unidade</span><select name="apartment" required data-booking-apartment></select></label>
+              <label><span>Valor da taxa</span><input name="fee" data-booking-fee readonly /></label>
+            </div>
+            <label><span>Finalidade / observações</span><textarea name="notes" rows="3" placeholder="Ex.: aniversário familiar, reunião etc."></textarea></label>
+            <label><span>Upload de documento ou comprovante do morador</span><input name="residentDocument" type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" /></label>
+            <label class="checkline">
+              <input type="checkbox" name="signature" required />
+              <span>Assino e dou fé que li as regras de uso do espaço e assumo responsabilidade pela reserva solicitada.</span>
+            </label>
+            <button class="btn btn--primary" type="submit">Enviar pré-agendamento</button>
+            <p class="form-hint" data-booking-message></p>
+          </form>
+          <article class="panel">
+            <div class="panel-header"><div><span class="eyebrow">Controle</span><h2 data-booking-list-title>Minhas reservas</h2></div><select data-booking-filter><option value="all">Todas</option><option value="pending">Pré-agendadas</option><option value="approved">Validadas</option><option value="canceled">Canceladas</option></select></div>
+            <div data-bookings-list class="list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="calendario" class="section" data-section data-roles="morador,sindico">
+        <div class="section-head">
+          <div><span class="eyebrow">Disponibilidade</span><h2>Calendário de reservas</h2><p>Moradores veem apenas disponibilidade. O síndico vê a unidade, pode validar, modificar ou cancelar.</p></div>
+          <div class="calendar-controls">
+            <button class="btn btn--outline btn--sm" type="button" data-cal-prev>‹</button>
+            <strong data-calendar-title></strong>
+            <button class="btn btn--outline btn--sm" type="button" data-cal-next>›</button>
+          </div>
+        </div>
+        <div class="calendar-filters panel-lite">
+          <label><span>Espaço</span><select data-calendar-space></select></label>
+          <label><span>Período</span><select data-calendar-period><option value="all">Todos</option><option>Manhã</option><option>Tarde</option><option>Noite</option><option>Integral</option></select></label>
+          <div class="legend"><span><i class="dot dot--free"></i>Disponível</span><span><i class="dot dot--pending"></i>Pré-agendado</span><span><i class="dot dot--approved"></i>Ocupado</span></div>
+        </div>
+        <div class="calendar panel" data-calendar></div>
+      </section>
+
+      <section id="financeiro" class="section" data-section data-roles="morador,sindico">
+        <div class="section-head">
+          <div><span class="eyebrow">Cobranças</span><h2>Boletos de reserva</h2><p>O síndico define a taxa, gera boleto demonstrativo e controla pagamento/validação.</p></div>
+        </div>
+        <div class="content-grid">
+          <article class="panel">
+            <div class="panel-header"><div><span class="eyebrow">Gerador</span><h2>Reservas aguardando cobrança</h2></div></div>
+            <div data-finance-list class="list"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-header"><div><span class="eyebrow">Documento</span><h2>Boleto demonstrativo</h2></div><button class="btn btn--outline btn--sm" data-print-boleto type="button">Imprimir</button></div>
+            <div class="boleto-preview" data-boleto-preview>
+              <div class="empty-state">Selecione uma reserva para gerar o boleto demonstrativo.</div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="portaria" class="section" data-section data-roles="sindico,portaria">
+        <div class="section-head">
+          <div><span class="eyebrow">Controle de acesso</span><h2>Cadastro de visitantes</h2><p>Registre visitantes com foto, documento, unidade e notificação ao morador.</p></div>
+        </div>
+        <div class="content-grid content-grid--two">
+          <form class="panel form-card" data-visitor-form autocomplete="off">
+            <div class="panel-header"><div><span class="eyebrow">Novo visitante</span><h2>Registrar entrada</h2></div></div>
+            <div class="photo-uploader">
+              <div class="photo-preview" data-visitor-photo-preview><span>Foto</span></div>
+              <label class="btn btn--outline"><input name="photo" type="file" accept="image/*" capture="environment" hidden data-visitor-photo />Enviar/capturar foto</label>
+            </div>
+            <label><span>Nome do visitante</span><input name="name" required /></label>
+            <div class="form-row"><label><span>Documento</span><input name="document" /></label><label><span>Telefone</span><input name="phone" type="tel" /></label></div>
+            <div class="form-row"><label><span>Apartamento</span><select name="apartment" required data-visitor-apartment></select></label><label><span>Tipo</span><select name="type"><option>Visita social</option><option>Prestador de serviço</option><option>Entrega</option><option>Manutenção</option></select></label></div>
+            <label><span>Observações</span><textarea name="notes" rows="3"></textarea></label>
+            <button class="btn btn--primary" type="submit">Salvar e preparar aviso</button>
+            <p class="form-hint" data-visitor-message></p>
+          </form>
+          <article class="panel">
+            <div class="panel-header"><div><span class="eyebrow">Movimento</span><h2>Visitantes registrados</h2></div><input class="search" data-visitor-search placeholder="Buscar visitante ou apartamento" /></div>
+            <div data-visitors-list class="list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="encomendas" class="section" data-section data-roles="sindico,portaria">
+        <div class="section-head"><div><span class="eyebrow">Portaria</span><h2>Encomendas</h2><p>Registro e aviso ao morador via WhatsApp ou e-mail.</p></div></div>
+        <div class="content-grid content-grid--two">
+          <form class="panel form-card" data-package-form autocomplete="off">
+            <label><span>Apartamento</span><select name="apartment" required data-package-apartment></select></label>
+            <label><span>Destinatário</span><input name="recipient" required /></label>
+            <div class="form-row"><label><span>Transportadora</span><input name="carrier" /></label><label><span>Código</span><input name="code" /></label></div>
+            <label><span>Observações</span><textarea name="notes" rows="3"></textarea></label>
+            <button class="btn btn--primary" type="submit">Registrar encomenda</button>
+            <p class="form-hint" data-package-message></p>
+          </form>
+          <article class="panel"><div class="panel-header"><div><span class="eyebrow">Lista</span><h2>Encomendas pendentes</h2></div></div><div data-packages-list class="list"></div></article>
+        </div>
+      </section>
+
+      <section id="comunicados" class="section" data-section data-roles="morador,sindico,portaria">
+        <div class="section-head"><div><span class="eyebrow">Mural</span><h2>Comunicados</h2><p>Publicações gerais do condomínio.</p></div></div>
+        <div class="content-grid content-grid--two">
+          <form class="panel form-card" data-notice-form data-roles="sindico" autocomplete="off">
+            <label><span>Título</span><input name="title" required /></label>
+            <label><span>Categoria</span><select name="category"><option>Geral</option><option>Manutenção</option><option>Segurança</option><option>Financeiro</option><option>Reservas</option></select></label>
+            <label><span>Mensagem</span><textarea name="message" required rows="5"></textarea></label>
+            <button class="btn btn--primary" type="submit">Publicar comunicado</button>
+          </form>
+          <article class="panel"><div class="panel-header"><div><span class="eyebrow">Últimos</span><h2>Comunicados publicados</h2></div></div><div data-notices-list class="list"></div></article>
+        </div>
+      </section>
+
+      <section id="configuracoes" class="section" data-section data-roles="sindico">
+        <div class="section-head"><div><span class="eyebrow">Administração</span><h2>Configurações do síndico</h2><p>Defina valores de taxa, textos, dados para boleto demonstrativo e regras de reserva.</p></div></div>
+        <div class="content-grid content-grid--two">
+          <form class="panel form-card" data-settings-form autocomplete="off">
+            <label><span>Nome do condomínio</span><input name="condominiumName" /></label>
+            <label><span>Texto do termo de reserva</span><textarea name="bookingTerms" rows="6"></textarea></label>
+            <label><span>Dados do beneficiário do boleto</span><textarea name="payee" rows="3" placeholder="Ex.: Condomínio Vitória Régia, CNPJ, banco, agência e conta"></textarea></label>
+            <button class="btn btn--primary" type="submit">Salvar configurações</button>
+            <p class="form-hint" data-settings-message></p>
+          </form>
+          <article class="panel">
+            <div class="panel-header"><div><span class="eyebrow">Taxas</span><h2>Valores por espaço</h2></div><button class="btn btn--outline btn--sm" type="button" data-add-space>Adicionar espaço</button></div>
+            <div data-spaces-editor class="spaces-editor"></div>
+          </article>
+        </div>
+
+        <div class="content-grid content-grid--two settings-integrations">
+          <form class="panel form-card" data-notification-rules-form autocomplete="off">
+            <div class="panel-header"><div><span class="eyebrow">Automação</span><h2>Regras de notificação</h2><p>Defina quando o sistema deve tentar enviar aviso automático.</p></div></div>
+            <label class="checkline"><input type="checkbox" name="notifyEmail" /> <span>Enviar e-mail automático quando houver e-mail cadastrado.</span></label>
+            <label class="checkline"><input type="checkbox" name="notifyWhatsapp" /> <span>Enviar WhatsApp automático quando houver número cadastrado.</span></label>
+            <label class="checkline"><input type="checkbox" name="residentStatus" /> <span>Avisar morador quando o cadastro for aprovado ou recusado.</span></label>
+            <label class="checkline"><input type="checkbox" name="bookingStatus" /> <span>Avisar morador quando a reserva for validada, cancelada ou paga.</span></label>
+            <label class="checkline"><input type="checkbox" name="visitor" /> <span>Avisar morador quando visitante for registrado na portaria.</span></label>
+            <label class="checkline"><input type="checkbox" name="package" /> <span>Avisar morador quando encomenda for registrada.</span></label>
+            <button class="btn btn--primary" type="submit">Salvar regras</button>
+            <p class="form-hint" data-notification-rules-message></p>
+          </form>
+
+          <form class="panel form-card" data-notification-settings-form autocomplete="off">
+            <div class="panel-header"><div><span class="eyebrow">Integrações</span><h2>E-mail e WhatsApp automáticos</h2><p>Preencha as credenciais apenas no servidor. As senhas não aparecem novamente depois de salvas.</p></div></div>
+
+            <div class="integration-card">
+              <h3>E-mail SMTP / Gmail</h3>
+              <label class="checkline"><input type="checkbox" name="emailEnabled" /> <span>Ativar envio automático por e-mail.</span></label>
+              <div class="form-row"><label><span>SMTP host</span><input name="smtpHost" placeholder="smtp.gmail.com" /></label><label><span>Porta</span><input name="smtpPort" type="number" placeholder="465" /></label></div>
+              <div class="form-row"><label><span>Segurança</span><select name="smtpSecure"><option value="true">SSL/TLS</option><option value="false">STARTTLS / sem SSL direto</option></select></label><label><span>Usuário/e-mail</span><input name="smtpUser" type="email" placeholder="seuemail@gmail.com" /></label></div>
+              <label><span>Senha de aplicativo</span><input name="smtpPassword" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter a senha salva" /></label>
+              <div class="form-row"><label><span>Nome do remetente</span><input name="smtpFromName" placeholder="Condomínio Vitória Régia" /></label><label><span>E-mail remetente</span><input name="smtpFromEmail" type="email" placeholder="opcional" /></label></div>
+              <label><span>E-mail para teste</span><input name="testEmailTo" type="email" placeholder="seuemail@gmail.com" /></label>
+              <button class="btn btn--outline" type="button" data-test-email>Enviar e-mail de teste</button>
+            </div>
+
+            <div class="integration-card">
+              <h3>WhatsApp Business Cloud API</h3>
+              <label class="checkline"><input type="checkbox" name="whatsappEnabled" /> <span>Ativar envio automático por WhatsApp.</span></label>
+              <div class="form-row"><label><span>API version</span><input name="whatsappApiVersion" placeholder="v20.0" /></label><label><span>Phone Number ID</span><input name="whatsappPhoneNumberId" placeholder="ID do número na Meta" /></label></div>
+              <label><span>Token permanente ou temporário</span><input name="whatsappToken" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter o token salvo" /></label>
+              <div class="form-row"><label><span>Código do país</span><input name="whatsappCountryCode" placeholder="55" /></label><label><span>WhatsApp para teste</span><input name="testWhatsappTo" placeholder="61999999999" /></label></div>
+              <button class="btn btn--outline" type="button" data-test-whatsapp>Enviar WhatsApp de teste</button>
+            </div>
+
+            <button class="btn btn--primary" type="submit">Salvar integrações</button>
+            <p class="form-hint" data-notification-settings-message></p>
+            <div class="integration-status" data-integration-status></div>
+          </form>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal" data-modal hidden>
+    <div class="modal-card">
+      <button class="icon-btn modal-close" type="button" data-modal-close aria-label="Fechar">×</button>
+      <div data-modal-content></div>
+    </div>
+  </div>
+
+  <template data-empty-template>
+    <div class="empty-state">Nenhum registro encontrado.</div>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
