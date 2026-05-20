@@ -15,8 +15,18 @@ const { getPool, hasDatabaseConfig, query, testConnection, rowsOf } = require('.
 const { initDatabase } = require('./schema');
 
 const app = express();
+function envBool(name, fallback = false) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === null || raw === '') return Boolean(fallback);
+  return ['1', 'true', 'yes', 'sim', 'on'].includes(String(raw).trim().toLowerCase());
+}
+
 const PORT = Number(process.env.PORT || 10000);
 const APP_URL = process.env.APP_URL || `http://localhost:${PORT}`;
+const RUNNING_BEHIND_PROXY = envBool('TRUST_PROXY', process.env.RENDER === 'true' || process.env.NODE_ENV === 'production');
+const SESSION_COOKIE_SECURE = envBool('SESSION_COOKIE_SECURE', APP_URL.startsWith('https://') || process.env.RENDER === 'true' || process.env.NODE_ENV === 'production');
+const SESSION_COOKIE_SAME_SITE = (process.env.SESSION_COOKIE_SAME_SITE || process.env.SESSION_COOKIE_SAMESITE || 'lax').trim().toLowerCase();
+if (RUNNING_BEHIND_PROXY) app.set('trust proxy', 1);
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 const GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL || `${APP_URL.replace(/\/$/, '')}/auth/google/callback`;
@@ -996,11 +1006,11 @@ function effectiveWhatsAppConfig(merged = {}) {
   const envEvolutionKey = process.env.EVOLUTION_API_KEY || '';
   const envEvolutionUrl = process.env.EVOLUTION_API_URL || process.env.EVOLUTION_SERVER_URL || '';
   const envEvolutionInstance = process.env.EVOLUTION_INSTANCE || process.env.EVOLUTION_INSTANCE_NAME || '';
-  const envPeriskopeKey = process.env.PERISKOPE_API_KEY || '';
-  const envPeriskopePhone = process.env.PERISKOPE_PHONE || process.env.WHATSAPP_SENDER_PHONE || '';
-  const envPeriskopeBaseUrl = process.env.PERISKOPE_BASE_URL || 'https://api.periskope.app/v1';
+  const envPeriskopeKey = cleanBearerToken(process.env.PERISKOPE_API_KEY || '');
+  const envPeriskopePhone = cleanIntegrationValue(process.env.PERISKOPE_PHONE || process.env.PERISKOPE_PHONE_ID || process.env.WHATSAPP_SENDER_PHONE || '');
+  const envPeriskopeBaseUrl = normalizePeriskopeBaseUrl(process.env.PERISKOPE_BASE_URL || 'https://api.periskope.app/v1');
 
-  let provider = String(saved.provider || process.env.WHATSAPP_PROVIDER || '').toLowerCase();
+  let provider = cleanIntegrationValue(saved.provider || process.env.WHATSAPP_PROVIDER || '').toLowerCase();
   if (!['meta', 'evolution', 'periskope'].includes(provider)) {
     if (savedPeriskope.apiKey || envPeriskopeKey) provider = 'periskope';
     else if (savedEvolution.apiKey || envEvolutionKey) provider = 'evolution';
@@ -1013,8 +1023,8 @@ function effectiveWhatsAppConfig(merged = {}) {
   const evolutionServerUrl = savedEvolution.serverUrl || envEvolutionUrl;
   const evolutionInstanceName = savedEvolution.instanceName || envEvolutionInstance;
   const periskopeApiKey = cleanBearerToken(savedPeriskope.apiKey || envPeriskopeKey);
-  const periskopePhone = savedPeriskope.phone || envPeriskopePhone;
-  const periskopeBaseUrl = savedPeriskope.baseUrl || envPeriskopeBaseUrl;
+  const periskopePhone = cleanIntegrationValue(savedPeriskope.phone || envPeriskopePhone);
+  const periskopeBaseUrl = normalizePeriskopeBaseUrl(savedPeriskope.baseUrl || envPeriskopeBaseUrl);
   const envEnabled = String(process.env.WHATSAPP_ENABLED || '').toLowerCase() === 'true';
   const evolutionConfigured = Boolean(evolutionApiKey && evolutionServerUrl && evolutionInstanceName);
   const periskopeConfigured = Boolean(periskopeApiKey && periskopePhone && periskopeBaseUrl);
@@ -1043,7 +1053,7 @@ function effectiveWhatsAppConfig(merged = {}) {
     },
     periskope: {
       ...savedPeriskope,
-      baseUrl: String(periskopeBaseUrl || 'https://api.periskope.app/v1').replace(/\/+$/, ''),
+      baseUrl: normalizePeriskopeBaseUrl(periskopeBaseUrl),
       apiKey: periskopeApiKey,
       apiKeySource: savedPeriskope.apiKey ? 'saved' : (envPeriskopeKey ? 'env' : 'none'),
       phone: normalizePeriskopePhoneHeader(periskopePhone, savedPeriskope.countryCode || process.env.PERISKOPE_COUNTRY_CODE || saved.countryCode || process.env.WHATSAPP_COUNTRY_CODE || '55'),
@@ -1146,7 +1156,9 @@ function whatsappDiagnostics(config = effectiveNotificationConfig()) {
       periskopeApiKeySaved: Boolean(whatsapp.periskope?.apiKey),
       periskopeApiKeySource: whatsapp.periskope?.apiKeySource || 'none',
       periskopeApiKeyLength: whatsapp.periskope?.apiKey ? cleanBearerToken(whatsapp.periskope.apiKey).length : 0,
-      periskopeEndpoint: whatsapp.periskope?.baseUrl ? `${String(whatsapp.periskope.baseUrl).replace(/\/+$/, '')}/messages` : null,
+      periskopeEndpoint: whatsapp.periskope?.baseUrl ? periskopeMessagesEndpoint(whatsapp.periskope.baseUrl) : null,
+      periskopeAuthHeader: whatsapp.periskope?.apiKey ? 'Authorization: Bearer <oculto>' : null,
+      periskopeXPhoneHeaderConfigured: Boolean(whatsapp.periskope?.phone),
     },
   };
 }
@@ -1413,7 +1425,7 @@ async function saveNotificationConfig(incoming = {}) {
   clean.email.mailersend.fromEmail = clean.email.mailersend.fromEmail || process.env.MAILERSEND_FROM_EMAIL || clean.email.fromEmail || '';
   clean.email.mailersend.testTo = clean.email.mailersend.testTo || clean.email.testTo || process.env.MAILERSEND_TEST_TO || '';
   clean.whatsapp.enabled = Boolean(clean.whatsapp.enabled);
-  clean.whatsapp.provider = ['meta', 'evolution', 'periskope'].includes(String(clean.whatsapp.provider || '').toLowerCase()) ? String(clean.whatsapp.provider).toLowerCase() : 'meta';
+  clean.whatsapp.provider = ['meta', 'evolution', 'periskope'].includes(cleanIntegrationValue(clean.whatsapp.provider || '').toLowerCase()) ? cleanIntegrationValue(clean.whatsapp.provider).toLowerCase() : 'meta';
   clean.whatsapp.countryCode = clean.whatsapp.countryCode || '55';
   clean.whatsapp.testTo = clean.whatsapp.testTo || clean.whatsapp.evolution.testTo || clean.whatsapp.periskope.testTo || process.env.WHATSAPP_TEST_TO || process.env.EVOLUTION_TEST_TO || process.env.PERISKOPE_TEST_TO || '';
   clean.whatsapp.evolution.serverUrl = String(clean.whatsapp.evolution.serverUrl || '').replace(/\/+$/, '');
@@ -1421,7 +1433,8 @@ async function saveNotificationConfig(incoming = {}) {
   clean.whatsapp.evolution.countryCode = clean.whatsapp.evolution.countryCode || clean.whatsapp.countryCode || '55';
   clean.whatsapp.evolution.testTo = clean.whatsapp.evolution.testTo || clean.whatsapp.testTo || '';
   clean.whatsapp.evolution.linkPreview = Boolean(clean.whatsapp.evolution.linkPreview);
-  clean.whatsapp.periskope.baseUrl = String(clean.whatsapp.periskope.baseUrl || 'https://api.periskope.app/v1').replace(/\/+$/, '');
+  clean.whatsapp.periskope.baseUrl = normalizePeriskopeBaseUrl(clean.whatsapp.periskope.baseUrl || 'https://api.periskope.app/v1');
+  clean.whatsapp.periskope.apiKey = cleanBearerToken(clean.whatsapp.periskope.apiKey || '');
   clean.whatsapp.periskope.phone = normalizePeriskopePhoneHeader(clean.whatsapp.periskope.phone || '', clean.whatsapp.periskope.countryCode || clean.whatsapp.countryCode || '55');
   clean.whatsapp.periskope.countryCode = clean.whatsapp.periskope.countryCode || clean.whatsapp.countryCode || '55';
   clean.whatsapp.periskope.testTo = clean.whatsapp.periskope.testTo || clean.whatsapp.testTo || '';
@@ -1565,23 +1578,56 @@ async function sendEmailNotification({ to, subject, message, html }) {
   return { ok: true, provider: 'smtp', messageId: info.messageId, accepted: info.accepted, rejected: info.rejected };
 }
 
+function cleanIntegrationValue(value = '') {
+  return String(value || '')
+    .trim()
+    .replace(/^['"]+|['"]+$/g, '')
+    .trim();
+}
+
 function normalizePhoneForWhatsApp(value = '', countryCode = '55') {
-  const digits = String(value).replace(/\D/g, '');
+  const cleanCountry = String(countryCode || '55').replace(/\D/g, '') || '55';
+  const digits = cleanIntegrationValue(value).replace(/\D/g, '');
   if (!digits) return '';
-  if (digits.startsWith(countryCode)) return digits;
-  return `${countryCode}${digits}`;
+  if (digits.startsWith(cleanCountry)) return digits;
+  return `${cleanCountry}${digits}`;
 }
 
 function normalizePeriskopePhoneHeader(value = '', countryCode = '55') {
-  const raw = String(value || '').trim();
+  const raw = cleanIntegrationValue(value).replace(/\s+/g, '');
   if (!raw) return '';
   // A Periskope aceita tanto telefone no formato 55DDDNUMERO quanto phone_id.
   if (/^phone-[A-Za-z0-9_-]+$/.test(raw)) return raw;
   return normalizePhoneForWhatsApp(raw, countryCode);
 }
 
+function normalizePeriskopeChatId(value = '', countryCode = '55') {
+  const raw = cleanIntegrationValue(value).replace(/\s+/g, '');
+  if (!raw) return '';
+  if (/@(c|g)\.us$/i.test(raw)) return raw;
+  const number = normalizePhoneForWhatsApp(raw, countryCode);
+  return number ? `${number}@c.us` : '';
+}
+
+function normalizePeriskopeBaseUrl(value = '') {
+  let base = cleanIntegrationValue(value || 'https://api.periskope.app/v1').replace(/\/+$/, '');
+  if (!base) base = 'https://api.periskope.app/v1';
+  // Corrige colagens comuns: domínio sem /v1, endpoint completo ou link da documentação.
+  if (/^https?:\/\/docs\.periskope\.app/i.test(base)) base = 'https://api.periskope.app/v1';
+  base = base.replace(/\/messages$/i, '').replace(/\/message\/send$/i, '');
+  if (/^https?:\/\/api\.periskope\.app$/i.test(base)) base += '/v1';
+  return base;
+}
+
+function periskopeMessagesEndpoint(baseUrl = '') {
+  return `${normalizePeriskopeBaseUrl(baseUrl)}/messages`;
+}
+
 function cleanBearerToken(value = '') {
-  return String(value || '').trim().replace(/^Bearer\s+/i, '').trim();
+  return cleanIntegrationValue(value)
+    .replace(/^Authorization\s*:\s*/i, '')
+    .replace(/^Bearer\s+/i, '')
+    .replace(/\s+/g, '');
 }
 
 function parseProviderPayload(responseText) {
@@ -1633,19 +1679,18 @@ async function sendWhatsAppNotification({ to, message }) {
     if (!number) throw new Error('Número de WhatsApp inválido.');
     if (!periskope.baseUrl || !token || !phoneHeader) throw new Error('Periskope API incompleta. Configure Base URL, API Key e telefone conectado.');
 
-    const baseUrl = String(periskope.baseUrl || 'https://api.periskope.app/v1').replace(/\/+$/, '');
-    const endpoint = `${baseUrl}/messages`;
-    const chatId = number.endsWith('@c.us') || number.endsWith('@g.us') ? number : `${number}@c.us`;
+    const baseUrl = normalizePeriskopeBaseUrl(periskope.baseUrl || 'https://api.periskope.app/v1');
+    const endpoint = periskopeMessagesEndpoint(baseUrl);
+    const chatId = normalizePeriskopeChatId(to || periskope.testTo || whatsapp.testTo, periskope.countryCode || whatsapp.countryCode || '55');
     const response = await fetch(endpoint, {
       method: 'POST',
       redirect: 'manual',
       headers: {
         // A documentação da Periskope exige Authorization: Bearer <apiKey> e x-phone.
-        // Mantemos os headers em lowercase para evitar proxies sensíveis a capitalização.
-        authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
         'x-phone': phoneHeader,
-        'content-type': 'application/json',
-        accept: 'application/json',
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
       },
       body: JSON.stringify({
         chat_id: chatId,
@@ -1667,7 +1712,7 @@ async function sendWhatsAppNotification({ to, message }) {
       if (/authorization header is missing/i.test(String(errorMessage))) {
         errorMessage = 'Periskope informou que o header Authorization está ausente. Confira se PERISKOPE_API_KEY foi salvo no Render ou no painel, sem aspas, sem quebras de linha e sem repetir a palavra Bearer. Depois faça Manual Deploy no Render.';
       }
-      await logNotification({ channel: 'whatsapp', recipient: number, message, status: 'error', providerResponse: { ...payload, endpoint, hasAuthorizationHeader: Boolean(token), hasXPhoneHeader: Boolean(phoneHeader) }, error: errorMessage });
+      await logNotification({ channel: 'whatsapp', recipient: number, message, status: 'error', providerResponse: { ...payload, endpoint, chatId, hasAuthorizationHeader: Boolean(token), authorizationHeaderFormat: token ? 'Bearer <oculto>' : 'missing', hasXPhoneHeader: Boolean(phoneHeader), xPhoneHeader: phoneHeader ? '<configurado>' : 'missing' }, error: errorMessage });
       throw new Error(errorMessage || `Erro Periskope API HTTP ${response.status}`);
     }
 
@@ -1706,7 +1751,12 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'troque-esta-chave-em-producao',
   resave: false,
   saveUninitialized: false,
-  cookie: { httpOnly: true, sameSite: 'lax', secure: APP_URL.startsWith('https://') },
+  proxy: RUNNING_BEHIND_PROXY,
+  cookie: {
+    httpOnly: true,
+    sameSite: SESSION_COOKIE_SAME_SITE,
+    secure: SESSION_COOKIE_SECURE,
+  },
 }));
 
 app.get('/api/health', async (req, res) => {
@@ -1799,9 +1849,19 @@ function requireDatabaseReady(req, res, next) {
   return next();
 }
 
+function isSyndicOrSubsyndicSession(user = {}) {
+  const role = String(user.role || '').trim().toLowerCase();
+  const staffRole = String(user.staffRole || user.originalRole || '').trim().toLowerCase();
+  if (['sindico', 'subsindico'].includes(role)) return true;
+  if (['sindico', 'subsindico'].includes(staffRole)) return true;
+  const staff = user.email ? findStaffByEmail(user.email) : null;
+  const storedStaffRole = String(staff?.role || '').trim().toLowerCase();
+  return Boolean(staff && staffAvailable(staff) && ['sindico', 'subsindico'].includes(storedStaffRole));
+}
+
 function requireSyndicUser(req, res, next) {
-  if (req.session?.user?.role !== 'sindico') {
-    return res.status(403).json({ ok: false, error: 'Acesso permitido somente ao síndico/subsíndico.' });
+  if (!isSyndicOrSubsyndicSession(req.session?.user)) {
+    return res.status(403).json({ ok: false, error: 'Acesso permitido somente ao síndico/subsíndico. Faça login novamente no perfil Síndico/Administração.' });
   }
   return next();
 }
@@ -1854,6 +1914,8 @@ async function handleLogin(req, res) {
       email: BOOTSTRAP_ADMIN_EMAIL,
       apartment: '',
       residentId: null,
+      staffId: null,
+      staffRole: 'sindico',
       bootstrap: true,
       demo: false,
     };
@@ -1884,6 +1946,7 @@ async function handleLogin(req, res) {
     apartment: target.resident?.apartment || '',
     residentId: target.resident?.id || account.residentId || null,
     staffId: target.staff?.id || account.staffId || null,
+    staffRole: target.staff?.role || '',
     mustChangePassword: Boolean(account.mustChangePassword),
     bootstrap: false,
     demo: false,

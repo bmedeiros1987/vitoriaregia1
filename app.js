@@ -790,7 +790,11 @@ function makeICS(events = []) {
   lines.push('END:VCALENDAR');
   return lines.join('\r\n');
 }
-function isSyndic() { return currentRole() === 'sindico'; }
+function isSyndic() {
+  const role = String(currentRole() || '').toLowerCase();
+  const staffRole = String(session?.staffRole || session?.originalRole || '').toLowerCase();
+  return role === 'sindico' || staffRole === 'sindico' || staffRole === 'subsindico';
+}
 function isResident() { return currentRole() === 'morador'; }
 
 function applyPermissions() {
@@ -3578,8 +3582,9 @@ function setupNotificationForms() {
       await saveNotificationConfigFromForm(form);
       const to = formDataOf(form, '[data-notification-settings-form]').get('testWhatsappTo');
       msg.textContent = 'Enviando WhatsApp de teste...';
-      await apiRequest('/api/integrations/test-whatsapp', { method: 'POST', body: JSON.stringify({ to }) });
-      msg.textContent = 'WhatsApp de teste enviado pela API configurada.';
+      const response = await apiRequest('/api/integrations/test-whatsapp', { method: 'POST', body: JSON.stringify({ to }) });
+      const queue = response?.response?.queue_id ? ` Fila Periskope: ${response.response.queue_id}` : '';
+      msg.textContent = `WhatsApp de teste enviado pela API configurada.${queue}`;
       msg.style.color = 'var(--green)';
     } catch (error) {
       let extra = '';
@@ -3716,7 +3721,7 @@ function renderNotificationSettings() {
   if (status) {
     status.innerHTML = `
       <div><strong>E-mail:</strong> ${email.enabled ? 'ativado' : 'desativado'} • provedor: ${escapeHTML(email.provider || 'smtp')} ${email.provider === 'mailersend' ? (email.mailersend?.apiKeySaved ? '• token MailerSend salvo' : '• token MailerSend não salvo') : (email.passwordSaved ? '• senha SMTP salva' : '• senha SMTP não salva')}</div>
-      <div><strong>WhatsApp:</strong> ${whatsapp.enabled ? 'ativado' : 'desativado'} • provedor: ${escapeHTML(whatsapp.provider || 'meta')} ${whatsapp.provider === 'evolution' ? (whatsapp.evolution?.apiKeySaved ? '• API Key Evolution salva' : '• API Key Evolution não salva') : (whatsapp.tokenSaved ? '• token Meta salvo' : '• token Meta não salvo')}</div>
+      <div><strong>WhatsApp:</strong> ${whatsapp.enabled ? 'ativado' : 'desativado'} • provedor: ${escapeHTML(whatsapp.provider || 'meta')} ${whatsapp.provider === 'evolution' ? (whatsapp.evolution?.apiKeySaved ? '• API Key Evolution salva' : '• API Key Evolution não salva') : (whatsapp.provider === 'periskope' ? (whatsapp.periskope?.apiKeySaved ? '• API Key Periskope salva' : '• API Key Periskope não salva') : (whatsapp.tokenSaved ? '• token Meta salvo' : '• token Meta não salvo'))}</div>
       <div><strong>Asaas:</strong> ${asaas.enabled ? 'ativado' : 'desativado'} • ${escapeHTML(asaas.environment || 'sandbox')} ${asaas.apiKeySaved ? '• API Key salva' : '• API Key não salva'}</div>
       <div><strong>Storage:</strong> ${storage.enabled ? 'ativado' : 'desativado'} • ${escapeHTML(storage.provider || 'metadata-only')} ${storage.terabox?.accessTokenSaved ? '• token TeraBox salvo' : '• token TeraBox não salvo'}</div>
       <div><small>Para funcionar em produção, o backend precisa estar rodando com banco inicializado e as credenciais corretas.</small></div>`;
@@ -3857,7 +3862,12 @@ async function resetUserPassword(ref) {
     const sent = result.emailSent ? 'A senha também foi enviada por e-mail.' : `Não foi possível enviar por e-mail: ${result.emailError || 'verifique as configurações de e-mail'}.`;
     alert(`Senha temporária gerada para ${item.email}:\n\n${result.temporaryPassword}\n\n${sent}\nO usuário deverá trocar a senha no próximo acesso.`);
   } catch (error) {
-    alert(error.message || 'Não foi possível gerar senha temporária.');
+    const message = error.message || 'Não foi possível gerar senha temporária.';
+    if (/s[ií]ndico|sub/i.test(message) || /403/.test(message)) {
+      alert(`${message}\n\nSe você já entrou como síndico, a sessão administrativa provavelmente expirou ou o cookie de sessão não foi aceito. Clique em Sair, entre novamente no perfil Síndico/Administração e tente gerar a senha temporária outra vez.`);
+      return;
+    }
+    alert(message);
   }
 }
 
