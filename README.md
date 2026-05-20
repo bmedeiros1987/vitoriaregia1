@@ -1,6 +1,6 @@
 # Vitória Régia — Sistema Condominial Completo
 
-Versão premium com layout profissional, tela de login por perfil e backend preparado para PostgreSQL/Aiven.
+Versão premium com layout profissional, tela de login por perfil e backend preparado para MySQL/Aiven.
 
 ## O que está incluído
 
@@ -167,7 +167,7 @@ As credenciais de e-mail e WhatsApp podem ser preenchidas pela própria tela de 
 
 ## Banco operacional
 
-Esta versão inclui backend PostgreSQL/Aiven. Veja o arquivo `README_BANCO_OPERACIONAL.md` para configurar o Render, criar tabelas e salvar dados reais do sistema.
+Esta versão inclui backend MySQL/Aiven. Veja o arquivo `README_MYSQL_AIVEN.md` para configurar o Render, criar tabelas e salvar dados reais do sistema.
 
 Configuração rápida no Render:
 
@@ -181,7 +181,7 @@ As senhas devem ficar apenas em **Environment Variables** do Render, nunca no Gi
 
 ## Banco real em produção
 
-Para parar de usar dados de demonstração e operar com PostgreSQL/Aiven, veja `README_BANCO_REAL_AIVEN.md`. Esta versão exige `REQUIRE_DATABASE=true` no Render e só inicia corretamente quando o banco estiver conectado.
+Para parar de usar dados de demonstração e operar com MySQL/Aiven, veja `README_MYSQL_AIVEN.md`. Esta versão exige `REQUIRE_DATABASE=true` no Render e só inicia corretamente quando o banco estiver conectado.
 
 
 ## Usuário temporário de implantação

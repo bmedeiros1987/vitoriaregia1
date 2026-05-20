@@ -28,6 +28,8 @@ const BACKEND_STATE_KEYS = Object.keys(keys);
 let backendAvailable = false;
 let suppressBackendSync = false;
 let stateSyncTimer = null;
+let stateWriteQueue = Promise.resolve();
+let pendingBackendWrites = 0;
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
@@ -112,16 +114,31 @@ function stateNameFromStorageKey(storageKey) {
   return Object.entries(keys).find(([, value]) => value === storageKey)?.[0] || null;
 }
 function persistSingleStateKey(storageKey, value) {
-  if (!backendAvailable || suppressBackendSync) return;
+  if (!backendAvailable || suppressBackendSync) return Promise.resolve(false);
   const name = stateNameFromStorageKey(storageKey);
-  if (!name || name === 'session') return;
-  apiRequest(`/api/state/${encodeURIComponent(name)}`, {
-    method: 'POST',
-    body: JSON.stringify({ value }),
-  }).catch((error) => {
-    console.warn(`Não foi possível salvar ${name} no banco:`, error.message);
-    showBackendRequiredBanner();
-  });
+  if (!name || name === 'session') return Promise.resolve(false);
+
+  const payload = JSON.stringify({ value });
+  const task = () => {
+    pendingBackendWrites += 1;
+    return apiRequest(`/api/state/${encodeURIComponent(name)}`, {
+      method: 'POST',
+      body: payload,
+      // Evita perda quando o usuário atualiza/fecha a página logo após salvar.
+      // O navegador tentará concluir a gravação curta mesmo durante o unload.
+      keepalive: payload.length < 60000,
+    }).catch((error) => {
+      console.warn(`Não foi possível salvar ${name} no banco:`, error.message);
+      showBackendRequiredBanner();
+      throw error;
+    }).finally(() => {
+      pendingBackendWrites = Math.max(0, pendingBackendWrites - 1);
+    });
+  };
+
+  const next = stateWriteQueue.then(task, task);
+  stateWriteQueue = next.catch(() => {});
+  return next;
 }
 function showBackendRequiredBanner() {
   if ($('[data-backend-required-banner]')) return;
@@ -139,22 +156,23 @@ function write(key, value) {
   if (REQUIRE_BACKEND && !backendAvailable && !suppressBackendSync) {
     showBackendRequiredBanner();
     console.warn('Gravação bloqueada: backend/banco indisponível.');
-    return;
+    return Promise.resolve(false);
   }
   localStorage.setItem(key, JSON.stringify(value));
   // Persistência operacional: salva a chave alterada diretamente no banco.
   // Isso evita perda de dados por debounce, troca de tela, refresh ou estado local antigo.
-  persistSingleStateKey(key, value);
+  return persistSingleStateKey(key, value);
 }
 function remove(key) {
   if (REQUIRE_BACKEND && !backendAvailable && !suppressBackendSync) {
     showBackendRequiredBanner();
     console.warn('Remoção bloqueada: backend/banco indisponível.');
-    return;
+    return Promise.resolve(false);
   }
   localStorage.removeItem(key);
   const name = stateNameFromStorageKey(key);
-  if (name && name !== 'session') persistSingleStateKey(key, name === 'settings' ? defaultSettings : []);
+  if (name && name !== 'session') return persistSingleStateKey(key, name === 'settings' ? defaultSettings : []);
+  return Promise.resolve(false);
 }
 function stateSnapshot() {
   const state = {};
@@ -194,7 +212,8 @@ function formDataOf(source, fallbackSelector) {
 async function apiRequest(path, options = {}) {
   const headers = { ...(options.headers || {}) };
   if (options.body && !(options.body instanceof FormData)) headers['Content-Type'] = headers['Content-Type'] || 'application/json';
-  const response = await fetch(`${BACKEND_API}${path}`, { credentials: 'include', ...options, headers });
+  const fetchOptions = { credentials: 'include', ...options, headers };
+  const response = await fetch(`${BACKEND_API}${path}`, fetchOptions);
   if (!response.ok) {
     const text = await response.text().catch(() => '');
     throw new Error(text || `Erro HTTP ${response.status}`);
@@ -386,11 +405,59 @@ async function maybeNotifyResident(resident, ruleKey, subject, message) {
   return notifyResidentEntity(resident, subject, message);
 }
 
+function mergeArrayById(backendList = [], localList = []) {
+  const output = Array.isArray(backendList) ? [...backendList] : [];
+  const seen = new Set(output.map((item) => item && item.id).filter(Boolean));
+  for (const item of Array.isArray(localList) ? localList : []) {
+    if (!item || typeof item !== 'object') continue;
+    const id = item.id || '';
+    if (id && !seen.has(id)) {
+      output.unshift(item);
+      seen.add(id);
+    }
+  }
+  return output;
+}
+
+function hasExtraLocalItems(backendList = [], localList = []) {
+  const backendIds = new Set((Array.isArray(backendList) ? backendList : []).map((item) => item && item.id).filter(Boolean));
+  return (Array.isArray(localList) ? localList : []).some((item) => item && item.id && !backendIds.has(item.id));
+}
+
+function mergeLocalCacheWithBackendState(backendState = {}) {
+  const localState = stateSnapshot();
+  const nextState = { ...backendState };
+  const mergeKeys = [
+    'pendingResidents', 'residents', 'bookings', 'packages', 'packageLabelMemory', 'visitors',
+    'recurringVisitors', 'notices', 'staff', 'staffSchedules', 'services', 'serviceRequests',
+    'contactMessages', 'financeRecords',
+  ];
+  let recovered = false;
+  for (const name of mergeKeys) {
+    const localValue = localState[name];
+    const backendValue = backendState[name];
+    if (hasExtraLocalItems(backendValue, localValue)) recovered = true;
+    nextState[name] = mergeArrayById(backendValue, localValue);
+  }
+  if (!backendState.settings && localState.settings) {
+    nextState.settings = localState.settings;
+    recovered = true;
+  }
+  return { state: nextState, recovered };
+}
+
 async function loadBackendState() {
   try {
     const data = await apiRequest('/api/state');
     backendAvailable = true;
-    applyBackendState(data.state || {});
+    const merged = mergeLocalCacheWithBackendState(data.state || {});
+    applyBackendState(merged.state || {});
+    if (merged.recovered) {
+      // Se o usuário atualizou a página antes de o POST terminar, recuperamos os itens
+      // ainda existentes no localStorage e reenviamos ao banco.
+      apiRequest('/api/state/bulk', { method: 'POST', body: JSON.stringify({ state: merged.state }) })
+        .catch((error) => console.warn('Não foi possível recuperar dados locais no banco:', error.message));
+    }
     if (!read(keys.settings, null)) write(keys.settings, defaultSettings);
     return true;
   } catch (error) {
@@ -3837,5 +3904,12 @@ async function init() {
     cleanAuthQueryParams();
   }
 }
+
+window.addEventListener('beforeunload', (event) => {
+  if (pendingBackendWrites > 0) {
+    event.preventDefault();
+    event.returnValue = '';
+  }
+});
 
 document.addEventListener('DOMContentLoaded', init);

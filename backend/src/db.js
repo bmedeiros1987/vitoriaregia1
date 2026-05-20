@@ -1,47 +1,65 @@
 const mysql = require('mysql2/promise');
 
+function cleanEnvValue(value) {
+  if (value === undefined || value === null) return '';
+  let text = String(value).trim();
+  // Render aceita valores colados manualmente. Se o usuário copiar DATABASE_URL com aspas
+  // do arquivo .env, essas aspas podem virar parte do valor e quebrar o mysql2 com
+  // "Invalid URL". Removemos somente aspas externas equivalentes.
+  if ((text.startsWith('\"') && text.endsWith('\"')) || (text.startsWith("'") && text.endsWith("'"))) {
+    text = text.slice(1, -1).trim();
+  }
+  return text;
+}
+
+function env(name, fallback = '') {
+  const value = cleanEnvValue(process.env[name]);
+  return value || fallback;
+}
+
 function bool(value, fallback = false) {
-  if (value === undefined || value === null || value === '') return fallback;
-  return ['1', 'true', 'yes', 'sim', 'on', 'required', 'require'].includes(String(value).toLowerCase());
+  const text = cleanEnvValue(value);
+  if (!text) return fallback;
+  return ['1', 'true', 'yes', 'sim', 'on', 'required', 'require'].includes(text.toLowerCase());
 }
 
 function getDatabaseProvider() {
-  const provider = String(process.env.DATABASE_PROVIDER || '').toLowerCase();
+  const provider = env('DATABASE_PROVIDER').toLowerCase();
   if (provider) return provider;
-  if (String(process.env.DATABASE_URL || '').toLowerCase().startsWith('mysql://')) return 'mysql';
-  if (process.env.MYSQL_HOST || process.env.MYSQL_DATABASE || process.env.MYSQL_USER) return 'mysql';
+  if (env('DATABASE_URL').toLowerCase().startsWith('mysql://')) return 'mysql';
+  if (env('MYSQL_HOST') || env('MYSQL_DATABASE') || env('MYSQL_USER')) return 'mysql';
   return 'mysql';
 }
 
 function hasDatabaseConfig() {
   return Boolean(
-    process.env.DATABASE_URL ||
-    process.env.MYSQL_HOST ||
-    process.env.MYSQL_DATABASE ||
-    process.env.MYSQL_USER
+    env('DATABASE_URL') ||
+    env('MYSQL_HOST') ||
+    env('MYSQL_DATABASE') ||
+    env('MYSQL_USER')
   );
 }
 
 function mysqlSslConfig() {
-  const mode = String(process.env.MYSQL_SSL_MODE || process.env.MYSQL_SSL || '').toLowerCase();
-  const useSsl = bool(process.env.MYSQL_SSL, false) || ['required', 'require', 'true', 'verify_ca', 'verify_identity'].includes(mode);
+  const mode = env('MYSQL_SSL_MODE', env('MYSQL_SSL')).toLowerCase();
+  const useSsl = bool(env('MYSQL_SSL'), false) || ['required', 'require', 'true', 'verify_ca', 'verify_identity'].includes(mode);
   if (!useSsl) return undefined;
   return {
     // Aiven exige SSL. Em hospedagens como Render, geralmente não há CA local instalada,
     // por isso o padrão seguro para evitar falha de handshake é usar SSL sem validar CA.
-    rejectUnauthorized: bool(process.env.MYSQL_SSL_REJECT_UNAUTHORIZED, false),
+    rejectUnauthorized: bool(env('MYSQL_SSL_REJECT_UNAUTHORIZED'), false),
   };
 }
 
 function normalizeConnectionUri(uri) {
-  if (!uri) return uri;
+  const cleaned = cleanEnvValue(uri);
+  if (!cleaned) return cleaned;
   // mysql2 não entende ssl-mode=REQUIRED em todos os ambientes.
-  return uri
-    .replace('ssl-mode=REQUIRED', 'ssl=true')
-    .replace('ssl-mode=required', 'ssl=true')
-    .replace('sslmode=require', 'ssl=true')
-    .replace('ssl-mode=VERIFY_CA', 'ssl=true')
-    .replace('ssl-mode=VERIFY_IDENTITY', 'ssl=true');
+  return cleaned
+    .replace(/ssl-mode=REQUIRED/ig, 'ssl=true')
+    .replace(/sslmode=require/ig, 'ssl=true')
+    .replace(/ssl-mode=VERIFY_CA/ig, 'ssl=true')
+    .replace(/ssl-mode=VERIFY_IDENTITY/ig, 'ssl=true');
 }
 
 let rawPool = null;
@@ -123,7 +141,7 @@ function wrapConnection(conn) {
 function createRawPool() {
   const common = {
     waitForConnections: true,
-    connectionLimit: Number(process.env.MYSQL_POOL_MAX || 5),
+    connectionLimit: Number(env('MYSQL_POOL_MAX', '5') || 5),
     queueLimit: 0,
     connectTimeout: 15000,
     multipleStatements: false,
@@ -132,20 +150,21 @@ function createRawPool() {
   };
 
   const ssl = mysqlSslConfig();
-  if (process.env.DATABASE_URL) {
+  const databaseUrl = normalizeConnectionUri(env('DATABASE_URL'));
+  if (databaseUrl) {
     return mysql.createPool({
-      uri: normalizeConnectionUri(process.env.DATABASE_URL),
+      uri: databaseUrl,
       ...common,
       ...(ssl ? { ssl } : {}),
     });
   }
 
   return mysql.createPool({
-    host: process.env.MYSQL_HOST,
-    port: Number(process.env.MYSQL_PORT || 3306),
-    database: process.env.MYSQL_DATABASE,
-    user: process.env.MYSQL_USER,
-    password: process.env.MYSQL_PASSWORD,
+    host: env('MYSQL_HOST'),
+    port: Number(env('MYSQL_PORT', '3306') || 3306),
+    database: env('MYSQL_DATABASE'),
+    user: env('MYSQL_USER'),
+    password: env('MYSQL_PASSWORD'),
     ...common,
     ...(ssl ? { ssl } : {}),
   });

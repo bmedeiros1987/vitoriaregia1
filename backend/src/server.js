@@ -324,6 +324,43 @@ async function saveStoreToDatabase(nextStore) {
   }
 }
 
+async function ensureStateRowForUpdate(client) {
+  await client.query(
+    `insert into app_meta (` + "`key`" + `, value, updated_at) values ('state', ?, now())
+     on duplicate key update ` + "`key`" + ` = values(` + "`key`" + `)`,
+    [toJson(DEFAULT_STATE)]
+  );
+  const stateResult = await client.query(`select value from app_meta where ` + "`key`" + ` = 'state' for update`);
+  return fromJson(rowsOf(stateResult)[0]?.value, DEFAULT_STATE);
+}
+
+async function saveStatePatchToDatabase(patch = {}) {
+  const db = getPool();
+  if (!db || !databaseReady) throw new Error('Banco de dados indisponível.');
+  const client = await db.connect();
+  try {
+    await client.query('begin');
+    const currentState = await ensureStateRowForUpdate(client);
+    const nextState = { ...DEFAULT_STATE, ...(currentState || {}) };
+    for (const [key, value] of Object.entries(patch || {})) {
+      if (ALLOWED_STATE_KEYS.has(key)) nextState[key] = value;
+    }
+    await client.query(
+      `update app_meta set value = ?, updated_at = now() where ` + "`key`" + ` = 'state'`,
+      [toJson(nextState)]
+    );
+    await mirrorStateToTables(client, nextState);
+    await client.query('commit');
+    store = normalizeStore({ ...store, state: nextState });
+    return store.state;
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function loadStoreFromDatabase() {
   const stateResult = await query(`select value from app_meta where ` + "`key`" + ` = 'state'`);
   const configResult = await query(`select config from notification_config where id = 1`);
@@ -2038,13 +2075,18 @@ app.get('/api/state', requireDatabaseReady, async (req, res) => {
 app.post('/api/state/bulk', requireDatabaseReady, async (req, res) => {
   try {
     const incoming = req.body?.state || {};
-    const latest = await freshStoreForWrite();
-    // Nunca substitui o banco inteiro por localStorage vazio/antigo.
-    // Mescla apenas as chaves operacionais permitidas que vierem no payload.
-    const nextState = { ...DEFAULT_STATE, ...(latest.state || {}) };
+    const patch = {};
     for (const key of Object.keys(incoming)) {
-      if (ALLOWED_STATE_KEYS.has(key)) nextState[key] = incoming[key];
+      if (ALLOWED_STATE_KEYS.has(key)) patch[key] = incoming[key];
     }
+
+    if (databaseReady) {
+      const state = await saveStatePatchToDatabase(patch);
+      return res.json({ ok: true, database: { ready: databaseReady }, state });
+    }
+
+    const latest = await freshStoreForWrite();
+    const nextState = { ...DEFAULT_STATE, ...(latest.state || {}), ...patch };
     store = normalizeStore({ ...latest, state: nextState });
     await saveStore(store);
     res.json({ ok: true, database: { ready: databaseReady }, state: store.state });
@@ -2057,6 +2099,12 @@ app.post('/api/state/:key', requireDatabaseReady, async (req, res) => {
   try {
     const key = req.params.key;
     if (!ALLOWED_STATE_KEYS.has(key)) return res.status(400).send(`Chave de estado inválida: ${key}`);
+
+    if (databaseReady) {
+      const state = await saveStatePatchToDatabase({ [key]: req.body?.value });
+      return res.json({ ok: true, database: { ready: databaseReady }, key, value: state[key] });
+    }
+
     const latest = await freshStoreForWrite();
     const nextState = { ...DEFAULT_STATE, ...(latest.state || {}) };
     nextState[key] = req.body?.value;
