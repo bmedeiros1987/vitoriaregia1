@@ -15,6 +15,9 @@ const keys = {
 };
 
 const BACKEND_API = window.VR_API_BASE || '';
+const REQUIRE_BACKEND = true;
+const REQUIRE_APPROVED_RESIDENT = true;
+const DEMO_MODE_DISABLED = true;
 const BACKEND_STATE_KEYS = Object.keys(keys);
 let backendAvailable = false;
 let suppressBackendSync = false;
@@ -77,11 +80,33 @@ function safeParse(value, fallback) {
   try { return value ? JSON.parse(value) : fallback; } catch { return fallback; }
 }
 function read(key, fallback) { return safeParse(localStorage.getItem(key), fallback); }
+function showBackendRequiredBanner() {
+  if ($('[data-backend-required-banner]')) return;
+  const banner = document.createElement('div');
+  banner.setAttribute('data-backend-required-banner', 'true');
+  banner.className = 'backend-required-banner';
+  banner.innerHTML = '<strong>Banco de dados indisponível.</strong> Este sistema está em modo operacional e exige backend PostgreSQL ativo no Render. Verifique /api/health e /api/db/status.';
+  document.body.prepend(banner);
+}
+function clearAppLocalCache() {
+  Object.values(keys).forEach((key) => localStorage.removeItem(key));
+  localStorage.removeItem(`${STORE_PREFIX}seeded`);
+}
 function write(key, value) {
+  if (REQUIRE_BACKEND && !backendAvailable && !suppressBackendSync) {
+    showBackendRequiredBanner();
+    console.warn('Gravação bloqueada: backend/banco indisponível.');
+    return;
+  }
   localStorage.setItem(key, JSON.stringify(value));
   queueBackendSync();
 }
 function remove(key) {
+  if (REQUIRE_BACKEND && !backendAvailable && !suppressBackendSync) {
+    showBackendRequiredBanner();
+    console.warn('Remoção bloqueada: backend/banco indisponível.');
+    return;
+  }
   localStorage.removeItem(key);
   queueBackendSync();
 }
@@ -210,10 +235,20 @@ async function saveNotificationConfigFromForm(form) {
     },
     whatsapp: {
       enabled: Boolean(data.get('whatsappEnabled')),
+      provider: data.get('whatsappProvider') || 'meta',
       apiVersion: data.get('whatsappApiVersion')?.trim() || 'v20.0',
       token: data.get('whatsappToken') || '',
       phoneNumberId: data.get('whatsappPhoneNumberId')?.trim() || '',
       countryCode: data.get('whatsappCountryCode')?.trim() || '55',
+      testTo: data.get('testWhatsappTo')?.trim() || '',
+      evolution: {
+        serverUrl: data.get('evolutionApiUrl')?.trim() || '',
+        instanceName: data.get('evolutionInstanceName')?.trim() || '',
+        apiKey: data.get('evolutionApiKey') || '',
+        countryCode: data.get('evolutionCountryCode')?.trim() || data.get('whatsappCountryCode')?.trim() || '55',
+        testTo: data.get('testWhatsappTo')?.trim() || '',
+        linkPreview: Boolean(data.get('evolutionLinkPreview')),
+      },
     },
   };
   const response = await apiRequest('/api/integrations/notifications', { method: 'POST', body: JSON.stringify(payload) });
@@ -282,9 +317,8 @@ function queueBackendSync() {
   }, 350);
 }
 async function createBackendSession(payload) {
-  if (!backendAvailable) return null;
-  try { return await apiRequest('/auth/demo', { method: 'POST', body: JSON.stringify(payload) }); }
-  catch (error) { console.warn('Sessão backend não criada:', error.message); return null; }
+  if (!backendAvailable) throw new Error('Backend indisponível. O sistema operacional exige banco de dados ativo.');
+  return apiRequest('/auth/login', { method: 'POST', body: JSON.stringify(payload) });
 }
 async function destroyBackendSession() {
   if (!backendAvailable) return;
@@ -373,49 +407,11 @@ function saveServiceRequests(value) { write(keys.serviceRequests, value); }
 function getContactMessages() { return read(keys.contactMessages, []); }
 function saveContactMessages(value) { write(keys.contactMessages, value); }
 
-function seedDemo(force = false) {
-  if (!force && localStorage.getItem(`${STORE_PREFIX}seeded`)) return;
-  write(keys.settings, defaultSettings);
-  write(keys.pendingResidents, [
-    { id: uid('pending'), name: 'Mariana Costa', email: 'mariana@email.com', whatsapp: '(61) 99999-1010', apartment: '503', status: 'pending', createdAt: nowISO() },
-    { id: uid('pending'), name: 'Paulo Lima', email: 'paulo@email.com', whatsapp: '(61) 99999-1103', apartment: '1103', status: 'pending', createdAt: nowISO() },
-  ]);
-  write(keys.residents, [
-    { id: uid('resident'), name: 'Bruno Saraiva', email: 'bruno@email.com', whatsapp: '(61) 99999-0001', apartment: '101', residentType: 'Proprietário', primaryBilling: true, unitRented: false, status: 'approved', notes: 'Morador responsável.', createdAt: nowISO(), approvedAt: nowISO() },
-    { id: uid('resident'), name: 'Camila Nogueira', email: 'camila@email.com', whatsapp: '(61) 99999-0002', apartment: '203', residentType: 'Inquilino', primaryBilling: true, unitRented: true, status: 'approved', notes: 'Contato principal da unidade alugada.', createdAt: nowISO(), approvedAt: nowISO() },
-    { id: uid('resident'), name: 'Marcelo Nogueira', email: 'marcelo@email.com', whatsapp: '(61) 99999-0004', apartment: '203', residentType: 'Familiar', primaryBilling: false, unitRented: true, status: 'approved', notes: 'Morador adicional da unidade.', createdAt: nowISO(), approvedAt: nowISO() },
-    { id: uid('resident'), name: 'Rafael Torres', email: 'rafael@email.com', whatsapp: '(61) 99999-0003', apartment: '902', residentType: 'Proprietário', primaryBilling: true, unitRented: false, status: 'approved', notes: '', createdAt: nowISO(), approvedAt: nowISO() },
-  ]);
-  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
-  const plusFive = new Date(); plusFive.setDate(plusFive.getDate() + 5);
-  write(keys.bookings, [
-    { id: uid('booking'), spaceId: 'salao-festas', spaceName: 'Salão de festas', date: toISODate(tomorrow), period: 'Noite', apartment: '203', residentName: 'Camila Nogueira', residentEmail: 'camila@email.com', residentWhatsapp: '(61) 99999-0002', fee: 250, notes: 'Aniversário familiar.', guestCount: 3, eventResponsible: 'Camila Nogueira', guests: [{ name: 'Fernanda Lopes' }, { name: 'João Pereira' }, { name: 'Ana Costa' }], status: 'pending', signed: true, signedAt: nowISO(), createdAt: nowISO(), boleto: null, managerDocument: null, residentDocument: null },
-    { id: uid('booking'), spaceId: 'churrasqueira', spaceName: 'Churrasqueira', date: toISODate(plusFive), period: 'Tarde', apartment: '101', residentName: 'Bruno Saraiva', residentEmail: 'bruno@email.com', residentWhatsapp: '(61) 99999-0001', fee: 120, notes: 'Confraternização.', status: 'approved', signed: true, signedAt: nowISO(), approvedAt: nowISO(), createdAt: nowISO(), boleto: null, managerDocument: null, residentDocument: null },
-  ]);
-  write(keys.packages, [
-    { id: uid('package'), apartment: '902', recipient: 'Rafael Torres', carrier: 'Mercado Livre', code: 'ML-20391', notes: 'Volume pequeno.', status: 'open', createdAt: nowISO() },
-  ]);
-  write(keys.visitors, [
-    { id: uid('visitor'), name: 'Fernanda Lopes', document: '***.321.***-**', phone: '(61) 99999-1111', apartment: '203', type: 'Visita social', notes: 'Autorizada pela moradora.', photo: '', createdAt: nowISO() },
-  ]);
-  write(keys.notices, [
-    { id: uid('notice'), title: 'Manutenção preventiva', category: 'Manutenção', message: 'Haverá manutenção preventiva nas áreas comuns nesta semana. Agradecemos a compreensão de todos.', createdAt: nowISO() },
-    { id: uid('notice'), title: 'Regras de reserva', category: 'Reservas', message: 'As reservas de espaços comuns precisam ser pré-agendadas pelo sistema e validadas pelo síndico.', createdAt: nowISO() },
-  ]);
-
-  write(keys.staff, [
-    { id: uid('staff'), name: 'Bruno Saraiva', role: 'sindico', email: 'bmedeiros1987@gmail.com', whatsapp: '', active: true, notes: 'Responsável principal pela administração.', createdAt: nowISO() },
-    { id: uid('staff'), name: 'Subsíndico', role: 'subsindico', email: '', whatsapp: '', active: true, notes: 'Cadastro editável pelo síndico.', createdAt: nowISO() },
-    { id: uid('staff'), name: 'Portaria', role: 'porteiro', email: '', whatsapp: '', active: true, notes: 'Contato operacional da portaria.', createdAt: nowISO() },
-  ]);
-  write(keys.services, [
-    { id: uid('service'), name: 'Controle-remoto de portão', category: 'Acesso', price: 85, active: true, description: 'Solicitação de controle-remoto para acesso ao condomínio.', requiresApproval: true, createdAt: nowISO() },
-    { id: uid('service'), name: 'Segunda via de tag/cartão', category: 'Acesso', price: 35, active: true, description: 'Pedido de segunda via de tag ou cartão de acesso.', requiresApproval: true, createdAt: nowISO() },
-  ]);
-  write(keys.serviceRequests, []);
-  write(keys.contactMessages, []);
-  localStorage.setItem(`${STORE_PREFIX}seeded`, 'true');
+function seedDemo() {
+  // Modo demo removido. O sistema operacional não popula dados fictícios.
+  return false;
 }
+
 
 function fillApartmentSelects() {
   const html = apartments().map((apt) => `<option value="${apt}">${apt}</option>`).join('');
@@ -453,7 +449,7 @@ function applyPermissions() {
   const heroTitle = $('[data-hero-title]');
   const heroText = $('[data-hero-text]');
   if (heroTitle) heroTitle.textContent = currentRole() === 'portaria' ? 'Portaria inteligente e integrada.' : currentRole() === 'sindico' ? 'Painel completo de gestão do síndico.' : 'Área do morador simples e segura.';
-  if (heroText) heroText.textContent = currentRole() === 'portaria' ? 'Registre visitantes, fotos, encomendas e avise moradores rapidamente.' : currentRole() === 'sindico' ? 'Aprove cadastros, valide reservas, gere boletos demonstrativos e gerencie o calendário.' : 'Solicite reservas, acompanhe comunicados e veja disponibilidade sem expor dados de outras unidades.';
+  if (heroText) heroText.textContent = currentRole() === 'portaria' ? 'Registre visitantes, fotos, encomendas e avise moradores rapidamente.' : currentRole() === 'sindico' ? 'Aprove cadastros, valide reservas, gere boletos reais pelo Asaas e gerencie o calendário.' : 'Solicite reservas, acompanhe comunicados e veja disponibilidade sem expor dados de outras unidades.';
   updateActiveSection();
 }
 
@@ -482,6 +478,7 @@ function authSetup() {
   const roleSelect = $('[data-login-role]');
   const googleLink = $('[data-google-login]');
   const unitWrap = $('[data-login-unit-wrap]');
+  const bootstrapPasswordWrap = $('[data-bootstrap-password-wrap]');
 
   function setTab(tab) {
     const login = tab === 'login';
@@ -496,6 +493,7 @@ function authSetup() {
   function syncRoleUI() {
     const role = roleSelect.value;
     unitWrap.style.display = role === 'morador' ? 'grid' : 'none';
+    if (bootstrapPasswordWrap) bootstrapPasswordWrap.style.display = role === 'sindico' ? 'grid' : 'none';
     googleLink.href = `/auth/google?role=${encodeURIComponent(role)}`;
   }
   roleSelect.addEventListener('change', syncRoleUI);
@@ -503,27 +501,48 @@ function authSetup() {
 
   loginForm.addEventListener('submit', async (event) => {
     event.preventDefault();
+    const message = $('[data-login-message]');
+    if (!backendAvailable) {
+      showBackendRequiredBanner();
+      if (message) message.textContent = 'Backend/banco indisponível. Publique o Web Service no Render e confirme /api/db/status antes de acessar.';
+      return;
+    }
     const form = new FormData(loginForm);
     const role = form.get('role');
     const name = form.get('name') || roles[role].label;
-    const email = form.get('email') || '';
+    const email = String(form.get('email') || '').trim();
+    const password = String(form.get('password') || '');
     const apartment = role === 'morador' ? form.get('apartment') : '';
-    if (role === 'morador') {
-      const approved = email
-        ? (getResidents().find((resident) => resident.apartment === apartment && resident.email === email) || getResidents().find((resident) => resident.email === email))
-        : approvedResidentByApartment(apartment);
-      const payload = { role, name: approved?.name || name, email: approved?.email || email, apartment: approved?.apartment || apartment, residentId: approved?.id || null, demo: false };
-      await createBackendSession(payload);
-      startSession(payload);
-      return;
+    try {
+      if (role === 'morador') {
+        const approved = email
+          ? (getResidents().find((resident) => resident.apartment === apartment && resident.email === email && resident.status === 'approved') || getResidents().find((resident) => resident.email === email && resident.status === 'approved'))
+          : null;
+        if (REQUIRE_APPROVED_RESIDENT && !approved) {
+          if (message) message.textContent = 'Cadastro não localizado ou ainda não aprovado pelo síndico para esta unidade.';
+          return;
+        }
+        const payload = { role, name: approved?.name || name, email: approved?.email || email, apartment: approved?.apartment || apartment, residentId: approved?.id || null, demo: false };
+        const result = await createBackendSession(payload);
+        startSession(result?.user || payload);
+        return;
+      }
+      const payload = { role, name, email, password, apartment: '', demo: false };
+      const result = await createBackendSession(payload);
+      startSession(result?.user || payload);
+      if (message && result?.bootstrap?.active) message.textContent = result.bootstrap.message || 'Acesso temporário liberado.';
+    } catch (error) {
+      if (message) message.textContent = error.message || 'Não foi possível autenticar.';
     }
-    const payload = { role, name, email, apartment: '', demo: false };
-    await createBackendSession(payload);
-    startSession(payload);
   });
 
   signupForm.addEventListener('submit', (event) => {
     event.preventDefault();
+    if (!backendAvailable) {
+      showBackendRequiredBanner();
+      $('[data-signup-message]').textContent = 'Banco de dados indisponível. O cadastro só pode ser solicitado com o backend operacional ativo.';
+      return;
+    }
     const form = new FormData(signupForm);
     const data = {
       id: uid('pending'),
@@ -571,11 +590,10 @@ function navigationSetup() {
   $('[data-menu-open]')?.addEventListener('click', openMenu);
   $('[data-sidebar-shadow]')?.addEventListener('click', closeMenu);
   $$('[data-logout]').forEach((btn) => btn.addEventListener('click', async () => { await destroyBackendSession(); endSession(); }));
-  $('[data-reset-demo]')?.addEventListener('click', () => {
-    if (!confirm('Limpar os dados locais deste navegador?')) return;
-    Object.values(keys).forEach(remove);
-    localStorage.removeItem(`${STORE_PREFIX}seeded`);
-    seedDemo(true);
+  $('[data-clear-cache]')?.addEventListener('click', async () => {
+    if (!confirm('Limpar apenas o cache local deste navegador e recarregar os dados do banco?')) return;
+    clearAppLocalCache();
+    await loadBackendState();
     fillApartmentSelects();
     fillSpaceSelects();
     renderAll();
@@ -1609,7 +1627,13 @@ function setupNotificationForms() {
       msg.textContent = 'WhatsApp de teste enviado pela API configurada.';
       msg.style.color = 'var(--green)';
     } catch (error) {
-      msg.textContent = `Erro no teste de WhatsApp: ${error.message}`;
+      let extra = '';
+      try {
+        const debug = await apiRequest('/api/integrations/whatsapp/debug');
+        const problems = debug?.whatsapp?.problems || [];
+        if (problems.length) extra = ` | Diagnóstico: ${problems.join(' ')}`;
+      } catch (_) {}
+      msg.textContent = `Erro no teste de WhatsApp: ${error.message}${extra}`;
       msg.style.color = 'var(--red)';
     }
   });
@@ -1670,11 +1694,22 @@ function renderNotificationSettings() {
   if (form.mailersendFromEmail) form.mailersendFromEmail.value = mailersend.fromEmail || email.fromEmail || '';
   if (form.testEmailTo) form.testEmailTo.value = email.provider === 'mailersend' ? (mailersend.testTo || email.testTo || email.user || '') : (email.testTo || email.user || '');
   form.whatsappEnabled.checked = Boolean(whatsapp.enabled);
+  if (form.whatsappProvider) form.whatsappProvider.value = whatsapp.provider || 'meta';
   form.whatsappApiVersion.value = whatsapp.apiVersion || 'v20.0';
   form.whatsappPhoneNumberId.value = whatsapp.phoneNumberId || '';
   form.whatsappToken.value = '';
-  form.whatsappToken.placeholder = whatsapp.tokenSaved ? 'Token salvo — deixe em branco para manter' : 'Token da Meta';
+  form.whatsappToken.placeholder = whatsapp.tokenSaved ? 'Token Meta salvo — deixe em branco para manter' : 'Token da Meta';
   form.whatsappCountryCode.value = whatsapp.countryCode || '55';
+  const evolution = whatsapp.evolution || {};
+  if (form.evolutionApiUrl) form.evolutionApiUrl.value = evolution.serverUrl || '';
+  if (form.evolutionInstanceName) form.evolutionInstanceName.value = evolution.instanceName || '';
+  if (form.evolutionApiKey) {
+    form.evolutionApiKey.value = '';
+    form.evolutionApiKey.placeholder = evolution.apiKeySaved ? 'API Key salva — deixe em branco para manter' : 'API Key da Evolution';
+  }
+  if (form.evolutionCountryCode) form.evolutionCountryCode.value = evolution.countryCode || whatsapp.countryCode || '55';
+  if (form.evolutionLinkPreview) form.evolutionLinkPreview.checked = Boolean(evolution.linkPreview);
+  if (form.testWhatsappTo) form.testWhatsappTo.value = evolution.testTo || whatsapp.testTo || '';
   if (form.asaasEnabled) {
     form.asaasEnabled.checked = Boolean(asaas.enabled);
     form.asaasEnvironment.value = asaas.environment || 'sandbox';
@@ -1688,7 +1723,7 @@ function renderNotificationSettings() {
   if (status) {
     status.innerHTML = `
       <div><strong>E-mail:</strong> ${email.enabled ? 'ativado' : 'desativado'} • provedor: ${escapeHTML(email.provider || 'smtp')} ${email.provider === 'mailersend' ? (email.mailersend?.apiKeySaved ? '• token MailerSend salvo' : '• token MailerSend não salvo') : (email.passwordSaved ? '• senha SMTP salva' : '• senha SMTP não salva')}</div>
-      <div><strong>WhatsApp:</strong> ${whatsapp.enabled ? 'ativado' : 'desativado'} ${whatsapp.tokenSaved ? '• token salvo' : '• token não salvo'}</div>
+      <div><strong>WhatsApp:</strong> ${whatsapp.enabled ? 'ativado' : 'desativado'} • provedor: ${escapeHTML(whatsapp.provider || 'meta')} ${whatsapp.provider === 'evolution' ? (whatsapp.evolution?.apiKeySaved ? '• API Key Evolution salva' : '• API Key Evolution não salva') : (whatsapp.tokenSaved ? '• token Meta salvo' : '• token Meta não salvo')}</div>
       <div><strong>Asaas:</strong> ${asaas.enabled ? 'ativado' : 'desativado'} • ${escapeHTML(asaas.environment || 'sandbox')} ${asaas.apiKeySaved ? '• API Key salva' : '• API Key não salva'}</div>
       <div><small>Para funcionar em produção, o backend precisa estar rodando com banco inicializado e as credenciais corretas.</small></div>`;
   }
@@ -1822,7 +1857,11 @@ function setupPrint() { $('[data-print-boleto]')?.addEventListener('click', () =
 
 async function init() {
   await loadBackendState();
-  if (!backendAvailable) seedDemo(false);
+  if (!backendAvailable && REQUIRE_BACKEND) {
+    clearAppLocalCache();
+    showBackendRequiredBanner();
+    console.error('Backend/banco indisponível: o sistema operacional exige Render Web Service com PostgreSQL configurado.');
+  }
   if (!read(keys.settings, null)) write(keys.settings, defaultSettings);
   fillApartmentSelects();
   fillSpaceSelects();
@@ -1846,7 +1885,16 @@ async function init() {
   document.addEventListener('click', handleDocumentClick);
   document.addEventListener('change', handleDocumentChange);
   const saved = read(keys.session, null);
-  if (saved?.role) { await createBackendSession(saved); startSession(saved); } else endSession();
+  if (backendAvailable && saved?.role) {
+    try {
+      const result = await createBackendSession(saved);
+      startSession(result?.user || saved);
+    } catch {
+      endSession();
+    }
+  } else {
+    endSession();
+  }
 }
 
 document.addEventListener('DOMContentLoaded', init);

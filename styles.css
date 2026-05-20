@@ -952,3 +952,16 @@ body.no-scroll { overflow: hidden; }
   #contato .content-grid,
   #equipe .content-grid { grid-template-columns: 1fr; }
 }
+
+
+.backend-required-banner {
+  position: sticky;
+  top: 0;
+  z-index: 9999;
+  padding: 14px 18px;
+  background: #fff3cd;
+  color: #5f4300;
+  border-bottom: 1px solid rgba(95, 67, 0, .18);
+  font-size: 14px;
+  text-align: center;
+}

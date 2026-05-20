@@ -20,6 +20,14 @@ const DATA_FILE = process.env.DATA_FILE || path.join(os.tmpdir(), 'vitoria-regia
 const FRONTEND_DIR = process.env.FRONTEND_DIR
   ? path.resolve(process.env.FRONTEND_DIR)
   : path.resolve(__dirname, '../../');
+const REQUIRE_DATABASE = String(process.env.REQUIRE_DATABASE || 'true').toLowerCase() !== 'false';
+const ALLOW_LEGACY_DEMO_LOGIN = String(process.env.ALLOW_LEGACY_DEMO_LOGIN || 'false').toLowerCase() === 'true';
+const REQUIRE_APPROVED_RESIDENT = String(process.env.REQUIRE_APPROVED_RESIDENT || 'true').toLowerCase() !== 'false';
+const BOOTSTRAP_ADMIN_ENABLED = String(process.env.BOOTSTRAP_ADMIN_ENABLED || 'false').toLowerCase() === 'true';
+const BOOTSTRAP_ADMIN_EMAIL = String(process.env.BOOTSTRAP_ADMIN_EMAIL || '').trim().toLowerCase();
+const BOOTSTRAP_ADMIN_PASSWORD = String(process.env.BOOTSTRAP_ADMIN_PASSWORD || '');
+const BOOTSTRAP_ADMIN_NAME = process.env.BOOTSTRAP_ADMIN_NAME || 'Usuário temporário de implantação';
+const BOOTSTRAP_DISABLE_AFTER_FIRST_SINDICO = String(process.env.BOOTSTRAP_DISABLE_AFTER_FIRST_SINDICO || 'true').toLowerCase() !== 'false';
 
 let databaseReady = false;
 
@@ -31,6 +39,10 @@ const DEFAULT_STATE = {
   packages: [],
   visitors: [],
   notices: [],
+  staff: [],
+  services: [],
+  serviceRequests: [],
+  contactMessages: [],
   settings: null,
 };
 
@@ -55,11 +67,20 @@ const DEFAULT_NOTIFICATION_CONFIG = {
   },
   whatsapp: {
     enabled: String(process.env.WHATSAPP_ENABLED || 'false').toLowerCase() === 'true',
+    provider: process.env.WHATSAPP_PROVIDER || (process.env.EVOLUTION_API_KEY ? 'evolution' : 'meta'),
     apiVersion: process.env.WHATSAPP_API_VERSION || 'v20.0',
     token: process.env.WHATSAPP_TOKEN || '',
     phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
     countryCode: process.env.WHATSAPP_COUNTRY_CODE || '55',
-    testTo: process.env.WHATSAPP_TEST_TO || '',
+    testTo: process.env.WHATSAPP_TEST_TO || process.env.EVOLUTION_TEST_TO || '',
+    evolution: {
+      serverUrl: process.env.EVOLUTION_API_URL || process.env.EVOLUTION_SERVER_URL || '',
+      apiKey: process.env.EVOLUTION_API_KEY || '',
+      instanceName: process.env.EVOLUTION_INSTANCE || process.env.EVOLUTION_INSTANCE_NAME || '',
+      countryCode: process.env.EVOLUTION_COUNTRY_CODE || process.env.WHATSAPP_COUNTRY_CODE || '55',
+      testTo: process.env.EVOLUTION_TEST_TO || process.env.WHATSAPP_TEST_TO || '',
+      linkPreview: String(process.env.EVOLUTION_LINK_PREVIEW || 'false').toLowerCase() === 'true',
+    },
   },
 };
 
@@ -174,6 +195,30 @@ async function mirrorStateToTables(client, state) {
      values ($1,$2,$3,$4,$5,$6,now())`,
     [item.id || `notice-${Date.now()}`, item.title || 'Comunicado', item.category || null, item.message || null, toJson(item), isoOrNow(item.createdAt)]
   ));
+
+  await replaceTableFromState(client, 'staff', state.staff, (c, item) => c.query(
+    `insert into staff (id, name, role, email, whatsapp, active, payload, created_at, updated_at)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,now())`,
+    [item.id || `staff-${Date.now()}`, item.name || 'Equipe', item.role || 'porteiro', item.email || null, item.whatsapp || null, item.active !== false, toJson(item), isoOrNow(item.createdAt)]
+  ));
+
+  await replaceTableFromState(client, 'services', state.services, (c, item) => c.query(
+    `insert into services (id, name, category, price, active, payload, created_at, updated_at)
+     values ($1,$2,$3,$4,$5,$6,$7,now())`,
+    [item.id || `service-${Date.now()}`, item.name || 'Serviço', item.category || null, Number(item.price || 0), item.active !== false, toJson(item), isoOrNow(item.createdAt)]
+  ));
+
+  await replaceTableFromState(client, 'service_requests', state.serviceRequests, (c, item) => c.query(
+    `insert into service_requests (id, service_id, service_name, apartment, resident_name, resident_email, status, amount, payload, created_at, updated_at)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now())`,
+    [item.id || `service-request-${Date.now()}`, item.serviceId || null, item.serviceName || item.name || null, item.apartment || null, item.residentName || null, item.residentEmail || null, item.status || 'pending', Number(item.amount || item.price || 0), toJson(item), isoOrNow(item.createdAt)]
+  ));
+
+  await replaceTableFromState(client, 'contact_messages', state.contactMessages, (c, item) => c.query(
+    `insert into contact_messages (id, target, apartment, resident_name, resident_email, subject, message, status, payload, created_at, updated_at)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now())`,
+    [item.id || `contact-${Date.now()}`, item.target || null, item.apartment || null, item.residentName || null, item.residentEmail || null, item.subject || null, item.message || null, item.status || 'sent', toJson(item), isoOrNow(item.createdAt)]
+  ));
 }
 
 async function saveStoreToDatabase(nextStore) {
@@ -236,9 +281,15 @@ async function loadStore() {
       return await loadStoreFromDatabase();
     } catch (error) {
       databaseReady = false;
-      console.error('Banco não ficou disponível. Usando arquivo temporário até corrigir:', error.message);
+      console.error('Banco de dados indisponível:', error.message);
+      if (REQUIRE_DATABASE) {
+        throw new Error(`Banco obrigatório indisponível. Corrija as variáveis PGHOST/PGPORT/PGDATABASE/PGUSER/PGPASSWORD/PGSSLMODE no Render. Detalhe: ${error.message}`);
+      }
     }
+  } else if (REQUIRE_DATABASE) {
+    throw new Error('Banco obrigatório não configurado. Informe DATABASE_URL ou PGHOST/PGDATABASE/PGUSER/PGPASSWORD nas Environment Variables do Render.');
   }
+  console.warn('Modo temporário por arquivo ativado porque REQUIRE_DATABASE=false. Não use em produção.');
   return readJsonFileFallback();
 }
 
@@ -252,6 +303,7 @@ async function saveStore(nextStore) {
       throw error;
     }
   }
+  if (REQUIRE_DATABASE) throw new Error('Banco obrigatório indisponível. Salvamento local/demo está desativado.');
   writeJsonFileFallback(nextStore);
 }
 
@@ -275,11 +327,67 @@ function portariaEmails() {
     .filter(Boolean);
 }
 
+function activeStaffByEmail(email) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return null;
+  return (store.state?.staff || []).find((person) => {
+    if (person.active === false) return false;
+    return normalizeEmail(person.email || '') === normalized;
+  }) || null;
+}
+
+function hasActiveNonBootstrapSindico() {
+  const bootstrapEmail = normalizeEmail(BOOTSTRAP_ADMIN_EMAIL);
+  return (store.state?.staff || []).some((person) => {
+    if (person.active === false) return false;
+    if (!['sindico', 'subsindico'].includes(String(person.role || '').toLowerCase())) return false;
+    const email = normalizeEmail(person.email || '');
+    return email && email !== bootstrapEmail;
+  });
+}
+
+function bootstrapAdminAvailable() {
+  if (!BOOTSTRAP_ADMIN_ENABLED || !BOOTSTRAP_ADMIN_EMAIL || !BOOTSTRAP_ADMIN_PASSWORD) return false;
+  if (BOOTSTRAP_DISABLE_AFTER_FIRST_SINDICO && hasActiveNonBootstrapSindico()) return false;
+  return true;
+}
+
+function matchesBootstrapAdmin(email, password) {
+  return bootstrapAdminAvailable()
+    && normalizeEmail(email) === normalizeEmail(BOOTSTRAP_ADMIN_EMAIL)
+    && String(password || '') === BOOTSTRAP_ADMIN_PASSWORD;
+}
+
 function allowedRole(email, requestedRole) {
   const normalized = normalizeEmail(email);
-  if (requestedRole === 'sindico') return adminEmails().includes(normalized) || !normalized ? 'sindico' : 'morador';
-  if (requestedRole === 'portaria') return adminEmails().includes(normalized) || portariaEmails().includes(normalized) || !normalized ? 'portaria' : 'morador';
+  const staff = activeStaffByEmail(normalized);
+  const staffRole = String(staff?.role || '').toLowerCase();
+
+  if (requestedRole === 'sindico') {
+    if (normalized && adminEmails().includes(normalized)) return 'sindico';
+    if (['sindico', 'subsindico'].includes(staffRole)) return 'sindico';
+    return 'morador';
+  }
+  if (requestedRole === 'portaria') {
+    if (normalized && (adminEmails().includes(normalized) || portariaEmails().includes(normalized))) return 'portaria';
+    if (staffRole === 'porteiro') return 'portaria';
+    return 'morador';
+  }
   return 'morador';
+}
+
+function findApprovedResident(requested = {}) {
+  const email = normalizeEmail(requested.email || '');
+  const apartment = String(requested.apartment || '').trim();
+  const residentId = String(requested.residentId || '').trim();
+  return (store.state?.residents || []).find((resident) => {
+    const approved = (resident.status || 'approved') === 'approved';
+    if (!approved) return false;
+    if (residentId && resident.id === residentId) return true;
+    const sameEmail = email && normalizeEmail(resident.email || '') === email;
+    const sameApartment = apartment && String(resident.apartment || '').trim() === apartment;
+    return sameEmail && (!apartment || sameApartment);
+  });
 }
 
 function sanitizeConfig(config) {
@@ -300,7 +408,61 @@ function sanitizeConfig(config) {
         apiKeySource: email.mailersend?.apiKeySource || 'none',
       },
     },
-    whatsapp: { ...whatsapp, token: '', tokenSaved: Boolean(whatsapp.token) },
+    whatsapp: {
+      ...whatsapp,
+      token: '',
+      tokenSaved: Boolean(whatsapp.token),
+      evolution: {
+        ...(whatsapp.evolution || {}),
+        apiKey: '',
+        apiKeySaved: Boolean(whatsapp.evolution?.apiKey),
+        apiKeySource: whatsapp.evolution?.apiKeySource || 'none',
+      },
+    },
+  };
+}
+
+function effectiveWhatsAppConfig(merged = {}) {
+  const saved = merged.whatsapp || {};
+  const savedEvolution = saved.evolution || {};
+  const envMetaToken = process.env.WHATSAPP_TOKEN || '';
+  const envMetaPhoneId = process.env.WHATSAPP_PHONE_NUMBER_ID || '';
+  const envEvolutionKey = process.env.EVOLUTION_API_KEY || '';
+  const envEvolutionUrl = process.env.EVOLUTION_API_URL || process.env.EVOLUTION_SERVER_URL || '';
+  const envEvolutionInstance = process.env.EVOLUTION_INSTANCE || process.env.EVOLUTION_INSTANCE_NAME || '';
+
+  let provider = String(saved.provider || process.env.WHATSAPP_PROVIDER || '').toLowerCase();
+  if (!['meta', 'evolution'].includes(provider)) provider = (savedEvolution.apiKey || envEvolutionKey) ? 'evolution' : 'meta';
+
+  const metaToken = saved.token || envMetaToken;
+  const metaPhoneId = saved.phoneNumberId || envMetaPhoneId;
+  const evolutionApiKey = savedEvolution.apiKey || envEvolutionKey;
+  const evolutionServerUrl = savedEvolution.serverUrl || envEvolutionUrl;
+  const evolutionInstanceName = savedEvolution.instanceName || envEvolutionInstance;
+  const envEnabled = String(process.env.WHATSAPP_ENABLED || '').toLowerCase() === 'true';
+  const evolutionConfigured = Boolean(evolutionApiKey && evolutionServerUrl && evolutionInstanceName);
+  const metaConfigured = Boolean(metaToken && metaPhoneId);
+
+  return {
+    ...saved,
+    provider,
+    enabled: Boolean(saved.enabled || (envEnabled && (provider === 'evolution' ? evolutionConfigured : metaConfigured))),
+    apiVersion: saved.apiVersion || process.env.WHATSAPP_API_VERSION || 'v20.0',
+    token: metaToken,
+    tokenSource: saved.token ? 'saved' : (envMetaToken ? 'env' : 'none'),
+    phoneNumberId: metaPhoneId,
+    countryCode: saved.countryCode || process.env.WHATSAPP_COUNTRY_CODE || '55',
+    testTo: saved.testTo || process.env.WHATSAPP_TEST_TO || process.env.EVOLUTION_TEST_TO || '',
+    evolution: {
+      ...savedEvolution,
+      serverUrl: evolutionServerUrl,
+      apiKey: evolutionApiKey,
+      apiKeySource: savedEvolution.apiKey ? 'saved' : (envEvolutionKey ? 'env' : 'none'),
+      instanceName: evolutionInstanceName,
+      countryCode: savedEvolution.countryCode || process.env.EVOLUTION_COUNTRY_CODE || saved.countryCode || process.env.WHATSAPP_COUNTRY_CODE || '55',
+      testTo: savedEvolution.testTo || process.env.EVOLUTION_TEST_TO || saved.testTo || process.env.WHATSAPP_TEST_TO || '',
+      linkPreview: typeof savedEvolution.linkPreview === 'boolean' ? savedEvolution.linkPreview : String(process.env.EVOLUTION_LINK_PREVIEW || 'false').toLowerCase() === 'true',
+    },
   };
 }
 
@@ -327,6 +489,8 @@ function effectiveNotificationConfig(config = store.notificationConfig || DEFAUL
   const smtpTestTo = merged.email?.testTo || process.env.SMTP_TEST_TO || effectiveUser || mailerSendTestTo;
   const enabledByEnv = envEmailEnabled || Boolean(process.env.MAILERSEND_API_KEY);
 
+  const effectiveWhatsApp = effectiveWhatsAppConfig(merged);
+
   return {
     ...merged,
     email: {
@@ -350,6 +514,40 @@ function effectiveNotificationConfig(config = store.notificationConfig || DEFAUL
         fromEmail: mailerSendFromEmail,
         testTo: mailerSendTestTo,
       },
+    },
+    whatsapp: effectiveWhatsApp,
+  };
+}
+
+function whatsappDiagnostics(config = effectiveNotificationConfig()) {
+  const whatsapp = config.whatsapp || {};
+  const provider = whatsapp.provider || 'meta';
+  const problems = [];
+  if (!whatsapp.enabled) problems.push('Envio automático por WhatsApp desativado. Ative no painel ou defina WHATSAPP_ENABLED=true.');
+  if (provider === 'evolution') {
+    const evolution = whatsapp.evolution || {};
+    if (!evolution.serverUrl) problems.push('EVOLUTION_API_URL não configurado.');
+    if (!evolution.instanceName) problems.push('EVOLUTION_INSTANCE não configurado.');
+    if (!evolution.apiKey) problems.push('EVOLUTION_API_KEY não configurado.');
+  } else {
+    if (!whatsapp.token) problems.push('WHATSAPP_TOKEN não configurado para Meta Cloud API.');
+    if (!whatsapp.phoneNumberId) problems.push('WHATSAPP_PHONE_NUMBER_ID não configurado para Meta Cloud API.');
+  }
+  return {
+    ok: problems.length === 0,
+    problems,
+    config: {
+      enabled: Boolean(whatsapp.enabled),
+      provider,
+      countryCode: provider === 'evolution' ? (whatsapp.evolution?.countryCode || whatsapp.countryCode || '55') : (whatsapp.countryCode || '55'),
+      testTo: provider === 'evolution' ? (whatsapp.evolution?.testTo || whatsapp.testTo || '') : (whatsapp.testTo || ''),
+      metaTokenSaved: Boolean(whatsapp.token),
+      metaTokenSource: whatsapp.tokenSource || 'none',
+      metaPhoneNumberIdConfigured: Boolean(whatsapp.phoneNumberId),
+      evolutionServerUrl: whatsapp.evolution?.serverUrl || null,
+      evolutionInstanceName: whatsapp.evolution?.instanceName || null,
+      evolutionApiKeySaved: Boolean(whatsapp.evolution?.apiKey),
+      evolutionApiKeySource: whatsapp.evolution?.apiKeySource || 'none',
     },
   };
 }
@@ -522,6 +720,7 @@ async function createAsaasBoletoForBooking(bookingId, cpfCnpj) {
     return { booking, payment: booking.boleto, reused: true };
   }
 
+  const resident = findResidentForBooking(booking) || {};
   const customer = await getOrCreateAsaasCustomer(booking, cpfCnpj);
   const dueDate = asaasDueDateForBooking(booking, config);
   const payment = await asaasRequest('/payments', {
@@ -590,10 +789,16 @@ async function saveNotificationConfig(incoming = {}) {
   if (!incoming.email?.mailersend || incoming.email.mailersend.apiKey === '') {
     clean.email.mailersend.apiKey = existing.email?.mailersend?.apiKey || DEFAULT_NOTIFICATION_CONFIG.email.mailersend.apiKey || '';
   }
+  if (!clean.whatsapp) clean.whatsapp = {};
+  if (!clean.whatsapp.evolution) clean.whatsapp.evolution = {};
   if (!incoming.whatsapp || incoming.whatsapp.token === '') clean.whatsapp.token = existing.whatsapp?.token || DEFAULT_NOTIFICATION_CONFIG.whatsapp.token || '';
+  if (!incoming.whatsapp?.evolution || incoming.whatsapp.evolution.apiKey === '') {
+    clean.whatsapp.evolution.apiKey = existing.whatsapp?.evolution?.apiKey || DEFAULT_NOTIFICATION_CONFIG.whatsapp.evolution.apiKey || '';
+  }
   if (incoming.email?.clearPassword) clean.email.password = '';
   if (incoming.email?.mailersend?.clearApiKey) clean.email.mailersend.apiKey = '';
   if (incoming.whatsapp?.clearToken) clean.whatsapp.token = '';
+  if (incoming.whatsapp?.evolution?.clearApiKey) clean.whatsapp.evolution.apiKey = '';
 
   clean.email.enabled = Boolean(clean.email.enabled);
   clean.email.provider = ['smtp', 'mailersend'].includes(String(clean.email.provider || '').toLowerCase()) ? String(clean.email.provider).toLowerCase() : 'smtp';
@@ -604,6 +809,14 @@ async function saveNotificationConfig(incoming = {}) {
   clean.email.mailersend.fromEmail = clean.email.mailersend.fromEmail || process.env.MAILERSEND_FROM_EMAIL || clean.email.fromEmail || '';
   clean.email.mailersend.testTo = clean.email.mailersend.testTo || clean.email.testTo || process.env.MAILERSEND_TEST_TO || '';
   clean.whatsapp.enabled = Boolean(clean.whatsapp.enabled);
+  clean.whatsapp.provider = ['meta', 'evolution'].includes(String(clean.whatsapp.provider || '').toLowerCase()) ? String(clean.whatsapp.provider).toLowerCase() : 'meta';
+  clean.whatsapp.countryCode = clean.whatsapp.countryCode || '55';
+  clean.whatsapp.testTo = clean.whatsapp.testTo || clean.whatsapp.evolution.testTo || process.env.WHATSAPP_TEST_TO || process.env.EVOLUTION_TEST_TO || '';
+  clean.whatsapp.evolution.serverUrl = String(clean.whatsapp.evolution.serverUrl || '').replace(/\/+$/, '');
+  clean.whatsapp.evolution.instanceName = String(clean.whatsapp.evolution.instanceName || '').trim();
+  clean.whatsapp.evolution.countryCode = clean.whatsapp.evolution.countryCode || clean.whatsapp.countryCode || '55';
+  clean.whatsapp.evolution.testTo = clean.whatsapp.evolution.testTo || clean.whatsapp.testTo || '';
+  clean.whatsapp.evolution.linkPreview = Boolean(clean.whatsapp.evolution.linkPreview);
 
   store.notificationConfig = clean;
   await saveStore(store);
@@ -751,10 +964,41 @@ function normalizePhoneForWhatsApp(value = '', countryCode = '55') {
 }
 
 async function sendWhatsAppNotification({ to, message }) {
-  const config = store.notificationConfig || DEFAULT_NOTIFICATION_CONFIG;
+  const config = effectiveNotificationConfig(store.notificationConfig || DEFAULT_NOTIFICATION_CONFIG);
   const whatsapp = config.whatsapp || {};
 
   if (!whatsapp.enabled) throw new Error('Envio por WhatsApp desativado nas configurações.');
+
+  const provider = whatsapp.provider || 'meta';
+  if (provider === 'evolution') {
+    const evolution = whatsapp.evolution || {};
+    const number = normalizePhoneForWhatsApp(to || evolution.testTo || whatsapp.testTo, evolution.countryCode || whatsapp.countryCode || '55');
+    if (!number) throw new Error('Número de WhatsApp inválido.');
+    if (!evolution.serverUrl || !evolution.instanceName || !evolution.apiKey) throw new Error('Evolution API incompleta. Configure URL, instância e API Key.');
+
+    const baseUrl = String(evolution.serverUrl).replace(/\/+$/, '');
+    const endpoint = `${baseUrl}/message/sendText/${encodeURIComponent(evolution.instanceName)}`;
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { apikey: evolution.apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        number,
+        textMessage: { text: message || 'Teste automático do Sistema Vitória Régia.' },
+        linkPreview: Boolean(evolution.linkPreview),
+      }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const errorMessage = payload?.response?.message || payload?.message || payload?.error || response.statusText;
+      await logNotification({ channel: 'whatsapp', recipient: number, message, status: 'error', providerResponse: payload, error: errorMessage });
+      throw new Error(errorMessage || `Erro Evolution API HTTP ${response.status}`);
+    }
+
+    await logNotification({ channel: 'whatsapp', recipient: number, message, status: 'sent', providerResponse: payload });
+    return { ok: true, provider: 'evolution-api', response: payload };
+  }
+
   if (!whatsapp.token || !whatsapp.phoneNumberId) throw new Error('WhatsApp Cloud API incompleto. Configure token e Phone Number ID.');
 
   const number = normalizePhoneForWhatsApp(to || whatsapp.testTo, whatsapp.countryCode || '55');
@@ -800,6 +1044,9 @@ app.get('/api/health', async (req, res) => {
     service: 'vitoria-regia-backend-operacional',
     timestamp: new Date().toISOString(),
     database: db,
+    demoMode: false,
+    requireDatabase: REQUIRE_DATABASE,
+    requireApprovedResident: REQUIRE_APPROVED_RESIDENT,
     frontendDir: FRONTEND_DIR,
     email: {
       enabled: Boolean(email.enabled),
@@ -812,29 +1059,108 @@ app.get('/api/health', async (req, res) => {
       testTo: email.provider === 'mailersend' ? (email.mailersend?.testTo || null) : (email.testTo || null),
     },
     asaas: { enabled: Boolean(effectiveAsaasConfig().enabled), environment: effectiveAsaasConfig().environment, apiKeySaved: Boolean(effectiveAsaasConfig().apiKey), apiKeySource: (store.asaasConfig?.apiKey ? 'saved' : (process.env.ASAAS_API_KEY ? 'env' : 'none')) },
+    bootstrapAdmin: {
+      configured: Boolean(BOOTSTRAP_ADMIN_ENABLED && BOOTSTRAP_ADMIN_EMAIL && BOOTSTRAP_ADMIN_PASSWORD),
+      available: bootstrapAdminAvailable(),
+      email: BOOTSTRAP_ADMIN_EMAIL || null,
+      disablesAfterFirstSindico: BOOTSTRAP_DISABLE_AFTER_FIRST_SINDICO,
+      activeSindicoExists: hasActiveNonBootstrapSindico(),
+    },
   });
 });
 
-app.post('/auth/demo', (req, res) => {
+app.get('/api/db/status', async (req, res) => {
+  const result = {
+    configured: hasDatabaseConfig(),
+    ready: databaseReady,
+    requireDatabase: REQUIRE_DATABASE,
+    mode: databaseReady ? 'postgresql' : 'unavailable',
+  };
+  if (hasDatabaseConfig()) {
+    try { result.connection = await testConnection(); }
+    catch (error) { result.error = error.message; }
+  }
+  res.json({ ok: databaseReady, database: result });
+});
+
+app.post('/api/db/init', async (req, res) => {
+  try {
+    await initDatabase();
+    databaseReady = true;
+    store = await loadStoreFromDatabase();
+    res.json({ ok: true, database: await testConnection() });
+  } catch (error) {
+    databaseReady = false;
+    res.status(500).send(error.message);
+  }
+});
+
+function requireDatabaseReady(req, res, next) {
+  if (REQUIRE_DATABASE && !databaseReady) {
+    return res.status(503).json({ ok: false, error: 'Banco obrigatório indisponível. O modo demo/local está desativado.' });
+  }
+  return next();
+}
+
+function handleLogin(req, res) {
   const requested = req.body || {};
-  const role = allowedRole(requested.email, requested.role || 'morador');
+  const requestedRole = requested.role || 'morador';
+
+  if (requestedRole === 'sindico' && matchesBootstrapAdmin(requested.email, requested.password)) {
+    const user = {
+      id: 'bootstrap-admin',
+      role: 'sindico',
+      name: requested.name || BOOTSTRAP_ADMIN_NAME,
+      email: BOOTSTRAP_ADMIN_EMAIL,
+      apartment: '',
+      residentId: null,
+      bootstrap: true,
+      demo: false,
+    };
+    req.session.user = user;
+    return res.json({ user, bootstrap: { active: true, message: 'Acesso temporário liberado. Cadastre o síndico oficial em Equipe para desativar este usuário automaticamente.' } });
+  }
+
+  const role = allowedRole(requested.email, requestedRole);
+
+  if (requestedRole === 'sindico' && role !== 'sindico') {
+    return res.status(403).send('E-mail não autorizado para acesso de síndico/administração. Caso esteja usando o usuário temporário, informe a senha temporária configurada no Render.');
+  }
+  if (requestedRole === 'portaria' && role !== 'portaria') {
+    return res.status(403).send('E-mail não autorizado para acesso de portaria.');
+  }
+
+  let resident = null;
+  if (role === 'morador' && REQUIRE_APPROVED_RESIDENT) {
+    resident = findApprovedResident(requested);
+    if (!resident) return res.status(403).send('Cadastro de morador não aprovado ou não localizado para esta unidade.');
+  }
+
+  const staff = activeStaffByEmail(requested.email);
   const user = {
-    id: requested.id || `user-${Date.now()}`,
+    id: requested.id || resident?.id || staff?.id || `user-${Date.now()}`,
     role,
-    name: requested.name || role,
-    email: requested.email || '',
-    apartment: requested.apartment || '',
-    residentId: requested.residentId || null,
+    name: resident?.name || staff?.name || requested.name || role,
+    email: resident?.email || staff?.email || requested.email || '',
+    apartment: resident?.apartment || requested.apartment || '',
+    residentId: resident?.id || requested.residentId || null,
+    staffId: staff?.id || null,
+    bootstrap: false,
     demo: false,
   };
   req.session.user = user;
   res.json({ user });
+}
+app.post('/auth/login', requireDatabaseReady, handleLogin);
+app.post('/auth/demo', (req, res) => {
+  if (!ALLOW_LEGACY_DEMO_LOGIN) return res.status(410).send('Login demo desativado nesta versão operacional. Use /auth/login.');
+  return requireDatabaseReady(req, res, () => handleLogin(req, res));
 });
 
 app.post('/auth/logout', (req, res) => req.session.destroy(() => res.json({ ok: true })));
 app.get('/api/me', (req, res) => res.json({ user: req.session.user || null }));
 
-app.get('/api/state', async (req, res) => {
+app.get('/api/state', requireDatabaseReady, async (req, res) => {
   try {
     if (databaseReady) store = await loadStoreFromDatabase();
     res.json({ ok: true, database: { ready: databaseReady }, state: store.state || DEFAULT_STATE });
@@ -843,7 +1169,7 @@ app.get('/api/state', async (req, res) => {
   }
 });
 
-app.post('/api/state/bulk', async (req, res) => {
+app.post('/api/state/bulk', requireDatabaseReady, async (req, res) => {
   try {
     const incoming = req.body?.state || {};
     store.state = { ...DEFAULT_STATE, ...incoming };
@@ -854,7 +1180,7 @@ app.post('/api/state/bulk', async (req, res) => {
   }
 });
 
-app.post('/api/state/:key', async (req, res) => {
+app.post('/api/state/:key', requireDatabaseReady, async (req, res) => {
   try {
     const key = req.params.key;
     store.state = { ...DEFAULT_STATE, ...(store.state || {}) };
@@ -873,6 +1199,10 @@ app.get('/api/integrations/notifications', (req, res) => {
 
 app.get('/api/integrations/email/debug', (req, res) => {
   res.json({ ok: true, email: emailDiagnostics(), database: { configured: hasDatabaseConfig(), ready: databaseReady } });
+});
+
+app.get('/api/integrations/whatsapp/debug', (req, res) => {
+  res.json({ ok: true, whatsapp: whatsappDiagnostics(), database: { configured: hasDatabaseConfig(), ready: databaseReady } });
 });
 
 app.post('/api/integrations/notifications', async (req, res) => {
@@ -1013,32 +1343,32 @@ app.get('/api/reservations', async (req, res) => {
   try { res.json({ rows: databaseReady ? await rowsFromPayload('bookings') : (store.state?.bookings || []) }); }
   catch (error) { res.status(500).send(error.message); }
 });
-app.get('/api/calendar', async (req, res) => {
-  try { res.json({ rows: databaseReady ? await rowsFromPayload('bookings') : (store.state?.bookings || []) }); }
+app.get('/api/calendar', requireDatabaseReady, async (req, res) => {
+  try { res.json({ rows: await rowsFromPayload('bookings') }); }
   catch (error) { res.status(500).send(error.message); }
 });
 app.get('/api/spaces', (req, res) => res.json({ rows: store.state?.settings?.spaces || [] }));
 
 // Endpoints API para futuras telas nativas/integrações. O front-end atual também sincroniza por /api/state/bulk.
-app.post('/api/residents/request', async (req, res) => {
+app.post('/api/residents/request', requireDatabaseReady, async (req, res) => {
   const item = req.body || {};
   store.state.pendingResidents = [item, ...(store.state.pendingResidents || [])];
   await saveStore(store);
   res.json({ ok: true, data: item });
 });
-app.post('/api/reservations', async (req, res) => {
+app.post('/api/reservations', requireDatabaseReady, async (req, res) => {
   const item = req.body || {};
   store.state.bookings = [item, ...(store.state.bookings || [])];
   await saveStore(store);
   res.json({ ok: true, data: item });
 });
-app.post('/api/visitors', async (req, res) => {
+app.post('/api/visitors', requireDatabaseReady, async (req, res) => {
   const item = req.body || {};
   store.state.visitors = [item, ...(store.state.visitors || [])];
   await saveStore(store);
   res.json({ ok: true, data: item });
 });
-app.post('/api/packages', async (req, res) => {
+app.post('/api/packages', requireDatabaseReady, async (req, res) => {
   const item = req.body || {};
   store.state.packages = [item, ...(store.state.packages || [])];
   await saveStore(store);
@@ -1058,7 +1388,7 @@ async function start() {
     console.log(`Backend Vitória Régia online na porta ${PORT}`);
     console.log(`Frontend: ${FRONTEND_DIR}`);
     console.log(`Banco configurado: ${hasDatabaseConfig() ? 'sim' : 'não'} | pronto: ${databaseReady ? 'sim' : 'não'}`);
-    if (!databaseReady) console.log(`Fallback temporário: ${DATA_FILE}`);
+    if (!databaseReady) console.log('Banco indisponível e modo demo/local desativado.');
   });
 }
 

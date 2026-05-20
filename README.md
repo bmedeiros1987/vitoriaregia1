@@ -177,3 +177,25 @@ Start Command: cd backend && npm start
 ```
 
 As senhas devem ficar apenas em **Environment Variables** do Render, nunca no GitHub.
+
+
+## Banco real em produção
+
+Para parar de usar dados de demonstração e operar com PostgreSQL/Aiven, veja `README_BANCO_REAL_AIVEN.md`. Esta versão exige `REQUIRE_DATABASE=true` no Render e só inicia corretamente quando o banco estiver conectado.
+
+
+## Usuário temporário de implantação
+
+Para iniciar o sistema sem modo demo, configure no Render:
+
+```env
+BOOTSTRAP_ADMIN_ENABLED=true
+BOOTSTRAP_ADMIN_EMAIL=seuemail@gmail.com
+BOOTSTRAP_ADMIN_PASSWORD=crie_uma_senha_forte_temporaria
+BOOTSTRAP_ADMIN_NAME=Usuário temporário de implantação
+BOOTSTRAP_DISABLE_AFTER_FIRST_SINDICO=true
+```
+
+O acesso temporário entra como **Síndico / Administração**. Depois de cadastrar um síndico ou subsíndico ativo em **Equipe**, o acesso temporário é bloqueado automaticamente.
+
+Leia também `README_USUARIO_TEMPORARIO.md`.

@@ -84,6 +84,57 @@ async function initDatabase() {
       updated_at timestamptz not null default now()
     );
 
+    create table if not exists staff (
+      id text primary key,
+      name text not null,
+      role text not null,
+      email text,
+      whatsapp text,
+      active boolean not null default true,
+      payload jsonb not null default '{}'::jsonb,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+
+    create table if not exists services (
+      id text primary key,
+      name text not null,
+      category text,
+      price numeric(12,2) default 0,
+      active boolean not null default true,
+      payload jsonb not null default '{}'::jsonb,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+
+    create table if not exists service_requests (
+      id text primary key,
+      service_id text,
+      service_name text,
+      apartment text,
+      resident_name text,
+      resident_email text,
+      status text not null default 'pending',
+      amount numeric(12,2) default 0,
+      payload jsonb not null default '{}'::jsonb,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+
+    create table if not exists contact_messages (
+      id text primary key,
+      target text,
+      apartment text,
+      resident_name text,
+      resident_email text,
+      subject text,
+      message text,
+      status text not null default 'sent',
+      payload jsonb not null default '{}'::jsonb,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+
     create table if not exists notification_config (
       id integer primary key default 1,
       config jsonb not null,
@@ -116,6 +167,10 @@ async function initDatabase() {
     create index if not exists idx_bookings_status on bookings(status);
     create index if not exists idx_visitors_apartment_created on visitors(apartment, created_at desc);
     create index if not exists idx_packages_apartment_status on packages(apartment, status);
+    create index if not exists idx_staff_role_active on staff(role, active);
+    create index if not exists idx_services_active on services(active);
+    create index if not exists idx_service_requests_apartment_status on service_requests(apartment, status);
+    create index if not exists idx_contact_messages_created on contact_messages(created_at desc);
     create index if not exists idx_notification_logs_created on notification_logs(created_at desc);
   `);
 }

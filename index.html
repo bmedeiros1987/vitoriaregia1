@@ -41,7 +41,7 @@
       <form class="auth-form" data-login-form autocomplete="off">
         <span class="eyebrow">Acesso ao sistema</span>
         <h1>Escolha o perfil de acesso.</h1>
-        <p>Acesse conforme seu perfil. Os dados são salvos no banco operacional do condomínio quando o backend estiver publicado.</p>
+        <p>Acesse conforme seu perfil. Versão operacional: o acesso e os dados exigem backend e banco PostgreSQL ativos.</p>
 
         <label>
           <span>Perfil</span>
@@ -65,6 +65,11 @@
         <label>
           <span>E-mail</span>
           <input name="email" type="email" placeholder="seu@email.com" />
+        </label>
+
+        <label data-bootstrap-password-wrap style="display:none">
+          <span>Senha temporária de implantação</span>
+          <input name="password" type="password" placeholder="Somente para o usuário temporário" autocomplete="current-password" />
         </label>
 
         <div class="split-buttons">
@@ -166,7 +171,7 @@
           <h1 data-page-title>Dashboard</h1>
         </div>
         <div class="topbar-actions">
-          <button class="btn btn--outline btn--sm" type="button" data-reset-demo data-roles="sindico">Limpar dados locais</button>
+          <button class="btn btn--outline btn--sm" type="button" data-clear-cache data-roles="sindico">Recarregar do banco</button>
           <button class="btn btn--ghost btn--sm" type="button" data-logout>Sair</button>
         </div>
       </header>
@@ -524,11 +529,26 @@ João Souza - CPF ***.000.***-**"></textarea></label>
             </div>
 
             <div class="integration-card">
-              <h3>WhatsApp Business Cloud API</h3>
+              <h3>WhatsApp automático</h3>
               <label class="checkline"><input type="checkbox" name="whatsappEnabled" /> <span>Ativar envio automático por WhatsApp.</span></label>
-              <div class="form-row"><label><span>API version</span><input name="whatsappApiVersion" placeholder="v20.0" /></label><label><span>Phone Number ID</span><input name="whatsappPhoneNumberId" placeholder="ID do número na Meta" /></label></div>
-              <label><span>Token permanente ou temporário</span><input name="whatsappToken" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter o token salvo" /></label>
-              <div class="form-row"><label><span>Código do país</span><input name="whatsappCountryCode" placeholder="55" /></label><label><span>WhatsApp para teste</span><input name="testWhatsappTo" placeholder="61999999999" /></label></div>
+              <label><span>Provedor de WhatsApp</span><select name="whatsappProvider"><option value="meta">Meta WhatsApp Cloud API</option><option value="evolution">Evolution API</option></select></label>
+
+              <div class="integration-subcard">
+                <h4>Evolution API</h4>
+                <label><span>URL da Evolution API</span><input name="evolutionApiUrl" placeholder="https://sua-evolution-api.com" /></label>
+                <div class="form-row"><label><span>Nome da instância</span><input name="evolutionInstanceName" placeholder="minha-instancia" /></label><label><span>API Key Evolution</span><input name="evolutionApiKey" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter a chave salva" /></label></div>
+                <div class="form-row"><label><span>Código do país</span><input name="evolutionCountryCode" placeholder="55" /></label><label class="checkline checkline--inside"><input type="checkbox" name="evolutionLinkPreview" /> <span>Ativar prévia de links</span></label></div>
+                <p class="form-hint">Use a instância conectada na Evolution API. A API Key deve ficar apenas no Render ou salva pelo painel do síndico.</p>
+              </div>
+
+              <div class="integration-subcard">
+                <h4>Meta WhatsApp Cloud API</h4>
+                <div class="form-row"><label><span>API version</span><input name="whatsappApiVersion" placeholder="v20.0" /></label><label><span>Phone Number ID</span><input name="whatsappPhoneNumberId" placeholder="ID do número na Meta" /></label></div>
+                <label><span>Token Meta</span><input name="whatsappToken" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter o token salvo" /></label>
+                <label><span>Código do país</span><input name="whatsappCountryCode" placeholder="55" /></label>
+              </div>
+
+              <label><span>WhatsApp para teste</span><input name="testWhatsappTo" placeholder="61999999999" /></label>
               <button class="btn btn--outline" type="button" data-test-whatsapp>Enviar WhatsApp de teste</button>
             </div>
 
