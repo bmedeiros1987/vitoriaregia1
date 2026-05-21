@@ -134,6 +134,7 @@ const TAB_LABELS = {
   arquivos: 'Arquivos',
   comunicados: 'Comunicados',
   'app-android': 'App Android',
+  excelencia: 'Central premium',
   manual: 'Manual do sistema',
   configuracoes: 'Configurações',
 };
@@ -227,6 +228,8 @@ let storageConfig = null;
 let storageConfigLoading = false;
 let activityLogsCache = [];
 let activityLogsLoading = false;
+let marketReadinessCache = null;
+let marketReadinessLoading = false;
 let scheduleFilterDate = new Date().toISOString().slice(0, 10);
 
 function apartments() {
@@ -482,7 +485,7 @@ async function saveNotificationConfigFromForm(form) {
       mailersend: {
         apiKey: data.get('mailersendApiKey') || '',
         fromName: data.get('mailersendFromName')?.trim() || data.get('smtpFromName')?.trim() || 'Condomínio Vitória Régia',
-        fromEmail: data.get('mailersendFromEmail')?.trim() || data.get('smtpFromEmail')?.trim() || '',
+        fromEmail: data.get('mailersendFromEmail')?.trim() || '',
         testTo: data.get('testEmailTo')?.trim() || '',
       },
     },
@@ -1266,6 +1269,83 @@ function renderAll() {
   renderSettings();
   renderActivityLogs();
   renderCloudFiles();
+  renderMarketReadiness();
+}
+
+
+function readinessStatusLabel(item = {}) {
+  if (item.status === 'ok') return '<span class="status status--approved">ok</span>';
+  if (item.status === 'warning') return '<span class="status status--pending">atenção</span>';
+  return '<span class="status status--rejected">corrigir</span>';
+}
+function readinessScoreClass(score) {
+  if (score >= 85) return 'score-ring--excellent';
+  if (score >= 70) return 'score-ring--good';
+  if (score >= 50) return 'score-ring--warning';
+  return 'score-ring--critical';
+}
+async function loadMarketReadiness(force = false) {
+  if (!backendAvailable || !isSyndic()) return null;
+  if (marketReadinessLoading) return marketReadinessCache;
+  if (!force && marketReadinessCache) return marketReadinessCache;
+  marketReadinessLoading = true;
+  try {
+    marketReadinessCache = await apiRequest('/api/admin/market-readiness');
+    return marketReadinessCache;
+  } catch (error) {
+    marketReadinessCache = { ok: false, score: 0, summary: `Não foi possível carregar o diagnóstico: ${error.message}`, checklist: [], metrics: {}, roadmap: [] };
+    return marketReadinessCache;
+  } finally {
+    marketReadinessLoading = false;
+  }
+}
+function renderMarketReadinessFromCache() {
+  const data = marketReadinessCache;
+  if (!data) return;
+  const scoreEl = $('[data-market-score]');
+  const ring = $('[data-market-score-ring]');
+  const summary = $('[data-market-summary]');
+  const checklist = $('[data-market-checklist]');
+  const metrics = $('[data-market-metrics]');
+  const roadmap = $('[data-market-roadmap]');
+  const score = Number(data.score || 0);
+  if (scoreEl) scoreEl.textContent = score;
+  if (ring) {
+    ring.style.setProperty('--score', String(Math.max(0, Math.min(100, score))));
+    ring.classList.remove('score-ring--excellent','score-ring--good','score-ring--warning','score-ring--critical');
+    ring.classList.add(readinessScoreClass(score));
+  }
+  if (summary) summary.textContent = data.summary || 'Diagnóstico operacional carregado.';
+  if (metrics) {
+    const m = data.metrics || {};
+    metrics.innerHTML = [
+      ['Moradores', m.residents || 0],
+      ['Unidades com morador', m.apartmentsWithResidents || 0],
+      ['Encomendas abertas', m.openPackages || 0],
+      ['Reservas pendentes', m.pendingBookings || 0],
+      ['Logs de auditoria', m.activityLogs || 0],
+      ['Arquivos na nuvem', m.cloudFiles || 0],
+    ].map(([label, value]) => `<div><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong></div>`).join('');
+  }
+  if (checklist) {
+    const list = Array.isArray(data.checklist) ? data.checklist : [];
+    checklist.innerHTML = list.length ? list.map((item) => `
+      <div class="market-check-item market-check-item--${escapeHTML(item.status || 'warning')}">
+        <div>${readinessStatusLabel(item)}<strong>${escapeHTML(item.title || '')}</strong></div>
+        <p>${escapeHTML(item.detail || '')}</p>
+      </div>`).join('') : empty('Nenhum item de diagnóstico retornado.');
+  }
+  if (roadmap) {
+    const list = Array.isArray(data.roadmap) ? data.roadmap : [];
+    roadmap.innerHTML = list.length ? list.map((item, index) => `
+      <div class="roadmap-item"><strong>${index + 1}. ${escapeHTML(item.title || '')}</strong><p>${escapeHTML(item.detail || '')}</p></div>`).join('') : empty('Nenhuma recomendação crítica no momento.');
+  }
+}
+async function renderMarketReadiness(force = false) {
+  if (!$('#excelencia') || !isSyndic()) return;
+  if (location.hash !== '#excelencia' && !marketReadinessCache) return;
+  await loadMarketReadiness(force);
+  renderMarketReadinessFromCache();
 }
 
 function renderKpis() {
@@ -3886,7 +3966,7 @@ function renderNotificationSettings() {
     form.mailersendApiKey.placeholder = mailersend.apiKeySaved ? 'Token salvo — deixe em branco para manter' : 'Token API do MailerSend';
   }
   if (form.mailersendFromName) form.mailersendFromName.value = mailersend.fromName || email.fromName || 'Condomínio Vitória Régia';
-  if (form.mailersendFromEmail) form.mailersendFromEmail.value = mailersend.fromEmail || email.fromEmail || '';
+  if (form.mailersendFromEmail) form.mailersendFromEmail.value = mailersend.fromEmail || '';
   if (form.testEmailTo) form.testEmailTo.value = email.provider === 'mailersend' ? (mailersend.testTo || email.testTo || email.user || '') : (email.testTo || email.user || '');
   form.whatsappEnabled.checked = Boolean(whatsapp.enabled);
   if (form.whatsappProvider) form.whatsappProvider.value = whatsapp.provider || 'meta';
@@ -4193,6 +4273,7 @@ function handleDocumentClick(event) {
     ['data-edit-service', editService], ['data-remove-service', removeService],
     ['data-approve-service-request', (id) => updateServiceRequest(id, 'approved')], ['data-cancel-service-request', (id) => updateServiceRequest(id, 'canceled')],
     ['data-refresh-activity-logs', async () => { await renderActivityLogs(true); }], ['data-export-activity-logs', exportActivityLogsCSV],
+    ['data-refresh-market-readiness', async () => { await renderMarketReadiness(true); }],
     ['data-print-guests', printGuestList], ['data-export-guests', exportGuestListCSV],
     ['data-export-calendar-google', exportReservationsICS], ['data-export-schedule-google', exportScheduleICS], ['data-download-schedule-template', downloadScheduleTemplate],
     ['data-toggle-finance-public', toggleFinancePublic], ['data-remove-finance-record', removeFinanceRecord],

@@ -85,7 +85,7 @@ const DEFAULT_NOTIFICATION_CONFIG = {
     mailersend: {
       apiKey: process.env.MAILERSEND_API_KEY || '',
       fromName: process.env.MAILERSEND_FROM_NAME || process.env.SMTP_FROM_NAME || 'Condomínio Vitória Régia',
-      fromEmail: process.env.MAILERSEND_FROM_EMAIL || process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || '',
+      fromEmail: process.env.MAILERSEND_FROM_EMAIL || '',
       testTo: process.env.MAILERSEND_TEST_TO || process.env.SMTP_TEST_TO || process.env.SMTP_USER || '',
     },
   },
@@ -405,6 +405,12 @@ async function loadStoreFromDatabase() {
     order by created_at desc
     limit 200
   `);
+  const activityLogsResult = await query(`
+    select id, actor_name as "actorName", actor_email as "actorEmail", actor_role as "actorRole", action, entity_type as "entityType", entity_id as "entityId", apartment, summary, details, created_at as "createdAt"
+    from activity_logs
+    order by created_at desc
+    limit 200
+  `);
 
   return normalizeStore({
     state: fromJson(rowsOf(stateResult)[0]?.value, DEFAULT_STATE),
@@ -412,6 +418,7 @@ async function loadStoreFromDatabase() {
     asaasConfig: fromJson(rowsOf(asaasConfigResult)[0]?.config, DEFAULT_ASAAS_CONFIG),
     storageConfig: fromJson(rowsOf(storageConfigResult)[0]?.value, DEFAULT_STORAGE_CONFIG),
     notificationLogs: rowsOf(logsResult),
+    activityLogs: rowsOf(activityLogsResult),
   });
 }
 
@@ -1356,9 +1363,11 @@ function effectiveNotificationConfig(config = store.notificationConfig || DEFAUL
   let provider = String(merged.email?.provider || process.env.EMAIL_PROVIDER || '').toLowerCase();
   if (!['smtp', 'mailersend'].includes(provider)) provider = effectiveMailerSendKey ? 'mailersend' : 'smtp';
 
-  const mailerSendFromEmail = merged.email?.mailersend?.fromEmail || process.env.MAILERSEND_FROM_EMAIL || merged.email?.fromEmail || process.env.SMTP_FROM_EMAIL || effectiveUser;
+  // MailerSend exige que from.email seja um domínio/remetente verificado na conta.
+  // Não usamos SMTP_USER/SMTP_FROM_EMAIL como fallback automático para evitar HTTP 422.
+  const mailerSendFromEmail = normalizeMailAddress(merged.email?.mailersend?.fromEmail || process.env.MAILERSEND_FROM_EMAIL || '');
   const mailerSendFromName = merged.email?.mailersend?.fromName || process.env.MAILERSEND_FROM_NAME || merged.email?.fromName || process.env.SMTP_FROM_NAME || 'Condomínio Vitória Régia';
-  const mailerSendTestTo = merged.email?.mailersend?.testTo || process.env.MAILERSEND_TEST_TO || merged.email?.testTo || process.env.SMTP_TEST_TO || effectiveUser;
+  const mailerSendTestTo = normalizeMailAddress(merged.email?.mailersend?.testTo || process.env.MAILERSEND_TEST_TO || merged.email?.testTo || process.env.SMTP_TEST_TO || effectiveUser || '');
 
   const smtpTestTo = merged.email?.testTo || process.env.SMTP_TEST_TO || effectiveUser || mailerSendTestTo;
   const enabledByEnv = envEmailEnabled || Boolean(process.env.MAILERSEND_API_KEY);
@@ -1446,7 +1455,9 @@ function emailDiagnostics(config = effectiveNotificationConfig()) {
   if (!email.enabled) problems.push('Envio automático por e-mail desativado. Marque Ativar envio automático por e-mail ou defina EMAIL_ENABLED=true no Render.');
   if (provider === 'mailersend') {
     if (!email.mailersend?.apiKey) problems.push('MAILERSEND_API_KEY não configurado. Cole o token apenas no Render ou nas configurações do síndico.');
-    if (!email.mailersend?.fromEmail) problems.push('MAILERSEND_FROM_EMAIL não configurado. Informe um remetente validado no MailerSend.');
+    if (!email.mailersend?.fromEmail) problems.push('MAILERSEND_FROM_EMAIL não configurado. Informe um remetente/domínio verificado no MailerSend.');
+    else if (!isValidEmailAddress(email.mailersend.fromEmail)) problems.push('MAILERSEND_FROM_EMAIL inválido. Use um e-mail completo, por exemplo contato@seudominio.com.br.');
+    if (email.mailersend?.testTo && !isValidEmailAddress(email.mailersend.testTo)) problems.push('MAILERSEND_TEST_TO inválido. Informe um e-mail de teste válido.');
   } else {
     if (!email.host) problems.push('SMTP_HOST não configurado.');
     if (!email.user) problems.push('SMTP_USER não configurado.');
@@ -1697,9 +1708,10 @@ async function saveNotificationConfig(incoming = {}) {
   clean.email.port = Number(clean.email.port || 465);
   clean.email.secure = Boolean(clean.email.secure);
   clean.email.testTo = clean.email.testTo || process.env.SMTP_TEST_TO || clean.email.user || process.env.SMTP_USER || '';
-  clean.email.mailersend.fromName = clean.email.mailersend.fromName || clean.email.fromName || 'Condomínio Vitória Régia';
-  clean.email.mailersend.fromEmail = clean.email.mailersend.fromEmail || process.env.MAILERSEND_FROM_EMAIL || clean.email.fromEmail || '';
-  clean.email.mailersend.testTo = clean.email.mailersend.testTo || clean.email.testTo || process.env.MAILERSEND_TEST_TO || '';
+  clean.email.mailersend.apiKey = cleanBearerToken(clean.email.mailersend.apiKey || '');
+  clean.email.mailersend.fromName = safeMailerName(clean.email.mailersend.fromName || process.env.MAILERSEND_FROM_NAME || clean.email.fromName || 'Condomínio Vitória Régia');
+  clean.email.mailersend.fromEmail = normalizeMailAddress(clean.email.mailersend.fromEmail || process.env.MAILERSEND_FROM_EMAIL || '');
+  clean.email.mailersend.testTo = normalizeMailAddress(clean.email.mailersend.testTo || clean.email.testTo || process.env.MAILERSEND_TEST_TO || '');
   clean.whatsapp.enabled = Boolean(clean.whatsapp.enabled);
   clean.whatsapp.provider = ['meta', 'evolution', 'periskope'].includes(cleanIntegrationValue(clean.whatsapp.provider || '').toLowerCase()) ? cleanIntegrationValue(clean.whatsapp.provider).toLowerCase() : 'meta';
   clean.whatsapp.countryCode = clean.whatsapp.countryCode || '55';
@@ -1723,6 +1735,75 @@ async function saveNotificationConfig(incoming = {}) {
 
 function normalizeSmtpPassword(value = '') {
   return String(value || '').replace(/\s+/g, '');
+}
+
+function normalizeMailAddress(value = '') {
+  return String(value || '')
+    .trim()
+    .replace(/^mailto:/i, '')
+    .replace(/^<|>$/g, '')
+    .toLowerCase();
+}
+
+function isValidEmailAddress(value = '') {
+  const email = normalizeMailAddress(value);
+  return /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email);
+}
+
+function safeMailerName(value = '') {
+  return String(value || '')
+    .replace(/[;,]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+}
+
+function escapeHtml(value = '') {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function collectProviderMessages(value, output = []) {
+  if (!value) return output;
+  if (typeof value === 'string') { output.push(value); return output; }
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectProviderMessages(item, output));
+    return output;
+  }
+  if (typeof value === 'object') {
+    for (const [key, item] of Object.entries(value)) {
+      if (['message', 'error', 'code'].includes(key) && typeof item === 'string') output.push(item);
+      else collectProviderMessages(item, output);
+    }
+  }
+  return output;
+}
+
+function mailerSendErrorMessage(status, payload = {}, fallback = '') {
+  const messages = collectProviderMessages(payload)
+    .map((item) => String(item || '').trim())
+    .filter(Boolean);
+  const unique = [...new Set(messages)];
+  const detail = unique.slice(0, 6).join(' | ') || fallback || 'Requisição recusada pelo MailerSend.';
+  const tips = [];
+  const combined = `${detail} ${JSON.stringify(payload)}`.toLowerCase();
+  if (status === 422) {
+    if (combined.includes('from.email') || combined.includes('verified') || combined.includes('domain')) {
+      tips.push('confirme se MAILERSEND_FROM_EMAIL é um remetente/domínio verificado no MailerSend');
+    }
+    if (combined.includes('valid email') || combined.includes('to.') || combined.includes('email address')) {
+      tips.push('confirme se o destinatário e o remetente são e-mails válidos');
+    }
+    if (combined.includes('subject')) tips.push('confirme se o assunto não está vazio');
+    if (combined.includes('html') || combined.includes('text') || combined.includes('template')) {
+      tips.push('confirme se há conteúdo em texto ou HTML');
+    }
+  }
+  return `MailerSend HTTP ${status}: ${detail}${tips.length ? `. Verifique: ${tips.join('; ')}.` : ''}`;
 }
 
 async function logNotification(entry) {
@@ -1751,40 +1832,48 @@ async function logNotification(entry) {
 }
 
 async function sendMailerSendEmail({ apiKey, fromEmail, fromName, to, subject, message, html }) {
-  const finalTo = to;
-  const finalSubject = subject || 'Teste de e-mail - Condomínio Vitória Régia';
-  const finalMessage = message || 'Este é um e-mail automático de teste do Sistema Vitória Régia.';
+  const token = cleanBearerToken(apiKey || '');
+  const finalFrom = normalizeMailAddress(fromEmail || '');
+  const finalTo = normalizeMailAddress(to || '');
+  const finalSubject = String(subject || 'Teste de e-mail - Condomínio Vitória Régia').trim();
+  const finalMessage = String(message || 'Este é um e-mail automático de teste do Sistema Vitória Régia.').trim();
+
+  if (!token) throw new Error('MAILERSEND_API_KEY não configurado. Informe o token no Render ou no painel do síndico.');
+  if (!isValidEmailAddress(finalFrom)) throw new Error('MAILERSEND_FROM_EMAIL inválido ou ausente. Use um remetente/domínio verificado no MailerSend, por exemplo contato@seudominio.com.br.');
+  if (!isValidEmailAddress(finalTo)) throw new Error('Destinatário inválido para envio de e-mail. Informe um e-mail completo e válido.');
+  if (!finalSubject) throw new Error('Assunto do e-mail não pode ficar vazio.');
+  if (!finalMessage && !html) throw new Error('Conteúdo do e-mail não pode ficar vazio.');
+
+  const payload = {
+    from: { email: finalFrom, name: safeMailerName(fromName || 'Condomínio Vitória Régia') || undefined },
+    to: [{ email: finalTo }],
+    subject: finalSubject,
+    text: finalMessage || String(html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(),
+    html: html || `<p>${escapeHtml(finalMessage).replace(/\n/g, '<br>')}</p>`,
+  };
 
   const response = await fetch('https://api.mailersend.com/v1/email', {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
       Accept: 'application/json',
     },
-    body: JSON.stringify({
-      from: { email: fromEmail, name: fromName || 'Condomínio Vitória Régia' },
-      to: [{ email: finalTo }],
-      subject: finalSubject,
-      text: finalMessage,
-      html: html || `<p>${String(finalMessage).replace(/\n/g, '<br>')}</p>`,
-    }),
+    body: JSON.stringify(payload),
   });
 
   const raw = await response.text().catch(() => '');
-  let payload = {};
-  try { payload = raw ? JSON.parse(raw) : {}; } catch (_) { payload = { raw }; }
+  const parsed = parseProviderPayload(raw);
   if (!response.ok) {
-    const detail = payload.message || payload.error || payload.errors?.email?.[0] || payload.errors?.from?.[0] || response.statusText;
-    throw new Error(`MailerSend HTTP ${response.status}: ${detail}`);
+    throw new Error(mailerSendErrorMessage(response.status, parsed, response.statusText));
   }
 
   return {
     ok: true,
     provider: 'mailersend',
     status: response.status,
-    messageId: response.headers.get('x-message-id') || payload.message_id || payload.id || null,
-    response: payload,
+    messageId: response.headers.get('x-message-id') || parsed.message_id || parsed.id || null,
+    response: parsed,
   };
 }
 
@@ -2018,6 +2107,83 @@ async function sendWhatsAppNotification({ to, message }) {
   return { ok: true, provider: 'meta-whatsapp', response: payload };
 }
 
+
+function readinessItem(ok, warning, title, detail) {
+  return { status: ok ? 'ok' : (warning ? 'warning' : 'critical'), title, detail };
+}
+function calculateMarketReadiness() {
+  const state = store.state || DEFAULT_STATE;
+  const notification = effectiveNotificationConfig(store.notificationConfig || DEFAULT_NOTIFICATION_CONFIG);
+  const storage = effectiveStorageConfig(store.storageConfig || DEFAULT_STORAGE_CONFIG);
+  const asaas = effectiveAsaasConfig(store.asaasConfig || DEFAULT_ASAAS_CONFIG);
+  const staff = Array.isArray(state.staff) ? state.staff : [];
+  const residents = Array.isArray(state.residents) ? state.residents : [];
+  const packages = Array.isArray(state.packages) ? state.packages : [];
+  const bookings = Array.isArray(state.bookings) ? state.bookings : [];
+  const cloudFiles = Array.isArray(state.cloudFiles) ? state.cloudFiles : [];
+  const logs = Array.isArray(store.activityLogs) ? store.activityLogs : [];
+  const openPackages = packages.filter((item) => item.status !== 'delivered').length;
+  const pendingBookings = bookings.filter((item) => item.status === 'pending').length;
+  const activeAdmins = staff.filter((person) => person.active !== false && staffIsAdministrator(person));
+  const privateStorage = storage.provider === 'supabase' && storage.enabled && storage.supabase?.publicBucket === false && Boolean(storage.supabase?.serviceRoleKey);
+  const emailConfigured = Boolean(notification.email?.enabled && ((notification.email.provider === 'mailersend' && notification.email.mailersend?.apiKey && notification.email.mailersend?.fromEmail) || (notification.email.provider !== 'mailersend' && notification.email.user && notification.email.password)));
+  const whatsappConfigured = Boolean(notification.whatsapp?.enabled && notification.whatsapp?.provider === 'periskope' && notification.whatsapp?.periskope?.apiKey && notification.whatsapp?.periskope?.phone);
+  const strongSession = Boolean(process.env.SESSION_SECRET && process.env.SESSION_SECRET !== 'troque-esta-chave-em-producao' && SESSION_COOKIE_SECURE && SESSION_COOKIE_SAME_SITE);
+  const checklist = [
+    readinessItem(databaseReady && hasDatabaseConfig(), false, 'Banco MySQL obrigatório ativo', databaseReady ? 'Banco operacional para persistência real de cadastros, encomendas e configurações.' : 'Configure DATABASE_URL ou MYSQL_* no Render e confirme /api/db/status.'),
+    readinessItem(strongSession, Boolean(process.env.SESSION_SECRET), 'Sessão segura no Render', strongSession ? 'Cookie HTTP-only com configuração segura de produção.' : 'Defina SESSION_SECRET forte, TRUST_PROXY=true e SESSION_COOKIE_SECURE=true.'),
+    readinessItem(activeAdmins.length > 0, false, 'Administrador definitivo cadastrado', activeAdmins.length ? `${activeAdmins.length} usuário(s) administrativo(s) ativo(s).` : 'Cadastre síndico/administrador real e desative login temporário.'),
+    readinessItem(!bootstrapAdminAvailable(), false, 'Login temporário desativado', bootstrapAdminAvailable() ? 'Ainda existe login temporário disponível; use apenas para implantação inicial.' : 'Login temporário bloqueado após criação de administrador válido.'),
+    readinessItem(privateStorage, storage.enabled, 'Storage privado para fotos e documentos', privateStorage ? 'Supabase configurado em modo privado com metadados leves no MySQL.' : 'Ative Supabase Storage privado para anexos, fotos de encomendas e documentos.'),
+    readinessItem(whatsappConfigured, notification.whatsapp?.enabled, 'WhatsApp Periskope pronto', whatsappConfigured ? 'API Key e telefone conectado configurados.' : 'Configure PERISKOPE_API_KEY e PERISKOPE_PHONE para notificações automáticas.'),
+    readinessItem(emailConfigured, notification.email?.enabled, 'E-mail transacional pronto', emailConfigured ? 'Provedor de e-mail configurado para senhas temporárias e avisos.' : 'Configure MailerSend com domínio/remetente verificado ou SMTP válido.'),
+    readinessItem(Boolean(asaas.enabled && asaas.apiKey), Boolean(asaas.enabled), 'Cobrança de reservas integrada', asaas.enabled && asaas.apiKey ? `Asaas ${asaas.environment || 'sandbox'} configurado.` : 'Configure Asaas quando quiser boletos/links de pagamento automáticos.'),
+    readinessItem(fs.existsSync(path.join(__dirname, '..', 'private', 'manual_usuario_sistema_vitoria_regia.pdf')), false, 'Manual administrativo incorporado', 'Manual protegido no perfil administrativo para padronizar treinamento e suporte.'),
+    readinessItem(logs.length > 0, true, 'Auditoria operacional com histórico', logs.length ? `${logs.length} registro(s) recentes de auditoria.` : 'Os logs serão preenchidos conforme portaria e administração utilizarem ações sensíveis.'),
+  ];
+  const weights = checklist.map((item) => item.status === 'ok' ? 10 : (item.status === 'warning' ? 5 : 0));
+  const score = Math.round(weights.reduce((sum, value) => sum + value, 0));
+  const critical = checklist.filter((item) => item.status === 'critical').length;
+  const warning = checklist.filter((item) => item.status === 'warning').length;
+  const summary = score >= 85
+    ? 'Sistema em padrão premium: pronto para operação profissional e apresentação a condomínios.'
+    : score >= 70
+      ? 'Sistema competitivo: faltam poucos ajustes para padrão premium completo.'
+      : score >= 50
+        ? 'Sistema funcional, mas ainda precisa fortalecer integrações e segurança de produção.'
+        : 'Sistema ainda em implantação: priorize banco, sessão, administrador definitivo e canais de notificação.';
+  const apartmentsWithResidents = new Set(residents.map((item) => String(item.apartment || '').trim()).filter(Boolean)).size;
+  const roadmap = [];
+  if (!databaseReady) roadmap.push({ title: 'Consolidar produção no Render + MySQL', detail: 'Sem banco ativo, não há persistência confiável. Prioridade máxima.' });
+  if (bootstrapAdminAvailable()) roadmap.push({ title: 'Encerrar login temporário', detail: 'Crie o síndico/administrador definitivo e deixe o login temporário bloqueado automaticamente.' });
+  if (!privateStorage) roadmap.push({ title: 'Blindar arquivos em bucket privado', detail: 'Use Supabase privado e links assinados para fotos de moradores, encomendas e documentos.' });
+  if (!whatsappConfigured) roadmap.push({ title: 'Ativar WhatsApp operacional', detail: 'Conecte Periskope para avisos automáticos de encomendas, visitantes e comunicados importantes.' });
+  if (!emailConfigured) roadmap.push({ title: 'Ativar e-mail transacional', detail: 'Use MailerSend com domínio/remetente verificado para reduzir erros 422 e melhorar entregabilidade.' });
+  if (!asaas.enabled || !asaas.apiKey) roadmap.push({ title: 'Monetizar reservas e serviços', detail: 'Ative Asaas para cobrança automática de reservas e serviços extras.' });
+  if (logs.length === 0) roadmap.push({ title: 'Treinar portaria com trilha de auditoria', detail: 'Use visitantes, encomendas e retirada para gerar histórico auditável desde o primeiro dia.' });
+  if (!roadmap.length) roadmap.push({ title: 'Próxima fronteira: BI e app store', detail: 'Com a base pronta, avance para relatórios executivos, QR Code de acesso e publicação oficial dos apps.' });
+  return {
+    ok: true,
+    score,
+    critical,
+    warning,
+    summary,
+    checklist,
+    metrics: {
+      residents: residents.length,
+      apartmentsWithResidents,
+      openPackages,
+      pendingBookings,
+      activityLogs: logs.length,
+      cloudFiles: cloudFiles.length,
+      staff: staff.length,
+      admins: activeAdmins.length,
+    },
+    roadmap,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: true, credentials: true }));
 app.use(morgan('tiny'));
@@ -2104,6 +2270,16 @@ app.get('/api/db/status', async (req, res) => {
     catch (error) { result.error = error.message; }
   }
   res.json({ ok: databaseReady, database: result });
+});
+
+
+app.get('/api/admin/market-readiness', requireDatabaseReady, requireSyndicUser, async (req, res) => {
+  try {
+    if (databaseReady) store = await loadStoreFromDatabase();
+    res.json(calculateMarketReadiness());
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message || 'Não foi possível gerar diagnóstico de mercado.' });
+  }
 });
 
 app.post('/api/db/init', async (req, res) => {

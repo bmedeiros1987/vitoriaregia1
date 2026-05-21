@@ -184,6 +184,7 @@
         <a href="#arquivos" data-nav data-roles="morador,sindico,portaria"><span>☁️</span> Arquivos</a>
         <a href="#comunicados" data-nav data-roles="morador,sindico,portaria"><span>📣</span> Comunicados</a>
         <a href="#app-android" data-nav data-roles="morador,sindico,portaria"><span>📱</span> App Android</a>
+        <a href="#excelencia" data-nav data-roles="sindico"><span>🏆</span> Central premium</a>
         <a href="#manual" data-nav data-roles="sindico"><span>📘</span> Manual</a>
         <a href="#configuracoes" data-nav data-roles="sindico"><span>⚙️</span> Configurações</a>
       </nav>
@@ -334,6 +335,7 @@
                 <label class="checkline"><input type="checkbox" name="allowedTabs" value="arquivos" checked /><span>Arquivos</span></label>
                 <label class="checkline"><input type="checkbox" name="allowedTabs" value="comunicados" checked /><span>Comunicados</span></label>
                 <label class="checkline"><input type="checkbox" name="allowedTabs" value="app-android" checked /><span>App Android</span></label>
+                <label class="checkline"><input type="checkbox" name="allowedTabs" value="excelencia" checked /><span>Central premium</span></label>
                 <label class="checkline"><input type="checkbox" name="allowedTabs" value="manual" checked /><span>Manual do sistema</span></label>
                 <label class="checkline"><input type="checkbox" name="allowedTabs" value="configuracoes" checked /><span>Configurações</span></label>
               </div>
@@ -802,6 +804,59 @@ João Souza - CPF ***.000.***-**"></textarea></label>
             </div>
           </article>
         </div>
+      </section>
+
+      <section id="excelencia" class="section" data-section data-roles="sindico">
+        <div class="section-head">
+          <div>
+            <span class="eyebrow">Diferenciais de mercado</span>
+            <h2>Central premium de excelência operacional</h2>
+            <p>Monitore prontidão, segurança, integrações, LGPD e oportunidades para tornar o Vitória Régia referência de gestão condominial.</p>
+          </div>
+          <button type="button" class="btn btn--outline" data-refresh-market-readiness>Atualizar diagnóstico</button>
+        </div>
+
+        <div class="premium-grid">
+          <article class="panel premium-score-card">
+            <div class="panel-header"><div><span class="eyebrow">Prontidão</span><h2>Score de mercado</h2></div></div>
+            <div class="score-ring" data-market-score-ring><strong data-market-score>--</strong><span>/100</span></div>
+            <p data-market-summary class="form-hint">Carregando diagnóstico do backend...</p>
+          </article>
+          <article class="panel">
+            <div class="panel-header"><div><span class="eyebrow">Operação</span><h2>Indicadores estratégicos</h2></div></div>
+            <div class="market-metrics" data-market-metrics></div>
+          </article>
+          <article class="panel">
+            <div class="panel-header"><div><span class="eyebrow">Diferenciais</span><h2>Recursos que valorizam o sistema</h2></div></div>
+            <div class="premium-feature-list">
+              <div><strong>☁️ Nuvem leve</strong><span>Fotos, vídeos e documentos ficam no storage; o MySQL guarda somente metadados.</span></div>
+              <div><strong>🔐 Acesso por perfil</strong><span>Síndico, subsíndico, portaria, morador e administradores com permissões por aba.</span></div>
+              <div><strong>📲 WhatsApp operacional</strong><span>Notificações por Periskope para encomendas, visitantes e avisos importantes.</span></div>
+              <div><strong>🧾 Auditoria</strong><span>Logs para ações sensíveis de portaria e administração.</span></div>
+              <div><strong>📘 Manual integrado</strong><span>Documentação interna protegida para administradores.</span></div>
+            </div>
+          </article>
+        </div>
+
+        <div class="content-grid content-grid--two">
+          <article class="panel">
+            <div class="panel-header"><div><span class="eyebrow">Checklist premium</span><h2>Itens críticos de produção</h2></div></div>
+            <div data-market-checklist class="market-checklist"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-header"><div><span class="eyebrow">Próximas melhorias</span><h2>Plano para ficar acima do mercado</h2></div></div>
+            <div data-market-roadmap class="market-roadmap"></div>
+          </article>
+        </div>
+
+        <article class="panel">
+          <div class="panel-header"><div><span class="eyebrow">Padrão profissional</span><h2>Boas práticas incorporadas</h2></div></div>
+          <div class="market-note-grid">
+            <div><strong>LGPD e privacidade</strong><p>Minimização de dados no banco, acesso por perfil, documentos em bucket privado e links temporários.</p></div>
+            <div><strong>Segurança web</strong><p>Login obrigatório, sessão protegida por cookie HTTP-only, bloqueio de dashboard sem autenticação e diagnóstico de produção.</p></div>
+            <div><strong>Continuidade</strong><p>Banco obrigatório, health checks, status de integrações e orientação para deploy no Render.</p></div>
+          </div>
+        </article>
       </section>
 
       <section id="manual" class="section" data-section data-roles="sindico">
