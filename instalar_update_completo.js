@@ -32,8 +32,8 @@ function injectIntoIndex() {
   let html = read(indexPath);
   let changed = false;
 
-  const cssFiles = ['vr-clean-admin.css', 'vr-browser-notifications.css', 'vr-panic.css'];
-  const jsFiles = ['vr-clean-admin.js', 'vr-browser-notifications.js', 'vr-panic.js'];
+  const cssFiles = ['vr-clean-admin.css', 'vr-browser-notifications.css', 'vr-panic.css', 'vr-dashboard-actions.css'];
+  const jsFiles = ['vr-clean-admin.js', 'vr-browser-notifications.js', 'vr-panic.js', 'vr-dashboard-actions.js'];
 
   for (const css of cssFiles) {
     if (!html.includes(css)) {
@@ -55,7 +55,7 @@ function injectIntoIndex() {
 
   if (changed) {
     write(indexPath, html);
-    log('Frontend atualizado: layout limpo, notificações e botão de emergência inseridos no index.html.');
+    log('Frontend atualizado: layout limpo, notificações, botão de emergência e dashboard compacto inseridos no index.html.');
   } else {
     log('Frontend já estava atualizado; nada duplicado no index.html.');
   }

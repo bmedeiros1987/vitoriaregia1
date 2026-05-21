@@ -51,3 +51,13 @@ Moradores são notificados somente após confirmação
 ## Atenção
 
 Não coloque `.env`, senhas, tokens, certificados ou chaves dentro do GitHub. Configure esses dados apenas no painel do Render.
+
+## Update adicional — Dashboard compacto
+
+Este pacote também inclui o arquivo `vr-dashboard-actions.js` e `vr-dashboard-actions.css`, que reduzem o tamanho do dashboard e adicionam botões rápidos por perfil:
+
+- Morador: reserva, encomendas, comunicados, visitante recorrente, serviços, contato e emergência.
+- Portaria: registrar encomenda, cadastrar visitante, consultar recorrentes, avisar morador e emergências.
+- Síndico/Administração: aprovações, moradores, usuários, comunicados, financeiro, escala, Central premium e emergências.
+
+O instalador `instalar_update_completo.js` injeta automaticamente os arquivos no `index.html`.
