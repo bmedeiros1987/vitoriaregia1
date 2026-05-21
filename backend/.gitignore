@@ -1,0 +1,10 @@
+node_modules/
+.env
+.env.*
+!.env.example
+certs/
+data/
+*.pem
+*.key
+*.crt
+npm-debug.log*

@@ -61,6 +61,7 @@ const DEFAULT_STATE = {
   services: [],
   serviceRequests: [],
   contactMessages: [],
+  automationRequests: [],
   financeRecords: [],
   cloudFiles: [],
   settings: null,
@@ -113,6 +114,14 @@ const DEFAULT_NOTIFICATION_CONFIG = {
       testTo: process.env.PERISKOPE_TEST_TO || process.env.WHATSAPP_TEST_TO || '',
       hideUrlPreview: String(process.env.PERISKOPE_HIDE_URL_PREVIEW || 'true').toLowerCase() !== 'false',
     },
+  },
+  telegram: {
+    enabled: String(process.env.TELEGRAM_ENABLED || 'false').toLowerCase() === 'true',
+    botToken: process.env.TELEGRAM_BOT_TOKEN || '',
+    defaultChatId: process.env.TELEGRAM_DEFAULT_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '',
+    adminChatId: process.env.TELEGRAM_ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '',
+    testChatId: process.env.TELEGRAM_TEST_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '',
+    parseMode: process.env.TELEGRAM_PARSE_MODE || '',
   },
 };
 
@@ -1246,6 +1255,7 @@ function sanitizeConfig(config) {
   const effective = effectiveNotificationConfig(config || {});
   const email = effective.email || {};
   const whatsapp = effective.whatsapp || {};
+  const telegram = effective.telegram || {};
   return {
     ...effective,
     email: {
@@ -1276,6 +1286,12 @@ function sanitizeConfig(config) {
         apiKeySaved: Boolean(whatsapp.periskope?.apiKey),
         apiKeySource: whatsapp.periskope?.apiKeySource || 'none',
       },
+    },
+    telegram: {
+      ...telegram,
+      botToken: '',
+      botTokenSaved: Boolean(telegram.botToken),
+      botTokenSource: telegram.botTokenSource || 'none',
     },
   };
 }
@@ -1373,6 +1389,21 @@ function effectiveNotificationConfig(config = store.notificationConfig || DEFAUL
   const enabledByEnv = envEmailEnabled || Boolean(process.env.MAILERSEND_API_KEY);
 
   const effectiveWhatsApp = effectiveWhatsAppConfig(merged);
+  const savedTelegram = merged.telegram || {};
+  const savedTelegramToken = savedTelegram.botToken || '';
+  const envTelegramToken = process.env.TELEGRAM_BOT_TOKEN || '';
+  const telegramBotToken = cleanIntegrationValue(savedTelegramToken || envTelegramToken);
+  const telegramEnabledByEnv = String(process.env.TELEGRAM_ENABLED || '').toLowerCase() === 'true';
+  const effectiveTelegram = {
+    ...savedTelegram,
+    enabled: Boolean(savedTelegram.enabled || (telegramEnabledByEnv && telegramBotToken)),
+    botToken: telegramBotToken,
+    botTokenSource: savedTelegramToken ? 'saved' : (envTelegramToken ? 'env' : 'none'),
+    defaultChatId: cleanIntegrationValue(savedTelegram.defaultChatId || process.env.TELEGRAM_DEFAULT_CHAT_ID || process.env.TELEGRAM_CHAT_ID || ''),
+    adminChatId: cleanIntegrationValue(savedTelegram.adminChatId || process.env.TELEGRAM_ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || savedTelegram.defaultChatId || ''),
+    testChatId: cleanIntegrationValue(savedTelegram.testChatId || process.env.TELEGRAM_TEST_CHAT_ID || process.env.TELEGRAM_CHAT_ID || savedTelegram.defaultChatId || ''),
+    parseMode: ['', 'HTML', 'MarkdownV2', 'Markdown'].includes(String(savedTelegram.parseMode || process.env.TELEGRAM_PARSE_MODE || '')) ? String(savedTelegram.parseMode || process.env.TELEGRAM_PARSE_MODE || '') : '',
+  };
 
   return {
     ...merged,
@@ -1399,6 +1430,7 @@ function effectiveNotificationConfig(config = store.notificationConfig || DEFAUL
       },
     },
     whatsapp: effectiveWhatsApp,
+    telegram: effectiveTelegram,
   };
 }
 
@@ -1444,6 +1476,27 @@ function whatsappDiagnostics(config = effectiveNotificationConfig()) {
       periskopeEndpoint: whatsapp.periskope?.baseUrl ? periskopeMessagesEndpoint(whatsapp.periskope.baseUrl) : null,
       periskopeAuthHeader: whatsapp.periskope?.apiKey ? 'Authorization: Bearer <oculto>' : null,
       periskopeXPhoneHeaderConfigured: Boolean(whatsapp.periskope?.phone),
+    },
+  };
+}
+
+function telegramDiagnostics(config = effectiveNotificationConfig()) {
+  const telegram = config.telegram || {};
+  const problems = [];
+  if (!telegram.enabled) problems.push('Telegram desativado. Ative no painel ou defina TELEGRAM_ENABLED=true no Render.');
+  if (!telegram.botToken) problems.push('TELEGRAM_BOT_TOKEN não configurado.');
+  if (!telegram.defaultChatId && !telegram.adminChatId && !telegram.testChatId) problems.push('Informe pelo menos um Chat ID para envio.');
+  return {
+    ok: problems.length === 0,
+    problems,
+    config: {
+      enabled: Boolean(telegram.enabled),
+      botTokenSaved: Boolean(telegram.botToken),
+      botTokenSource: telegram.botTokenSource || 'none',
+      defaultChatIdConfigured: Boolean(telegram.defaultChatId),
+      adminChatIdConfigured: Boolean(telegram.adminChatId),
+      testChatIdConfigured: Boolean(telegram.testChatId),
+      parseMode: telegram.parseMode || 'texto simples',
     },
   };
 }
@@ -1701,6 +1754,11 @@ async function saveNotificationConfig(incoming = {}) {
   if (incoming.email?.mailersend?.clearApiKey) clean.email.mailersend.apiKey = '';
   if (incoming.whatsapp?.clearToken) clean.whatsapp.token = '';
   if (incoming.whatsapp?.evolution?.clearApiKey) clean.whatsapp.evolution.apiKey = '';
+  if (!clean.telegram) clean.telegram = {};
+  if (!incoming.telegram || incoming.telegram.botToken === '') {
+    clean.telegram.botToken = existing.telegram?.botToken || DEFAULT_NOTIFICATION_CONFIG.telegram.botToken || '';
+  }
+  if (incoming.telegram?.clearBotToken) clean.telegram.botToken = '';
   if (incoming.whatsapp?.periskope?.clearApiKey) clean.whatsapp.periskope.apiKey = '';
 
   clean.email.enabled = Boolean(clean.email.enabled);
@@ -1727,6 +1785,12 @@ async function saveNotificationConfig(incoming = {}) {
   clean.whatsapp.periskope.countryCode = clean.whatsapp.periskope.countryCode || clean.whatsapp.countryCode || '55';
   clean.whatsapp.periskope.testTo = clean.whatsapp.periskope.testTo || clean.whatsapp.testTo || '';
   clean.whatsapp.periskope.hideUrlPreview = Boolean(clean.whatsapp.periskope.hideUrlPreview);
+  clean.telegram.enabled = Boolean(clean.telegram.enabled);
+  clean.telegram.botToken = cleanIntegrationValue(clean.telegram.botToken || '');
+  clean.telegram.defaultChatId = cleanIntegrationValue(clean.telegram.defaultChatId || process.env.TELEGRAM_DEFAULT_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '');
+  clean.telegram.adminChatId = cleanIntegrationValue(clean.telegram.adminChatId || clean.telegram.defaultChatId || process.env.TELEGRAM_ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '');
+  clean.telegram.testChatId = cleanIntegrationValue(clean.telegram.testChatId || clean.telegram.defaultChatId || process.env.TELEGRAM_TEST_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '');
+  clean.telegram.parseMode = ['', 'HTML', 'MarkdownV2', 'Markdown'].includes(String(clean.telegram.parseMode || '')) ? String(clean.telegram.parseMode || '') : '';
 
   store.notificationConfig = clean;
   await saveStore(store);
@@ -1998,6 +2062,35 @@ function cleanBearerToken(value = '') {
 function parseProviderPayload(responseText) {
   if (!responseText) return {};
   try { return JSON.parse(responseText); } catch (_) { return { raw: responseText }; }
+}
+
+async function sendTelegramNotification({ chatId, message }) {
+  const config = effectiveNotificationConfig(store.notificationConfig || DEFAULT_NOTIFICATION_CONFIG);
+  const telegram = config.telegram || {};
+  if (!telegram.enabled) throw new Error('Envio por Telegram desativado nas configurações.');
+  const token = cleanIntegrationValue(telegram.botToken || '');
+  const finalChatId = cleanIntegrationValue(chatId || telegram.testChatId || telegram.adminChatId || telegram.defaultChatId || '');
+  if (!token) throw new Error('Telegram Bot Token não configurado.');
+  if (!finalChatId) throw new Error('Telegram Chat ID não configurado.');
+  const payload = {
+    chat_id: finalChatId,
+    text: message || 'Teste automático do Sistema Vitória Régia.',
+    disable_web_page_preview: true,
+  };
+  if (telegram.parseMode) payload.parse_mode = telegram.parseMode;
+  const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(async () => ({ raw: await response.text().catch(() => '') }));
+  if (!response.ok || data.ok === false) {
+    const errorMessage = data.description || data.error || response.statusText || `Telegram HTTP ${response.status}`;
+    await logNotification({ channel: 'telegram', recipient: finalChatId, message, status: 'error', providerResponse: data, error: errorMessage });
+    throw new Error(errorMessage);
+  }
+  await logNotification({ channel: 'telegram', recipient: finalChatId, message, status: 'sent', providerResponse: { ok: true, message_id: data.result?.message_id } });
+  return { ok: true, provider: 'telegram-bot', messageId: data.result?.message_id || null, response: data };
 }
 
 async function sendWhatsAppNotification({ to, message }) {
@@ -2736,6 +2829,10 @@ app.get('/api/integrations/whatsapp/debug', (req, res) => {
   res.json({ ok: true, whatsapp: whatsappDiagnostics(), database: { configured: hasDatabaseConfig(), ready: databaseReady } });
 });
 
+app.get('/api/integrations/telegram/debug', (req, res) => {
+  res.json({ ok: true, telegram: telegramDiagnostics(), database: { configured: hasDatabaseConfig(), ready: databaseReady } });
+});
+
 app.post('/api/integrations/notifications', async (req, res) => {
   try {
     const config = await saveNotificationConfig(req.body || {});
@@ -2762,6 +2859,15 @@ app.post('/api/integrations/test-email', async (req, res) => {
 app.post('/api/integrations/test-whatsapp', async (req, res) => {
   try {
     const result = await sendWhatsAppNotification({ to: req.body?.to, message: 'Teste automático do Sistema Vitória Régia.' });
+    res.json(result);
+  } catch (error) {
+    res.status(400).send(error.message);
+  }
+});
+
+app.post('/api/integrations/test-telegram', async (req, res) => {
+  try {
+    const result = await sendTelegramNotification({ chatId: req.body?.chatId, message: 'Teste automático do Sistema Vitória Régia.' });
     res.json(result);
   } catch (error) {
     res.status(400).send(error.message);
@@ -2833,7 +2939,7 @@ app.post('/api/asaas/webhook', async (req, res) => {
 });
 
 app.post('/api/notifications/send', async (req, res) => {
-  const { channels = ['email'], email, whatsapp, subject, message } = req.body || {};
+  const { channels = ['email'], email, whatsapp, telegramChatId, subject, message } = req.body || {};
   const results = [];
 
   if (channels.includes('email')) {
@@ -2844,6 +2950,11 @@ app.post('/api/notifications/send', async (req, res) => {
   if (channels.includes('whatsapp')) {
     try { results.push({ channel: 'whatsapp', ...(await sendWhatsAppNotification({ to: whatsapp, message })) }); }
     catch (error) { results.push({ channel: 'whatsapp', ok: false, error: error.message }); }
+  }
+
+  if (channels.includes('telegram')) {
+    try { results.push({ channel: 'telegram', ...(await sendTelegramNotification({ chatId: telegramChatId, message })) }); }
+    catch (error) { results.push({ channel: 'telegram', ok: false, error: error.message }); }
   }
 
   res.json({ ok: results.some((item) => item.ok), results });

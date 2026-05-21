@@ -177,6 +177,7 @@
         <a href="#financeiro" data-nav data-roles="morador,sindico"><span>💳</span> Financeiro</a>
         <a href="#servicos" data-nav data-roles="morador,sindico"><span>🛒</span> Serviços</a>
         <a href="#contato" data-nav data-roles="morador,sindico"><span>✉️</span> Contato</a>
+        <a href="#automacoes" data-nav data-roles="morador,sindico,portaria"><span>🤖</span> Automações</a>
         <a href="#portaria" data-nav data-roles="sindico,portaria"><span>🛡️</span> Portaria</a>
         <a href="#visitantes-recorrentes" data-nav data-roles="morador,sindico,portaria"><span>🔁</span> Visitantes recorrentes</a>
         <a href="#encomendas" data-nav data-roles="morador,sindico,portaria"><span>📦</span> Encomendas</a>
@@ -328,6 +329,7 @@
                 <label class="checkline"><input type="checkbox" name="allowedTabs" value="financeiro" checked /><span>Financeiro</span></label>
                 <label class="checkline"><input type="checkbox" name="allowedTabs" value="servicos" checked /><span>Serviços</span></label>
                 <label class="checkline"><input type="checkbox" name="allowedTabs" value="contato" checked /><span>Contato</span></label>
+                <label class="checkline"><input type="checkbox" name="allowedTabs" value="automacoes" checked /><span>Automações</span></label>
                 <label class="checkline"><input type="checkbox" name="allowedTabs" value="portaria" checked /><span>Portaria</span></label>
                 <label class="checkline"><input type="checkbox" name="allowedTabs" value="visitantes-recorrentes" checked /><span>Visitantes recorrentes</span></label>
                 <label class="checkline"><input type="checkbox" name="allowedTabs" value="encomendas" checked /><span>Encomendas</span></label>
@@ -588,6 +590,44 @@ João Souza - CPF ***.000.***-**"></textarea></label>
           </form>
           <article class="panel"><div class="panel-header"><div><span class="eyebrow">Destinatário disponível</span><h2>Contato sem expor dados</h2></div></div><div data-current-contact-recipients class="list"></div></article>
           <article class="panel"><div class="panel-header"><div><span class="eyebrow">Histórico</span><h2>Mensagens do sistema</h2></div></div><div data-contact-history class="list"></div></article>
+        </div>
+      </section>
+
+
+      <section id="automacoes" class="section" data-section data-roles="morador,sindico,portaria">
+        <div class="section-head">
+          <div>
+            <span class="eyebrow">Mensageria inteligente</span>
+            <h2>Automações da portaria e notificações</h2>
+            <p>Envie avisos e solicitações pelo WhatsApp/e-mail: encomendas, autorização de visitante, envio pelo elevador e código iFood/delivery.</p>
+          </div>
+        </div>
+        <div class="content-grid content-grid--two">
+          <form class="panel form-card" data-automation-form data-roles="sindico,portaria" autocomplete="off">
+            <div class="panel-header"><div><span class="eyebrow">Nova solicitação</span><h2>Mensagem automática para morador</h2></div></div>
+            <label><span>Apartamento</span><select name="apartment" required data-automation-apartment></select></label>
+            <label><span>Tipo de automação</span><select name="type">
+              <option value="package_notice">Avisar encomenda/delivery na portaria</option>
+              <option value="package_elevator">Pedir autorização para enviar encomenda pelo elevador</option>
+              <option value="visitor_authorization">Pedir autorização para visitante</option>
+              <option value="ifood_code">Solicitar código iFood/delivery</option>
+              <option value="doorman_notice">Aviso geral da portaria</option>
+              <option value="syndic_notice">Notificação do síndico</option>
+            </select></label>
+            <label><span>Visitante / entregador / referência</span><input name="visitorName" placeholder="Ex.: João da Silva, iFood, Mercado Livre" /></label>
+            <label><span>Referência opcional</span><input name="entityLabel" placeholder="Ex.: Caixa pequena, pedido #123, transportadora" /></label>
+            <label><span>Mensagem/observação</span><textarea name="details" rows="4" placeholder="Ex.: entregador aguarda na portaria; informe o código de confirmação; autoriza subir pelo elevador?"></textarea></label>
+            <div class="form-row">
+              <label class="checkline checkline--boxed"><input type="checkbox" name="notifyWhatsapp" checked /><span>Enviar WhatsApp</span></label>
+              <label class="checkline checkline--boxed"><input type="checkbox" name="notifyEmail" /><span>Enviar e-mail</span></label>
+            </div>
+            <button class="btn btn--primary" type="submit">Criar e enviar solicitação</button>
+            <p class="form-hint" data-automation-message>As respostas dos moradores aparecem nesta tela e podem ser notificadas à portaria.</p>
+          </form>
+          <article class="panel">
+            <div class="panel-header"><div><span class="eyebrow">Fila operacional</span><h2>Solicitações e respostas</h2><p>Moradores veem apenas solicitações da própria unidade.</p></div><input class="search" data-automation-filter placeholder="Buscar unidade, status ou solicitação" /></div>
+            <div data-automation-list class="list"></div>
+          </article>
         </div>
       </section>
 
@@ -898,107 +938,156 @@ João Souza - CPF ***.000.***-**"></textarea></label>
             <label class="checkline"><input type="checkbox" name="package" /> <span>Avisar morador quando encomenda for registrada.</span></label>
             <label class="checkline"><input type="checkbox" name="contact" /> <span>Avisar equipe quando morador enviar contato pelo sistema.</span></label>
             <label class="checkline"><input type="checkbox" name="serviceRequest" /> <span>Avisar síndico quando houver solicitação de serviço/compra.</span></label>
+            <label class="checkline"><input type="checkbox" name="automationRequests" /> <span>Enviar automaticamente as solicitações da portaria para moradores.</span></label>
             <button class="btn btn--primary" type="submit">Salvar regras</button>
             <p class="form-hint" data-notification-rules-message></p>
           </form>
 
-          <form class="panel form-card" data-notification-settings-form autocomplete="off">
-            <div class="panel-header"><div><span class="eyebrow">Integrações</span><h2>E-mail e WhatsApp automáticos</h2><p>Preencha as credenciais apenas no servidor. As senhas não aparecem novamente depois de salvas.</p></div></div>
+          <form class="panel form-card integrations-panel" data-notification-settings-form autocomplete="off">
+            <div class="panel-header"><div><span class="eyebrow">Integrações</span><h2>Central de canais e serviços</h2><p>Configure cada canal em seu próprio submenu. As credenciais ficam protegidas no backend e não aparecem novamente depois de salvas.</p></div></div>
 
-            <div class="integration-card">
-              <h3>E-mail automático</h3>
-              <label class="checkline"><input type="checkbox" name="emailEnabled" /> <span>Ativar envio automático por e-mail.</span></label>
-              <label><span>Provedor de envio</span><select name="emailProvider"><option value="smtp">SMTP / Gmail</option><option value="mailersend">MailerSend API</option></select></label>
-
-              <div class="integration-subcard">
-                <h4>SMTP / Gmail</h4>
-                <div class="form-row"><label><span>SMTP host</span><input name="smtpHost" placeholder="smtp.gmail.com" /></label><label><span>Porta</span><input name="smtpPort" type="number" placeholder="465" /></label></div>
-                <div class="form-row"><label><span>Segurança</span><select name="smtpSecure"><option value="true">SSL/TLS</option><option value="false">STARTTLS / sem SSL direto</option></select></label><label><span>Usuário/e-mail</span><input name="smtpUser" type="email" placeholder="seuemail@gmail.com" /></label></div>
-                <label><span>Senha de aplicativo</span><input name="smtpPassword" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter a senha salva" /></label>
-                <div class="form-row"><label><span>Nome do remetente</span><input name="smtpFromName" placeholder="Condomínio Vitória Régia" /></label><label><span>E-mail remetente</span><input name="smtpFromEmail" type="email" placeholder="opcional" /></label></div>
-              </div>
-
-              <div class="integration-subcard">
-                <h4>MailerSend API</h4>
-                <label><span>API Token MailerSend</span><input name="mailersendApiKey" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter o token salvo" /></label>
-                <div class="form-row"><label><span>Nome do remetente</span><input name="mailersendFromName" placeholder="Condomínio Vitória Régia" /></label><label><span>E-mail remetente validado</span><input name="mailersendFromEmail" type="email" placeholder="ex.: contato@seudominio.com.br" /></label></div>
-                <p class="form-hint">Use um remetente validado no MailerSend. O token deve ficar apenas no Render ou salvo pelo painel do síndico.</p>
-              </div>
-
-              <label><span>E-mail para teste</span><input name="testEmailTo" type="email" placeholder="seuemail@gmail.com" /></label>
-              <button class="btn btn--outline" type="button" data-test-email>Enviar e-mail de teste</button>
+            <div class="settings-tabbar" role="tablist" aria-label="Submenus de configurações">
+              <button class="settings-tab is-active" type="button" data-config-tab="email">✉️ E-mail</button>
+              <button class="settings-tab" type="button" data-config-tab="whatsapp">📲 WhatsApp</button>
+              <button class="settings-tab" type="button" data-config-tab="telegram">✈️ Telegram</button>
+              <button class="settings-tab" type="button" data-config-tab="asaas">💳 Boletos</button>
+              <button class="settings-tab" type="button" data-config-tab="storage">☁️ Nuvem</button>
+              <button class="settings-tab" type="button" data-config-tab="diagnostico">🩺 Diagnóstico</button>
             </div>
 
-            <div class="integration-card">
-              <h3>WhatsApp automático</h3>
-              <label class="checkline"><input type="checkbox" name="whatsappEnabled" /> <span>Ativar envio automático por WhatsApp.</span></label>
-              <label><span>Provedor de WhatsApp</span><select name="whatsappProvider"><option value="meta">Meta WhatsApp Cloud API</option><option value="evolution">Evolution API</option><option value="periskope">Periskope API</option></select></label>
+            <div class="settings-tab-panels">
+              <section class="settings-tab-panel is-active" data-config-panel="email">
+                <div class="integration-card integration-card--highlight">
+                  <div class="integration-card-head"><div><span class="eyebrow">Canal transacional</span><h3>E-mail automático</h3><p>Use para senhas temporárias, avisos administrativos, reservas e mensagens formais.</p></div><span class="status-pill" data-status-email>Não verificado</span></div>
+                  <label class="checkline"><input type="checkbox" name="emailEnabled" /> <span>Ativar envio automático por e-mail.</span></label>
+                  <label><span>Provedor de envio</span><select name="emailProvider"><option value="smtp">SMTP / Gmail</option><option value="mailersend">MailerSend API</option></select></label>
 
-              <div class="integration-subcard">
-                <h4>Evolution API</h4>
-                <label><span>URL da Evolution API</span><input name="evolutionApiUrl" placeholder="https://sua-evolution-api.com" /></label>
-                <div class="form-row"><label><span>Nome da instância</span><input name="evolutionInstanceName" placeholder="minha-instancia" /></label><label><span>API Key Evolution</span><input name="evolutionApiKey" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter a chave salva" /></label></div>
-                <div class="form-row"><label><span>Código do país</span><input name="evolutionCountryCode" placeholder="55" /></label><label class="checkline checkline--inside"><input type="checkbox" name="evolutionLinkPreview" /> <span>Ativar prévia de links</span></label></div>
-                <p class="form-hint">Use a instância conectada na Evolution API. A API Key deve ficar apenas no Render ou salva pelo painel do síndico.</p>
-              </div>
+                  <details class="integration-subcard" open>
+                    <summary>SMTP / Gmail</summary>
+                    <div class="integration-subcard-body">
+                      <div class="form-row"><label><span>SMTP host</span><input name="smtpHost" placeholder="smtp.gmail.com" /></label><label><span>Porta</span><input name="smtpPort" type="number" placeholder="465" /></label></div>
+                      <div class="form-row"><label><span>Segurança</span><select name="smtpSecure"><option value="true">SSL/TLS</option><option value="false">STARTTLS / sem SSL direto</option></select></label><label><span>Usuário/e-mail</span><input name="smtpUser" type="email" placeholder="seuemail@gmail.com" /></label></div>
+                      <label><span>Senha de aplicativo</span><input name="smtpPassword" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter a senha salva" /></label>
+                      <div class="form-row"><label><span>Nome do remetente</span><input name="smtpFromName" placeholder="Condomínio Vitória Régia" /></label><label><span>E-mail remetente</span><input name="smtpFromEmail" type="email" placeholder="opcional" /></label></div>
+                    </div>
+                  </details>
 
-              <div class="integration-subcard">
-                <h4>Periskope API</h4>
-                <div class="form-row"><label><span>Base URL</span><input name="periskopeBaseUrl" placeholder="https://api.periskope.app/v1" /></label><label><span>Telefone conectado ao Periskope</span><input name="periskopePhone" placeholder="5561999999999" /></label></div>
-                <label><span>API Key Periskope</span><input name="periskopeApiKey" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter a chave salva" /></label>
-                <div class="form-row"><label><span>Código do país</span><input name="periskopeCountryCode" placeholder="55" /></label><label class="checkline checkline--inside"><input type="checkbox" name="periskopeHideUrlPreview" /> <span>Ocultar prévia de links</span></label></div>
-                <p class="form-hint">Informe o número conectado no Periskope no formato com DDI e DDD, sem espaços. A API Key deve ficar apenas no Render ou salva pelo painel do síndico.</p>
-              </div>
+                  <details class="integration-subcard">
+                    <summary>MailerSend API</summary>
+                    <div class="integration-subcard-body">
+                      <label><span>API Token MailerSend</span><input name="mailersendApiKey" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter o token salvo" /></label>
+                      <div class="form-row"><label><span>Nome do remetente</span><input name="mailersendFromName" placeholder="Condomínio Vitória Régia" /></label><label><span>E-mail remetente validado</span><input name="mailersendFromEmail" type="email" placeholder="ex.: contato@seudominio.com.br" /></label></div>
+                      <p class="form-hint">Use um remetente validado no MailerSend. O token deve ficar apenas no Render ou salvo pelo painel do síndico.</p>
+                    </div>
+                  </details>
 
-              <div class="integration-subcard">
-                <h4>Meta WhatsApp Cloud API</h4>
-                <div class="form-row"><label><span>API version</span><input name="whatsappApiVersion" placeholder="v20.0" /></label><label><span>Phone Number ID</span><input name="whatsappPhoneNumberId" placeholder="ID do número na Meta" /></label></div>
-                <label><span>Token Meta</span><input name="whatsappToken" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter o token salvo" /></label>
-                <label><span>Código do país</span><input name="whatsappCountryCode" placeholder="55" /></label>
-              </div>
+                  <div class="test-row"><label><span>E-mail para teste</span><input name="testEmailTo" type="email" placeholder="seuemail@gmail.com" /></label><button class="btn btn--outline" type="button" data-test-email>Enviar teste</button></div>
+                </div>
+              </section>
 
-              <label><span>WhatsApp para teste</span><input name="testWhatsappTo" placeholder="61999999999" /></label>
-              <button class="btn btn--outline" type="button" data-test-whatsapp>Enviar WhatsApp de teste</button>
+              <section class="settings-tab-panel" data-config-panel="whatsapp" hidden>
+                <div class="integration-card integration-card--highlight">
+                  <div class="integration-card-head"><div><span class="eyebrow">Canal rápido</span><h3>WhatsApp automático</h3><p>Use para encomendas, visitantes, autorização de elevador, código iFood e avisos urgentes.</p></div><span class="status-pill" data-status-whatsapp>Não verificado</span></div>
+                  <label class="checkline"><input type="checkbox" name="whatsappEnabled" /> <span>Ativar envio automático por WhatsApp.</span></label>
+                  <label><span>Provedor de WhatsApp</span><select name="whatsappProvider"><option value="periskope">Periskope API</option><option value="evolution">Evolution API</option><option value="meta">Meta WhatsApp Cloud API</option></select></label>
+
+                  <details class="integration-subcard" open>
+                    <summary>Periskope API — recomendado</summary>
+                    <div class="integration-subcard-body">
+                      <div class="form-row"><label><span>Base URL</span><input name="periskopeBaseUrl" placeholder="https://api.periskope.app/v1" /></label><label><span>Telefone conectado ao Periskope</span><input name="periskopePhone" placeholder="5561999999999" /></label></div>
+                      <label><span>API Key Periskope</span><input name="periskopeApiKey" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter a chave salva" /></label>
+                      <div class="form-row"><label><span>Código do país</span><input name="periskopeCountryCode" placeholder="55" /></label><label class="checkline checkline--inside"><input type="checkbox" name="periskopeHideUrlPreview" /> <span>Ocultar prévia de links</span></label></div>
+                      <p class="form-hint">Informe o número conectado no Periskope no formato com DDI e DDD, sem espaços.</p>
+                    </div>
+                  </details>
+
+                  <details class="integration-subcard">
+                    <summary>Evolution API</summary>
+                    <div class="integration-subcard-body">
+                      <label><span>URL da Evolution API</span><input name="evolutionApiUrl" placeholder="https://sua-evolution-api.com" /></label>
+                      <div class="form-row"><label><span>Nome da instância</span><input name="evolutionInstanceName" placeholder="minha-instancia" /></label><label><span>API Key Evolution</span><input name="evolutionApiKey" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter a chave salva" /></label></div>
+                      <div class="form-row"><label><span>Código do país</span><input name="evolutionCountryCode" placeholder="55" /></label><label class="checkline checkline--inside"><input type="checkbox" name="evolutionLinkPreview" /> <span>Ativar prévia de links</span></label></div>
+                    </div>
+                  </details>
+
+                  <details class="integration-subcard">
+                    <summary>Meta WhatsApp Cloud API</summary>
+                    <div class="integration-subcard-body">
+                      <div class="form-row"><label><span>API version</span><input name="whatsappApiVersion" placeholder="v20.0" /></label><label><span>Phone Number ID</span><input name="whatsappPhoneNumberId" placeholder="ID do número na Meta" /></label></div>
+                      <label><span>Token Meta</span><input name="whatsappToken" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter o token salvo" /></label>
+                      <label><span>Código do país</span><input name="whatsappCountryCode" placeholder="55" /></label>
+                    </div>
+                  </details>
+
+                  <div class="test-row"><label><span>WhatsApp para teste</span><input name="testWhatsappTo" placeholder="61999999999" /></label><button class="btn btn--outline" type="button" data-test-whatsapp>Enviar teste</button></div>
+                </div>
+              </section>
+
+              <section class="settings-tab-panel" data-config-panel="telegram" hidden>
+                <div class="integration-card integration-card--highlight">
+                  <div class="integration-card-head"><div><span class="eyebrow">Canal interno opcional</span><h3>Telegram</h3><p>Use para alertas da administração, portaria e grupos internos quando quiser um canal separado do WhatsApp.</p></div><span class="status-pill" data-status-telegram>Não verificado</span></div>
+                  <label class="checkline"><input type="checkbox" name="telegramEnabled" /> <span>Ativar envio automático por Telegram.</span></label>
+                  <label><span>Bot Token</span><input name="telegramBotToken" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter o token salvo" /></label>
+                  <div class="form-row"><label><span>Chat ID padrão</span><input name="telegramDefaultChatId" placeholder="ex.: -1001234567890" /></label><label><span>Chat ID da administração/portaria</span><input name="telegramAdminChatId" placeholder="ex.: -1001234567890" /></label></div>
+                  <label><span>Modo de formatação</span><select name="telegramParseMode"><option value="">Texto simples</option><option value="HTML">HTML</option><option value="MarkdownV2">MarkdownV2</option></select></label>
+                  <p class="form-hint">Crie o bot pelo BotFather, adicione o bot ao grupo/canal e informe o Chat ID. O token deve ficar apenas no Render ou salvo pelo painel do síndico.</p>
+                  <div class="test-row"><label><span>Chat ID para teste</span><input name="testTelegramChatId" placeholder="deixe em branco para usar o padrão" /></label><button class="btn btn--outline" type="button" data-test-telegram>Enviar teste</button></div>
+                </div>
+              </section>
+
+              <section class="settings-tab-panel" data-config-panel="asaas" hidden>
+                <div class="integration-card integration-card--highlight">
+                  <div class="integration-card-head"><div><span class="eyebrow">Cobrança</span><h3>Asaas — boletos bancários</h3><p>Use para reservas e cobranças administrativas quando o condomínio quiser pagamento integrado.</p></div><span class="status-pill" data-status-asaas>Não verificado</span></div>
+                  <label class="checkline"><input type="checkbox" name="asaasEnabled" /> <span>Ativar geração automática de boleto Asaas para reservas.</span></label>
+                  <div class="form-row"><label><span>Ambiente</span><select name="asaasEnvironment"><option value="sandbox">Sandbox / testes</option><option value="production">Produção</option></select></label><label><span>Vencimento</span><input name="asaasDueDays" type="number" min="0" step="1" placeholder="2" /></label></div>
+                  <label><span>API Key Asaas</span><input name="asaasApiKey" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter a chave salva" /></label>
+                  <div class="form-row"><label><span>Multa após vencimento (%)</span><input name="asaasFine" type="number" min="0" step="0.01" placeholder="2" /></label><label><span>Juros ao mês (%)</span><input name="asaasInterest" type="number" min="0" step="0.01" placeholder="1" /></label></div>
+                  <p class="form-hint">O boleto será registrado no Asaas usando CPF/CNPJ do morador. A API Key deve ficar apenas no Render, nunca no GitHub.</p>
+                  <button class="btn btn--outline" type="button" data-test-asaas>Testar conexão Asaas</button>
+                </div>
+              </section>
+
+              <section class="settings-tab-panel" data-config-panel="storage" hidden>
+                <div class="integration-card integration-card--highlight">
+                  <div class="integration-card-head"><div><span class="eyebrow">Arquivos leves no banco</span><h3>Armazenamento externo</h3><p>Guarde fotos, documentos e vídeos fora do MySQL. O banco salva apenas metadados e caminho externo.</p></div><span class="status-pill" data-status-storage>Não verificado</span></div>
+                  <label class="checkline"><input type="checkbox" name="storageEnabled" /> <span>Ativar armazenamento externo.</span></label>
+                  <label><span>Provedor</span><select name="storageProvider"><option value="supabase">Supabase Storage gratuito</option><option value="terabox">TeraBox Open Platform</option><option value="metadata-only">Somente metadados</option></select></label>
+                  <details class="integration-subcard" open>
+                    <summary>Supabase Storage</summary>
+                    <div class="integration-subcard-body">
+                      <label><span>Project URL</span><input name="supabaseUrl" placeholder="https://seu-projeto.supabase.co" /></label>
+                      <label><span>Service Role Key</span><input name="supabaseServiceRoleKey" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter a chave salva" /></label>
+                      <div class="form-row"><label><span>Bucket</span><input name="supabaseBucket" placeholder="vitoria-regia" /></label><label><span>Pasta raiz</span><input name="supabaseFolder" placeholder="documentos" /></label></div>
+                      <div class="form-row"><label><span>Link temporário por segundos</span><input name="supabaseSignedUrlExpires" type="number" min="60" max="604800" placeholder="3600" /></label><label class="checkline checkline--boxed"><input type="checkbox" name="supabasePublicBucket" /><span>Bucket público</span></label></div>
+                      <p class="form-hint">Use bucket privado com Service Role Key apenas no Render. O frontend nunca recebe a chave.</p>
+                    </div>
+                  </details>
+                  <details class="integration-subcard">
+                    <summary>TeraBox</summary>
+                    <div class="integration-subcard-body">
+                      <label><span>Base URL</span><input name="teraboxBaseUrl" placeholder="https://www.terabox.com" /></label>
+                      <label><span>Upload Base URL opcional</span><input name="teraboxUploadBaseUrl" placeholder="https://c-jp.terabox.com" /></label>
+                      <label><span>Access Token TeraBox</span><input name="teraboxAccessToken" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter o token salvo" /></label>
+                      <div class="form-row"><label><span>Pasta raiz</span><input name="teraboxFolder" placeholder="/vitoria-regia" /></label><label><span>Limite MB</span><input name="storageMaxUploadMb" type="number" min="1" max="50" /></label></div>
+                    </div>
+                  </details>
+                  <button class="btn btn--outline" type="button" data-test-storage>Testar storage</button>
+                </div>
+              </section>
+
+              <section class="settings-tab-panel" data-config-panel="diagnostico" hidden>
+                <div class="integration-card integration-card--highlight">
+                  <div class="integration-card-head"><div><span class="eyebrow">Resumo operacional</span><h3>Diagnóstico das integrações</h3><p>Veja rapidamente o que está ativo, salvo e pronto para produção.</p></div></div>
+                  <div class="integration-status" data-integration-status></div>
+                  <p class="form-hint">Dica: salve as configurações antes de rodar os testes. Tokens e senhas não são exibidos após salvar.</p>
+                </div>
+              </section>
             </div>
 
-            <div class="integration-card">
-              <h3>Asaas — boletos bancários</h3>
-              <label class="checkline"><input type="checkbox" name="asaasEnabled" /> <span>Ativar geração automática de boleto Asaas para reservas.</span></label>
-              <div class="form-row"><label><span>Ambiente</span><select name="asaasEnvironment"><option value="sandbox">Sandbox / testes</option><option value="production">Produção</option></select></label><label><span>Vencimento</span><input name="asaasDueDays" type="number" min="0" step="1" placeholder="2" /></label></div>
-              <label><span>API Key Asaas</span><input name="asaasApiKey" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter a chave salva" /></label>
-              <div class="form-row"><label><span>Multa após vencimento (%)</span><input name="asaasFine" type="number" min="0" step="0.01" placeholder="2" /></label><label><span>Juros ao mês (%)</span><input name="asaasInterest" type="number" min="0" step="0.01" placeholder="1" /></label></div>
-              <p class="form-hint">O boleto será registrado no Asaas usando CPF/CNPJ do morador. A API Key deve ficar apenas no Render, nunca no GitHub.</p>
-              <button class="btn btn--outline" type="button" data-test-asaas>Testar conexão Asaas</button>
+            <div class="settings-actions-sticky">
+              <button class="btn btn--primary" type="submit">Salvar integrações</button>
+              <p class="form-hint" data-notification-settings-message></p>
             </div>
-
-
-            <div class="integration-card">
-              <h3>Armazenamento externo</h3>
-              <p class="form-hint">Use para guardar fotos e documentos fora do banco de dados. O banco salvará apenas metadados e caminho externo.</p>
-              <label class="checkline"><input type="checkbox" name="storageEnabled" /> <span>Ativar armazenamento externo.</span></label>
-              <label><span>Provedor</span><select name="storageProvider"><option value="supabase">Supabase Storage gratuito</option><option value="terabox">TeraBox Open Platform</option><option value="metadata-only">Somente metadados</option></select></label>
-              <div class="integration-subcard">
-                <h4>Supabase Storage</h4>
-                <label><span>Project URL</span><input name="supabaseUrl" placeholder="https://seu-projeto.supabase.co" /></label>
-                <label><span>Service Role Key</span><input name="supabaseServiceRoleKey" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter a chave salva" /></label>
-                <div class="form-row"><label><span>Bucket</span><input name="supabaseBucket" placeholder="vitoria-regia" /></label><label><span>Pasta raiz</span><input name="supabaseFolder" placeholder="documentos" /></label></div>
-                <div class="form-row"><label><span>Link temporário por segundos</span><input name="supabaseSignedUrlExpires" type="number" min="60" max="604800" placeholder="3600" /></label><label class="checkline checkline--boxed"><input type="checkbox" name="supabasePublicBucket" /><span>Bucket público</span></label></div>
-                <p class="form-hint">Use bucket privado com Service Role Key apenas no Render. O frontend nunca recebe a chave.</p>
-              </div>
-              <div class="integration-subcard">
-                <h4>TeraBox</h4>
-                <label><span>Base URL</span><input name="teraboxBaseUrl" placeholder="https://www.terabox.com" /></label>
-                <label><span>Upload Base URL opcional</span><input name="teraboxUploadBaseUrl" placeholder="https://c-jp.terabox.com" /></label>
-                <label><span>Access Token TeraBox</span><input name="teraboxAccessToken" type="password" autocomplete="new-password" placeholder="Deixe em branco para manter o token salvo" /></label>
-                <div class="form-row"><label><span>Pasta raiz</span><input name="teraboxFolder" placeholder="/vitoria-regia" /></label><label><span>Limite MB</span><input name="storageMaxUploadMb" type="number" min="1" max="50" /></label></div>
-                <p class="form-hint">Use um access_token oficial da TeraBox Open Platform. Não salve esse token no GitHub.</p>
-              </div>
-              <button class="btn btn--outline" type="button" data-test-storage>Testar storage</button>
-            </div>
-
-            <button class="btn btn--primary" type="submit">Salvar integrações</button>
-            <p class="form-hint" data-notification-settings-message></p>
-            <div class="integration-status" data-integration-status></div>
           </form>
         </div>
       </section>

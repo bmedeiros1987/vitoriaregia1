@@ -14,6 +14,7 @@ const keys = {
   services: `${STORE_PREFIX}services`,
   serviceRequests: `${STORE_PREFIX}serviceRequests`,
   contactMessages: `${STORE_PREFIX}contactMessages`,
+  automationRequests: `${STORE_PREFIX}automationRequests`,
   financeRecords: `${STORE_PREFIX}financeRecords`,
   cloudFiles: `${STORE_PREFIX}cloudFiles`,
   settings: `${STORE_PREFIX}settings`,
@@ -127,6 +128,7 @@ const TAB_LABELS = {
   financeiro: 'Financeiro',
   servicos: 'Serviços',
   contato: 'Contato',
+  automacoes: 'Automações',
   portaria: 'Portaria',
   'visitantes-recorrentes': 'Visitantes recorrentes',
   encomendas: 'Encomendas',
@@ -212,6 +214,7 @@ const defaultSettings = {
     package: true,
     contact: true,
     serviceRequest: true,
+    automationRequests: true,
   },
 };
 
@@ -376,7 +379,12 @@ async function loadNotificationConfig() {
     return notificationConfig;
   } catch (error) {
     notificationConfig = null;
-    const status = $('[data-integration-status]');
+    updateIntegrationStatusPill('[data-status-email]', Boolean(email.enabled && ((email.provider === 'mailersend' && email.mailersend?.apiKeySaved && email.mailersend?.fromEmail) || (email.provider !== 'mailersend' && email.passwordSaved && email.user))), email.enabled ? 'Ativo' : 'Desativado');
+  updateIntegrationStatusPill('[data-status-whatsapp]', Boolean(whatsapp.enabled && ((whatsapp.provider === 'periskope' && whatsapp.periskope?.apiKeySaved && whatsapp.periskope?.phone) || (whatsapp.provider === 'evolution' && whatsapp.evolution?.apiKeySaved && whatsapp.evolution?.serverUrl) || (whatsapp.provider === 'meta' && whatsapp.tokenSaved && whatsapp.phoneNumberId))), whatsapp.enabled ? 'Ativo' : 'Desativado');
+  updateIntegrationStatusPill('[data-status-telegram]', Boolean(telegram.enabled && telegram.botTokenSaved && (telegram.defaultChatId || telegram.adminChatId)), telegram.enabled ? 'Ativo' : 'Desativado');
+  updateIntegrationStatusPill('[data-status-asaas]', Boolean(asaas.enabled && asaas.apiKeySaved), asaas.enabled ? 'Ativo' : 'Desativado');
+  updateIntegrationStatusPill('[data-status-storage]', Boolean(storage.enabled && ((storage.provider === 'supabase' && storage.supabase?.serviceRoleKeySaved) || storage.provider === 'metadata-only' || storage.terabox?.accessTokenSaved)), storage.enabled ? 'Ativo' : 'Desativado');
+  const status = $('[data-integration-status]');
     if (status) status.innerHTML = `<div class="empty-state">Não foi possível carregar integrações: ${escapeHTML(error.message)}</div>`;
     return null;
   } finally {
@@ -394,7 +402,12 @@ async function loadAsaasConfig() {
     return asaasConfig;
   } catch (error) {
     asaasConfig = null;
-    const status = $('[data-integration-status]');
+    updateIntegrationStatusPill('[data-status-email]', Boolean(email.enabled && ((email.provider === 'mailersend' && email.mailersend?.apiKeySaved && email.mailersend?.fromEmail) || (email.provider !== 'mailersend' && email.passwordSaved && email.user))), email.enabled ? 'Ativo' : 'Desativado');
+  updateIntegrationStatusPill('[data-status-whatsapp]', Boolean(whatsapp.enabled && ((whatsapp.provider === 'periskope' && whatsapp.periskope?.apiKeySaved && whatsapp.periskope?.phone) || (whatsapp.provider === 'evolution' && whatsapp.evolution?.apiKeySaved && whatsapp.evolution?.serverUrl) || (whatsapp.provider === 'meta' && whatsapp.tokenSaved && whatsapp.phoneNumberId))), whatsapp.enabled ? 'Ativo' : 'Desativado');
+  updateIntegrationStatusPill('[data-status-telegram]', Boolean(telegram.enabled && telegram.botTokenSaved && (telegram.defaultChatId || telegram.adminChatId)), telegram.enabled ? 'Ativo' : 'Desativado');
+  updateIntegrationStatusPill('[data-status-asaas]', Boolean(asaas.enabled && asaas.apiKeySaved), asaas.enabled ? 'Ativo' : 'Desativado');
+  updateIntegrationStatusPill('[data-status-storage]', Boolean(storage.enabled && ((storage.provider === 'supabase' && storage.supabase?.serviceRoleKeySaved) || storage.provider === 'metadata-only' || storage.terabox?.accessTokenSaved)), storage.enabled ? 'Ativo' : 'Desativado');
+  const status = $('[data-integration-status]');
     if (status) status.innerHTML += `<div class="empty-state">Não foi possível carregar Asaas: ${escapeHTML(error.message)}</div>`;
     return null;
   } finally {
@@ -413,7 +426,12 @@ async function loadStorageConfig() {
     return storageConfig;
   } catch (error) {
     storageConfig = null;
-    const status = $('[data-integration-status]');
+    updateIntegrationStatusPill('[data-status-email]', Boolean(email.enabled && ((email.provider === 'mailersend' && email.mailersend?.apiKeySaved && email.mailersend?.fromEmail) || (email.provider !== 'mailersend' && email.passwordSaved && email.user))), email.enabled ? 'Ativo' : 'Desativado');
+  updateIntegrationStatusPill('[data-status-whatsapp]', Boolean(whatsapp.enabled && ((whatsapp.provider === 'periskope' && whatsapp.periskope?.apiKeySaved && whatsapp.periskope?.phone) || (whatsapp.provider === 'evolution' && whatsapp.evolution?.apiKeySaved && whatsapp.evolution?.serverUrl) || (whatsapp.provider === 'meta' && whatsapp.tokenSaved && whatsapp.phoneNumberId))), whatsapp.enabled ? 'Ativo' : 'Desativado');
+  updateIntegrationStatusPill('[data-status-telegram]', Boolean(telegram.enabled && telegram.botTokenSaved && (telegram.defaultChatId || telegram.adminChatId)), telegram.enabled ? 'Ativo' : 'Desativado');
+  updateIntegrationStatusPill('[data-status-asaas]', Boolean(asaas.enabled && asaas.apiKeySaved), asaas.enabled ? 'Ativo' : 'Desativado');
+  updateIntegrationStatusPill('[data-status-storage]', Boolean(storage.enabled && ((storage.provider === 'supabase' && storage.supabase?.serviceRoleKeySaved) || storage.provider === 'metadata-only' || storage.terabox?.accessTokenSaved)), storage.enabled ? 'Ativo' : 'Desativado');
+  const status = $('[data-integration-status]');
     if (status) status.innerHTML += `<div class="empty-state">Não foi possível carregar storage: ${escapeHTML(error.message)}</div>`;
     return null;
   } finally {
@@ -491,7 +509,7 @@ async function saveNotificationConfigFromForm(form) {
     },
     whatsapp: {
       enabled: Boolean(data.get('whatsappEnabled')),
-      provider: data.get('whatsappProvider') || 'meta',
+      provider: data.get('whatsappProvider') || 'periskope',
       apiVersion: data.get('whatsappApiVersion')?.trim() || 'v20.0',
       token: data.get('whatsappToken') || '',
       phoneNumberId: data.get('whatsappPhoneNumberId')?.trim() || '',
@@ -513,6 +531,14 @@ async function saveNotificationConfigFromForm(form) {
         testTo: data.get('testWhatsappTo')?.trim() || '',
         hideUrlPreview: Boolean(data.get('periskopeHideUrlPreview')),
       },
+    },
+    telegram: {
+      enabled: Boolean(data.get('telegramEnabled')),
+      botToken: data.get('telegramBotToken') || '',
+      defaultChatId: data.get('telegramDefaultChatId')?.trim() || '',
+      adminChatId: data.get('telegramAdminChatId')?.trim() || data.get('telegramDefaultChatId')?.trim() || '',
+      testChatId: data.get('testTelegramChatId')?.trim() || data.get('telegramDefaultChatId')?.trim() || '',
+      parseMode: data.get('telegramParseMode') || '',
     },
   };
   const response = await apiRequest('/api/integrations/notifications', { method: 'POST', body: JSON.stringify(payload) });
@@ -582,7 +608,7 @@ function mergeLocalCacheWithBackendState(backendState = {}) {
   const mergeKeys = [
     'pendingResidents', 'residents', 'bookings', 'packages', 'packageLabelMemory', 'visitors',
     'recurringVisitors', 'notices', 'staff', 'staffSchedules', 'services', 'serviceRequests',
-    'contactMessages', 'financeRecords', 'cloudFiles',
+    'contactMessages', 'automationRequests', 'financeRecords', 'cloudFiles',
   ];
   let recovered = false;
   for (const name of mergeKeys) {
@@ -760,6 +786,8 @@ function getServiceRequests() { return read(keys.serviceRequests, []); }
 function saveServiceRequests(value) { write(keys.serviceRequests, value); }
 function getContactMessages() { return read(keys.contactMessages, []); }
 function saveContactMessages(value) { write(keys.contactMessages, value); }
+function getAutomationRequests() { return read(keys.automationRequests, []); }
+function saveAutomationRequests(value) { write(keys.automationRequests, value); }
 function getFinanceRecords() { return read(keys.financeRecords, []); }
 function saveFinanceRecords(value) { write(keys.financeRecords, value); }
 function getCloudFiles() { return read(keys.cloudFiles, []); }
@@ -773,7 +801,7 @@ function seedDemo() {
 
 function fillApartmentSelects() {
   const html = apartments().map((apt) => `<option value="${apt}">${apt}</option>`).join('');
-  $$('[data-login-apartment], [data-signup-apartment], [data-resident-apartment], [data-booking-apartment], [data-visitor-apartment], [data-package-apartment], [data-recurring-visitor-apartment], [data-cloud-file-apartment]').forEach((select) => {
+  $$('[data-login-apartment], [data-signup-apartment], [data-resident-apartment], [data-booking-apartment], [data-visitor-apartment], [data-package-apartment], [data-recurring-visitor-apartment], [data-cloud-file-apartment], [data-automation-apartment]').forEach((select) => {
     select.innerHTML = html;
   });
   $$('[data-recurring-unit-filter]').forEach((select) => {
@@ -1264,6 +1292,7 @@ function renderAll() {
   renderStaff();
   renderStaffSchedules();
   renderContactCenter();
+  renderAutomationCenter();
   renderServices();
   renderServiceRequests();
   renderSettings();
@@ -3169,7 +3198,7 @@ function renderPackages() {
     const msg = packageMessage(pkg);
     return `<div class="item">
       <div class="item-row"><div><div class="item-title">Unidade ${escapeHTML(pkg.apartment)} • ${escapeHTML(pkg.recipient)}</div><div class="item-sub">${escapeHTML(pkg.packageType || 'Encomenda')} • ${escapeHTML(pkg.carrier || 'Transportadora não informada')} • ${escapeHTML(pkg.code || 'sem código')} • Cadastro no sistema: ${formatDateTime(pkg.createdAt)}${pkg.notifiedAt ? `<br>Morador notificado em: ${formatDateTime(pkg.notifiedAt)}` : pkg.notificationStatus === 'failed' ? `<br>Falha ao notificar: ${escapeHTML(pkg.notificationResult || 'verifique e-mail')}` : '<br>Aguardando notificação ao morador'}${pkg.deliveredAt ? `<br>Retirada registrada em: ${formatDateTime(pkg.deliveredAt)}` : ''}${pkg.storageLocation && !isResident() ? `<br>Local: ${escapeHTML(pkg.storageLocation)}` : ''}${pkg.photoMeta ? `<br>Foto/etiqueta: ${cloudFileAction(pkg.photoMeta, 'Baixar foto')}` : ''}${pkg.notes ? `<br>${escapeHTML(pkg.notes)}` : ''}</div></div><span class="status status--${pkg.status === 'delivered' ? 'approved' : pkg.notifiedAt ? 'pending' : 'rejected'}">${pkg.status === 'delivered' ? 'Retirada' : pkg.notifiedAt ? 'Aguardando retirada' : 'Aguardando notificação'}</span></div>
-      ${isResident() ? '' : `<div class="item-actions">${recipients.length ? `<button class="btn btn--success btn--sm" data-auto-package-email="${pkg.id}">Auto e-mail (${recipients.length})</button><a class="btn btn--outline btn--sm" href="mailto:${encodeURIComponent(recipients.map((r) => r.email).join(','))}?subject=${encodeURIComponent('Encomenda na portaria')}&body=${encodeURIComponent(msg)}">Manual e-mail (${recipients.length})</a>` : ''}${resident ? `<button class="btn btn--success btn--sm" data-auto-package-whatsapp="${pkg.id}">Auto WhatsApp principal</button><a class="btn btn--outline btn--sm" target="_blank" href="${whatsAppLink(resident.whatsapp, msg)}">Manual WhatsApp principal</a>` : ''}<button class="btn btn--success btn--sm" data-deliver-package="${pkg.id}" ${!pkg.notifiedAt ? 'disabled title="Notifique o morador antes de marcar retirada"' : ''}>Marcar retirada</button></div>`}
+      ${isResident() ? '' : `<div class="item-actions">${recipients.length ? `<button class="btn btn--success btn--sm" data-auto-package-email="${pkg.id}">Auto e-mail (${recipients.length})</button><a class="btn btn--outline btn--sm" href="mailto:${encodeURIComponent(recipients.map((r) => r.email).join(','))}?subject=${encodeURIComponent('Encomenda na portaria')}&body=${encodeURIComponent(msg)}">Manual e-mail (${recipients.length})</a>` : ''}${resident ? `<button class="btn btn--success btn--sm" data-auto-package-whatsapp="${pkg.id}">Auto WhatsApp principal</button><a class="btn btn--outline btn--sm" target="_blank" href="${whatsAppLink(resident.whatsapp, msg)}">Manual WhatsApp principal</a><button class="btn btn--outline btn--sm" data-package-elevator-request="${pkg.id}">Autorizar elevador</button><button class="btn btn--outline btn--sm" data-package-ifood-request="${pkg.id}">Pedir código iFood</button>` : ''}<button class="btn btn--success btn--sm" data-deliver-package="${pkg.id}" ${!pkg.notifiedAt ? 'disabled title="Notifique o morador antes de marcar retirada"' : ''}>Marcar retirada</button></div>`}
     </div>`;
   }).join('') : empty('Nenhuma encomenda pendente.');
 }
@@ -3599,6 +3628,183 @@ function exportScheduleICS() {
 }
 
 
+function automationTypeLabel(type = '') {
+  const map = {
+    package_notice: 'Aviso de encomenda',
+    package_elevator: 'Autorizar envio pelo elevador',
+    visitor_authorization: 'Autorizar visitante',
+    ifood_code: 'Solicitar código iFood/delivery',
+    doorman_notice: 'Aviso da portaria',
+    syndic_notice: 'Notificação do síndico',
+  };
+  return map[type] || 'Solicitação';
+}
+function automationStatusLabel(status = '') {
+  const map = { pending: 'Pendente', approved: 'Autorizado', denied: 'Não autorizado', code: 'Código informado', closed: 'Encerrado', sent: 'Enviado' };
+  return map[status] || status || 'Pendente';
+}
+function automationStatusClass(status = '') {
+  if (['approved', 'code', 'sent', 'closed'].includes(status)) return 'approved';
+  if (status === 'denied') return 'rejected';
+  return 'pending';
+}
+function automationVisibleToCurrentUser(item = {}) {
+  if (isResident()) return item.apartment === session?.apartment;
+  return true;
+}
+function automationResidents(apartment) {
+  const residents = residentsByApartment(apartment).filter((resident) => (resident.status || 'approved') === 'approved');
+  const primary = residents.find((resident) => resident.primaryBilling) || residents[0];
+  return residents.filter((resident) => resident.email || resident.whatsapp).length ? residents.filter((resident) => resident.email || resident.whatsapp) : (primary ? [primary] : []);
+}
+function automationTargetStaff(kind = 'portaria') {
+  if (kind === 'sindico') return activeStaffFor('sindico');
+  return activeStaffFor('portaria').concat(activeStaffFor('sindico')).filter((person, index, list) => person.email || person.whatsapp ? list.findIndex((p) => (p.email || p.whatsapp || p.id) === (person.email || person.whatsapp || person.id)) === index : false);
+}
+function automationMessage(item = {}) {
+  const title = automationTypeLabel(item.type);
+  const detail = item.details ? `\nDetalhes: ${item.details}` : '';
+  const entity = item.entityLabel ? `\nReferência: ${item.entityLabel}` : '';
+  if (item.type === 'visitor_authorization') return `Olá. A portaria solicita autorização para entrada de visitante.\nUnidade: ${item.apartment}\nVisitante: ${item.visitorName || item.entityLabel || '-'}${detail}\nResponda pelo sistema: autorizar ou não autorizar.`;
+  if (item.type === 'package_elevator') return `Olá. A portaria solicita autorização para enviar uma encomenda pelo elevador.\nUnidade: ${item.apartment}${entity}${detail}\nResponda pelo sistema autorizando ou negando.`;
+  if (item.type === 'ifood_code') return `Olá. A portaria precisa do código de confirmação do iFood/delivery para a unidade ${item.apartment}.${entity}${detail}\nInforme o código pelo sistema ou responda ao contato da portaria.`;
+  if (item.type === 'package_notice') return `Olá. Há uma encomenda/delivery registrado na portaria para a unidade ${item.apartment}.${entity}${detail}`;
+  return `${title}\nUnidade: ${item.apartment}${entity}${detail}`;
+}
+function automationResponseMessage(item = {}, responseType = 'approved', code = '') {
+  const by = session?.name || 'Morador';
+  if (responseType === 'approved') return `Resposta do morador: AUTORIZADO.\nUnidade: ${item.apartment}\nSolicitação: ${automationTypeLabel(item.type)}\nRespondido por: ${by}\nReferência: ${item.entityLabel || '-'}`;
+  if (responseType === 'denied') return `Resposta do morador: NÃO AUTORIZADO.\nUnidade: ${item.apartment}\nSolicitação: ${automationTypeLabel(item.type)}\nRespondido por: ${by}\nReferência: ${item.entityLabel || '-'}`;
+  return `Código informado pelo morador.\nUnidade: ${item.apartment}\nCódigo: ${code}\nRespondido por: ${by}\nReferência: ${item.entityLabel || '-'}`;
+}
+async function notifyAutomationRecipients(item, channels = ['whatsapp']) {
+  const recipients = automationResidents(item.apartment);
+  if (!recipients.length) return { ok: false, results: [{ channel: channels.join('/'), ok: false, error: 'Nenhum morador com contato na unidade.' }] };
+  const responses = [];
+  for (const resident of recipients) {
+    const response = await notifyResidentEntity(resident, `${automationTypeLabel(item.type)} — ${getSettings().condominiumName}`, automationMessage(item), channels);
+    responses.push(...(response?.results || [response]));
+  }
+  return { ok: responses.some((entry) => entry?.ok), results: responses, recipients: recipients.map((r) => r.name || r.email || r.whatsapp) };
+}
+async function notifyAutomationStaff(item, responseType, code = '') {
+  const staff = automationTargetStaff('portaria');
+  const message = automationResponseMessage(item, responseType, code);
+  const responses = [];
+  for (const person of staff) {
+    try {
+      const response = await sendBackendNotification({ email: person.email, whatsapp: person.whatsapp, subject: `Resposta da unidade ${item.apartment} — ${automationTypeLabel(item.type)}`, message, channels: ['whatsapp'] });
+      responses.push(`${person.name}: ${resultSummary(response)}`);
+    } catch (error) {
+      responses.push(`${person.name}: erro ${error.message}`);
+    }
+  }
+  return responses;
+}
+async function createAutomationRequest(payload = {}, channels = ['whatsapp']) {
+  const item = {
+    id: uid('automation'),
+    type: payload.type || 'doorman_notice',
+    apartment: payload.apartment || '',
+    entityId: payload.entityId || '',
+    entityType: payload.entityType || '',
+    entityLabel: payload.entityLabel || '',
+    visitorName: payload.visitorName || '',
+    details: payload.details || '',
+    status: payload.status || 'pending',
+    requestedBy: session?.name || '',
+    requestedByRole: session?.role || '',
+    createdAt: nowISO(),
+    updatedAt: nowISO(),
+    channels,
+  };
+  saveAutomationRequests([item, ...getAutomationRequests()]);
+  let response = null;
+  if (notificationRules().automationRequests !== false) {
+    response = await notifyAutomationRecipients(item, channels);
+    item.notificationStatus = response?.ok ? 'sent' : 'failed';
+    item.notificationResult = resultSummary(response);
+    item.notifiedAt = nowISO();
+    saveAutomationRequests(getAutomationRequests().map((entry) => entry.id === item.id ? { ...entry, ...item } : entry));
+  }
+  logPortariaActivity('Criou solicitação automática', { ...item, summary: `${automationTypeLabel(item.type)} para unidade ${item.apartment}` }, 'automacao');
+  renderAll();
+  return { item, response };
+}
+async function createPackageAutomation(packageId, type) {
+  const pkg = getPackages().find((item) => item.id === packageId);
+  if (!pkg) { alert('Encomenda não encontrada.'); return; }
+  const defaultDetails = type === 'ifood_code' ? 'Informe o código de confirmação para liberação do entregador.' : 'A portaria solicita autorização para encaminhar a encomenda pelo elevador.';
+  const details = prompt('Mensagem/observação para o morador:', defaultDetails);
+  if (details === null) return;
+  const result = await createAutomationRequest({ type, apartment: pkg.apartment, entityId: pkg.id, entityType: 'package', entityLabel: `${pkg.packageType || 'Encomenda'} de ${pkg.recipient || 'destinatário'}${pkg.code ? ` • ${pkg.code}` : ''}`, details }, ['whatsapp']);
+  alert(`Solicitação criada. ${result.response ? resultSummary(result.response) : 'Notificação registrada.'}`);
+}
+async function respondAutomationRequest(id, responseType) {
+  const item = getAutomationRequests().find((entry) => entry.id === id);
+  if (!item) { alert('Solicitação não encontrada.'); return; }
+  if (isResident() && item.apartment !== session?.apartment) { alert('Esta solicitação não pertence à sua unidade.'); return; }
+  let code = '';
+  if (responseType === 'code') {
+    code = prompt('Informe o código do iFood/delivery:') || '';
+    if (!code.trim()) return;
+  }
+  const updated = { ...item, status: responseType, responseCode: code.trim(), respondedBy: session?.name || '', respondedAt: nowISO(), updatedAt: nowISO() };
+  saveAutomationRequests(getAutomationRequests().map((entry) => entry.id === id ? updated : entry));
+  const staffResponses = await notifyAutomationStaff(updated, responseType, code.trim());
+  logPortariaActivity('Respondeu solicitação automática', { ...updated, summary: `${automationTypeLabel(updated.type)}: ${automationStatusLabel(responseType)} na unidade ${updated.apartment}` }, 'automacao');
+  renderAll();
+  alert(staffResponses.length ? `Resposta registrada e enviada para a portaria: ${staffResponses.join(' | ')}` : 'Resposta registrada. Não há contatos da portaria/síndico configurados para aviso automático.');
+}
+function closeAutomationRequest(id) {
+  const item = getAutomationRequests().find((entry) => entry.id === id);
+  if (!item) return;
+  saveAutomationRequests(getAutomationRequests().map((entry) => entry.id === id ? { ...entry, status: 'closed', closedAt: nowISO(), updatedAt: nowISO() } : entry));
+  renderAll();
+}
+function setupAutomationCenter() {
+  const form = $('[data-automation-form]');
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    const channels = [];
+    if (data.get('notifyWhatsapp')) channels.push('whatsapp');
+    if (data.get('notifyEmail')) channels.push('email');
+    if (!channels.length) channels.push('whatsapp');
+    const message = $('[data-automation-message]');
+    try {
+      const result = await createAutomationRequest({
+        type: data.get('type'),
+        apartment: data.get('apartment'),
+        entityLabel: data.get('entityLabel')?.trim() || '',
+        visitorName: data.get('visitorName')?.trim() || '',
+        details: data.get('details')?.trim() || '',
+      }, channels);
+      if (message) message.textContent = `Solicitação criada. ${result.response ? resultSummary(result.response) : 'Notificação registrada.'}`;
+      form.reset(); fillApartmentSelects();
+    } catch (error) {
+      if (message) message.textContent = `Erro: ${error.message}`;
+    }
+  });
+  $('[data-automation-filter]')?.addEventListener('input', renderAutomationCenter);
+}
+function renderAutomationCenter() {
+  const box = $('[data-automation-list]');
+  if (!box) return;
+  const filter = normalizeText($('[data-automation-filter]')?.value || '');
+  let list = getAutomationRequests().filter(automationVisibleToCurrentUser).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  if (filter) list = list.filter((item) => normalizeText(`${item.apartment} ${automationTypeLabel(item.type)} ${item.entityLabel || ''} ${item.details || ''} ${item.status || ''}`).includes(filter));
+  box.innerHTML = list.length ? list.slice(0, 80).map((item) => {
+    const canRespond = isResident() && item.apartment === session?.apartment && item.status === 'pending';
+    const canClose = !isResident() && item.status !== 'closed';
+    return `<div class="item">
+      <div class="item-row"><div><div class="item-title">Unidade ${escapeHTML(item.apartment)} • ${escapeHTML(automationTypeLabel(item.type))}</div><div class="item-sub">${formatDateTime(item.createdAt)} • solicitado por ${escapeHTML(item.requestedBy || 'Portaria')}${item.entityLabel ? `<br>Referência: ${escapeHTML(item.entityLabel)}` : ''}${item.details ? `<br>${escapeHTML(item.details)}` : ''}${item.responseCode ? `<br><strong>Código informado:</strong> ${escapeHTML(item.responseCode)}` : ''}${item.notificationResult ? `<br>Envio: ${escapeHTML(item.notificationResult)}` : ''}</div></div><span class="status status--${automationStatusClass(item.status)}">${escapeHTML(automationStatusLabel(item.status))}</span></div>
+      ${canRespond ? `<div class="item-actions"><button class="btn btn--success btn--sm" data-automation-approve="${item.id}">Autorizar</button><button class="btn btn--outline btn--sm" data-automation-deny="${item.id}">Não autorizar</button><button class="btn btn--primary btn--sm" data-automation-code="${item.id}">Informar código</button></div>` : ''}
+      ${canClose ? `<div class="item-actions"><button class="btn btn--outline btn--sm" data-automation-close="${item.id}">Encerrar</button></div>` : ''}
+    </div>`;
+  }).join('') : empty(isResident() ? 'Nenhuma solicitação da portaria para sua unidade.' : 'Nenhuma automação registrada.');
+}
+
 function setupContactCenter() {
   const form = $('[data-contact-form]');
   form?.querySelector('[name="target"]')?.addEventListener('change', () => renderContactCenter());
@@ -3747,6 +3953,7 @@ function setupNotificationForms() {
       package: Boolean(data.get('package')),
       contact: Boolean(data.get('contact')),
       serviceRequest: Boolean(data.get('serviceRequest')),
+      automationRequests: Boolean(data.get('automationRequests')),
     };
     saveSettings(settings);
     $('[data-notification-rules-message]').textContent = 'Regras de notificação salvas.';
@@ -3812,6 +4019,29 @@ function setupNotificationForms() {
         if (problems.length) extra = ` | Diagnóstico: ${problems.join(' ')}`;
       } catch (_) {}
       msg.textContent = `Erro no teste de WhatsApp: ${error.message}${extra}`;
+      msg.style.color = 'var(--red)';
+    }
+  });
+
+  $('[data-test-telegram]')?.addEventListener('click', async () => {
+    const form = $('[data-notification-settings-form]');
+    const msg = $('[data-notification-settings-message]');
+    if (!backendAvailable) { msg.textContent = 'Backend indisponível.'; return; }
+    try {
+      await saveNotificationConfigFromForm(form);
+      const chatId = formDataOf(form, '[data-notification-settings-form]').get('testTelegramChatId');
+      msg.textContent = 'Enviando Telegram de teste...';
+      const response = await apiRequest('/api/integrations/test-telegram', { method: 'POST', body: JSON.stringify({ chatId }) });
+      msg.textContent = `Telegram de teste enviado. ID: ${response.messageId || response.response?.message_id || 'ok'}`;
+      msg.style.color = 'var(--green)';
+    } catch (error) {
+      let extra = '';
+      try {
+        const debug = await apiRequest('/api/integrations/telegram/debug');
+        const problems = debug?.telegram?.problems || [];
+        if (problems.length) extra = ` | Diagnóstico: ${problems.join(' ')}`;
+      } catch (_) {}
+      msg.textContent = `Erro no teste de Telegram: ${error.message}${extra}`;
       msg.style.color = 'var(--red)';
     }
   });
@@ -3941,6 +4171,31 @@ function renderNotificationRules() {
   form.package.checked = Boolean(rules.package);
   if (form.contact) form.contact.checked = Boolean(rules.contact);
   if (form.serviceRequest) form.serviceRequest.checked = Boolean(rules.serviceRequest);
+  if (form.automationRequests) form.automationRequests.checked = Boolean(rules.automationRequests);
+}
+
+function updateIntegrationStatusPill(selector, ok, label) {
+  const el = $(selector);
+  if (!el) return;
+  el.textContent = label || (ok ? 'Pronto' : 'Pendente');
+  el.classList.toggle('is-ok', Boolean(ok));
+  el.classList.toggle('is-warn', !ok);
+}
+
+function activateConfigTab(name = 'email') {
+  const target = name || 'email';
+  $$('[data-config-tab]').forEach((button) => button.classList.toggle('is-active', button.dataset.configTab === target));
+  $$('[data-config-panel]').forEach((panel) => {
+    const active = panel.dataset.configPanel === target;
+    panel.classList.toggle('is-active', active);
+    panel.hidden = !active;
+  });
+}
+
+function setupConfigTabs() {
+  $$('[data-config-tab]').forEach((button) => {
+    button.addEventListener('click', () => activateConfigTab(button.dataset.configTab || 'email'));
+  });
 }
 
 function renderNotificationSettings() {
@@ -3948,6 +4203,7 @@ function renderNotificationSettings() {
   if (!form || !notificationConfig) return;
   const email = notificationConfig.email || {};
   const whatsapp = notificationConfig.whatsapp || {};
+  const telegram = notificationConfig.telegram || {};
   const asaas = asaasConfig || {};
   const storage = storageConfig || {};
   form.emailEnabled.checked = Boolean(email.enabled);
@@ -3994,6 +4250,17 @@ function renderNotificationSettings() {
   if (form.periskopeCountryCode) form.periskopeCountryCode.value = periskope.countryCode || whatsapp.countryCode || '55';
   if (form.periskopeHideUrlPreview) form.periskopeHideUrlPreview.checked = periskope.hideUrlPreview !== false;
   if (form.testWhatsappTo) form.testWhatsappTo.value = periskope.testTo || evolution.testTo || whatsapp.testTo || '';
+  if (form.telegramEnabled) {
+    form.telegramEnabled.checked = Boolean(telegram.enabled);
+    if (form.telegramBotToken) {
+      form.telegramBotToken.value = '';
+      form.telegramBotToken.placeholder = telegram.botTokenSaved ? 'Bot Token salvo — deixe em branco para manter' : 'Token do bot Telegram';
+    }
+    if (form.telegramDefaultChatId) form.telegramDefaultChatId.value = telegram.defaultChatId || '';
+    if (form.telegramAdminChatId) form.telegramAdminChatId.value = telegram.adminChatId || '';
+    if (form.testTelegramChatId) form.testTelegramChatId.value = telegram.testChatId || telegram.defaultChatId || '';
+    if (form.telegramParseMode) form.telegramParseMode.value = telegram.parseMode || '';
+  }
   if (form.asaasEnabled) {
     form.asaasEnabled.checked = Boolean(asaas.enabled);
     form.asaasEnvironment.value = asaas.environment || 'sandbox';
@@ -4024,11 +4291,17 @@ function renderNotificationSettings() {
     form.teraboxFolder.value = tb.folder || '/vitoria-regia';
     form.storageMaxUploadMb.value = storage.maxUploadMb || 10;
   }
+  updateIntegrationStatusPill('[data-status-email]', Boolean(email.enabled && ((email.provider === 'mailersend' && email.mailersend?.apiKeySaved && email.mailersend?.fromEmail) || (email.provider !== 'mailersend' && email.passwordSaved && email.user))), email.enabled ? 'Ativo' : 'Desativado');
+  updateIntegrationStatusPill('[data-status-whatsapp]', Boolean(whatsapp.enabled && ((whatsapp.provider === 'periskope' && whatsapp.periskope?.apiKeySaved && whatsapp.periskope?.phone) || (whatsapp.provider === 'evolution' && whatsapp.evolution?.apiKeySaved && whatsapp.evolution?.serverUrl) || (whatsapp.provider === 'meta' && whatsapp.tokenSaved && whatsapp.phoneNumberId))), whatsapp.enabled ? 'Ativo' : 'Desativado');
+  updateIntegrationStatusPill('[data-status-telegram]', Boolean(telegram.enabled && telegram.botTokenSaved && (telegram.defaultChatId || telegram.adminChatId)), telegram.enabled ? 'Ativo' : 'Desativado');
+  updateIntegrationStatusPill('[data-status-asaas]', Boolean(asaas.enabled && asaas.apiKeySaved), asaas.enabled ? 'Ativo' : 'Desativado');
+  updateIntegrationStatusPill('[data-status-storage]', Boolean(storage.enabled && ((storage.provider === 'supabase' && storage.supabase?.serviceRoleKeySaved) || storage.provider === 'metadata-only' || storage.terabox?.accessTokenSaved)), storage.enabled ? 'Ativo' : 'Desativado');
   const status = $('[data-integration-status]');
   if (status) {
     status.innerHTML = `
       <div><strong>E-mail:</strong> ${email.enabled ? 'ativado' : 'desativado'} • provedor: ${escapeHTML(email.provider || 'smtp')} ${email.provider === 'mailersend' ? (email.mailersend?.apiKeySaved ? '• token MailerSend salvo' : '• token MailerSend não salvo') : (email.passwordSaved ? '• senha SMTP salva' : '• senha SMTP não salva')}</div>
-      <div><strong>WhatsApp:</strong> ${whatsapp.enabled ? 'ativado' : 'desativado'} • provedor: ${escapeHTML(whatsapp.provider || 'meta')} ${whatsapp.provider === 'evolution' ? (whatsapp.evolution?.apiKeySaved ? '• API Key Evolution salva' : '• API Key Evolution não salva') : (whatsapp.provider === 'periskope' ? (whatsapp.periskope?.apiKeySaved ? '• API Key Periskope salva' : '• API Key Periskope não salva') : (whatsapp.tokenSaved ? '• token Meta salvo' : '• token Meta não salvo'))}</div>
+      <div><strong>WhatsApp:</strong> ${whatsapp.enabled ? 'ativado' : 'desativado'} • provedor: ${escapeHTML(whatsapp.provider || 'periskope')} ${whatsapp.provider === 'evolution' ? (whatsapp.evolution?.apiKeySaved ? '• API Key Evolution salva' : '• API Key Evolution não salva') : (whatsapp.provider === 'periskope' ? (whatsapp.periskope?.apiKeySaved ? '• API Key Periskope salva' : '• API Key Periskope não salva') : (whatsapp.tokenSaved ? '• token Meta salvo' : '• token Meta não salvo'))}</div>
+      <div><strong>Telegram:</strong> ${telegram.enabled ? 'ativado' : 'desativado'} ${telegram.botTokenSaved ? '• Bot Token salvo' : '• Bot Token não salvo'} ${telegram.defaultChatId ? '• Chat ID configurado' : '• Chat ID não configurado'}</div>
       <div><strong>Asaas:</strong> ${asaas.enabled ? 'ativado' : 'desativado'} • ${escapeHTML(asaas.environment || 'sandbox')} ${asaas.apiKeySaved ? '• API Key salva' : '• API Key não salva'}</div>
       <div><strong>Storage:</strong> ${storage.enabled ? 'ativado' : 'desativado'} • ${escapeHTML(storage.provider || 'metadata-only')} ${storage.provider === 'supabase' ? (storage.supabase?.serviceRoleKeySaved ? '• Service Role Supabase salva' : '• Service Role Supabase não salva') : (storage.terabox?.accessTokenSaved ? '• token TeraBox salvo' : '• token TeraBox não salvo')}</div>
       <div><small>Para funcionar em produção, o backend precisa estar rodando com banco inicializado e as credenciais corretas.</small></div>`;
@@ -4069,6 +4342,7 @@ async function notifyResidentById(id, channels) {
 }
 
 function setupSettings() {
+  setupConfigTabs();
   setupNotificationForms();
   $('[data-settings-form]')?.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -4268,12 +4542,14 @@ function handleDocumentClick(event) {
     ['data-remove-space', removeSpace],
     ['data-auto-visitor-whatsapp', (id) => notifyVisitorById(id, ['whatsapp'])], ['data-auto-visitor-email', (id) => notifyVisitorById(id, ['email'])],
     ['data-auto-package-whatsapp', (id) => notifyPackageById(id, ['whatsapp'])], ['data-auto-package-email', (id) => notifyPackageById(id, ['email'])],
+    ['data-package-elevator-request', (id) => createPackageAutomation(id, 'package_elevator')], ['data-package-ifood-request', (id) => createPackageAutomation(id, 'ifood_code')],
     ['data-auto-resident-whatsapp', (id) => notifyResidentById(id, ['whatsapp'])], ['data-auto-resident-email', (id) => notifyResidentById(id, ['email'])],
     ['data-edit-staff', editStaff], ['data-remove-staff', removeStaff], ['data-remove-staff-schedule', removeStaffSchedule],
     ['data-edit-service', editService], ['data-remove-service', removeService],
     ['data-approve-service-request', (id) => updateServiceRequest(id, 'approved')], ['data-cancel-service-request', (id) => updateServiceRequest(id, 'canceled')],
     ['data-refresh-activity-logs', async () => { await renderActivityLogs(true); }], ['data-export-activity-logs', exportActivityLogsCSV],
     ['data-refresh-market-readiness', async () => { await renderMarketReadiness(true); }],
+    ['data-automation-approve', (id) => respondAutomationRequest(id, 'approved')], ['data-automation-deny', (id) => respondAutomationRequest(id, 'denied')], ['data-automation-code', (id) => respondAutomationRequest(id, 'code')], ['data-automation-close', (id) => closeAutomationRequest(id)],
     ['data-print-guests', printGuestList], ['data-export-guests', exportGuestListCSV],
     ['data-export-calendar-google', exportReservationsICS], ['data-export-schedule-google', exportScheduleICS], ['data-download-schedule-template', downloadScheduleTemplate],
     ['data-toggle-finance-public', toggleFinancePublic], ['data-remove-finance-record', removeFinanceRecord],
@@ -4325,6 +4601,7 @@ async function init() {
   setupStaff();
   setupStaffSchedules();
   setupContactCenter();
+  setupAutomationCenter();
   setupServices();
   setupFinanceRecords();
   setupSettings();
