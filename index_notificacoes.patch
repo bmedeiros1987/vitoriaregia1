@@ -1,0 +1,5 @@
+No index.html, adicionar antes de </head>:
+<link rel="stylesheet" href="vr-browser-notifications.css">
+
+No index.html, adicionar antes de </body>:
+<script src="vr-browser-notifications.js"></script>
