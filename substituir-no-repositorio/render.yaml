@@ -13,27 +13,17 @@ services:
       - key: APP_URL
         value: https://vitoriaregia1.onrender.com
       - key: DATABASE_PROVIDER
-        value: mysql
+        value: postgres
+      - key: DATABASE_URL
+        sync: false
+      - key: PGSSLMODE
+        value: require
+      - key: PGSSL_REJECT_UNAUTHORIZED
+        value: "false"
       - key: REQUIRE_DATABASE
         value: "true"
       - key: AUTO_INIT_DB
         value: "true"
-      - key: MYSQL_HOST
-        value: mysql-1c3b1be8-vitoriaregia1.a.aivencloud.com
-      - key: MYSQL_PORT
-        value: "22966"
-      - key: MYSQL_DATABASE
-        value: defaultdb
-      - key: MYSQL_USER
-        value: avnadmin
-      - key: MYSQL_SSL
-        value: "true"
-      - key: MYSQL_SSL_MODE
-        value: REQUIRED
-      - key: MYSQL_SSL_REJECT_UNAUTHORIZED
-        value: "false"
-      - key: MYSQL_PASSWORD
-        sync: false
       - key: SESSION_SECRET
         generateValue: true
       - key: BOOTSTRAP_ADMIN_ENABLED
