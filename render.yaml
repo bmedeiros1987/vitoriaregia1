@@ -12,8 +12,16 @@ services:
         value: production
       - key: FRONTEND_DIR
         value: ..
+      - key: DATABASE_PROVIDER
+        value: mysql
       - key: REQUIRE_DATABASE
         value: false
+      - key: MYSQL_SSL
+        value: true
+      - key: MYSQL_SSL_REJECT_UNAUTHORIZED
+        value: false
+      - key: MYSQL_CONNECTION_LIMIT
+        value: 5
       - key: SESSION_SECRET
         generateValue: true
       - key: CLOUD_PROVIDER

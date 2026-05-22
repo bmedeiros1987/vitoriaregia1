@@ -1,5 +1,5 @@
-const CACHE_NAME = 'vitoria-regia-v3-1-0';
-const ASSETS = ['/', '/index.html', '/styles.css', '/app.js', '/assets/building-bg.svg'];
+const CACHE_NAME = 'vitoria-regia-v3-4-0';
+const ASSETS = ['/', '/index.html', '/styles.css', '/app.js', '/manifest.webmanifest', '/assets/building-bg.svg', '/assets/logo-vitoria-regia.svg'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS)).catch(() => null));
   self.skipWaiting();

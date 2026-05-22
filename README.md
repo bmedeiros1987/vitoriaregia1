@@ -1,63 +1,31 @@
-# Sistema Vitória Régia — versão 3.1.0
+# Vitória Régia - Sistema Condominial Premium
 
-Pacote completo do sistema condominial Vitória Régia.
+Versão: 3.3.0-mysql
+Banco: MySQL
 
-## Melhorias desta versão
+Sistema completo para gestão condominial com moradores, usuários, encomendas, visitantes, reservas, comunicados, emergências, notificações, backup, atualização e ajuda integrada.
 
-- Layout premium responsivo para celular e PC.
-- Menu lateral compacto, com expansão ao passar o mouse no PC e menu deslizante no celular.
-- Tela inicial limpa, exibindo apenas usuário e senha.
-- Perfil reconhecido automaticamente pelo login e senha cadastrados.
-- Remoção dos botões duplicados de emergência.
-- Um único botão discreto de emergência com giroflex em todas as páginas.
-- Botão de voltar para Dashboard nas páginas internas.
-- Dashboard com imagem do prédio, saudação automática e ações rápidas clicáveis.
-- Encomendas e visitantes com foto/imagem vinculada à notificação.
-- Comunicados com prazo de visibilidade configurável.
-- Reset de emergência por síndico, subsíndico, portaria ou administrador.
-- Central de atualização em Configurações.
-- Backup e restauração de backup.
-- Versão atual exibida no rodapé.
-- Backend tolerante a falha de banco para evitar queda total do site.
+## Novidades da versão 3.3.0
 
-## Arquivos críticos
+- Aba **Ajuda** com manuais em PDF.
+- Contato com suporte por e-mail e WhatsApp sem expor dados na tela.
+- Termo técnico **leitura automática** substituído por **leitura automática da etiqueta/nota**.
+- Rodapé com versão e crédito de parceria.
+- Base MySQL mantida.
 
-```txt
-index.html
-app.js
-styles.css
-render.yaml
-backend/package.json
-backend/src/server.js
-assets/building-bg.svg
-```
+## Login inicial
 
-## Como subir pelo PC
+Proprietário/admin:
+- usuário: `admin`
+- senha: `admin123`
 
-1. Extraia este ZIP.
-2. Envie todo o conteúdo extraído para a raiz do repositório `vitoriaregia1`.
-3. Não deixe os arquivos dentro de uma pasta extra.
-4. Confirme que `backend/src/server.js` existe no GitHub.
-5. No Render, faça Manual Deploy.
+Síndico provisório:
+- usuário: `sindico`
+- senha: `sindico123`
 
-## Primeiro acesso
+Troque essas senhas depois do primeiro acesso.
 
-A tela inicial mostra apenas usuário e senha. Se ainda não houver usuários cadastrados, o primeiro login cria um administrador técnico automaticamente. Depois, cadastre os usuários reais em **Usuários** e, se desejar, bloqueie o primeiro acesso automático em **Configurações**.
 
-Para maior segurança em produção, configure no Render:
+## Versão 3.4.0-mysql — funcionalidades recuperadas
 
-```env
-ADMIN_USERNAME=seu_usuario_admin
-ADMIN_PASSWORD=sua_senha_forte
-ADMIN_NAME=Administrador
-SESSION_SECRET=uma_chave_grande
-REQUIRE_DATABASE=false
-```
-
-## Validação local
-
-```bash
-node verificar_arquivos_criticos.js
-node --check app.js
-cd backend && npm install && npm run check
-```
+Esta versão consolida novamente os recursos solicitados anteriormente: cadastro inicial com aprovação, senha temporária, recuperação de senha, unidades automáticas, reservas, visitantes, encomendas, comunicados, atalhos de aplicativo para morador/portaria, emergência com confirmação por síndico/portaria, ajuda integrada, suporte e base MySQL.

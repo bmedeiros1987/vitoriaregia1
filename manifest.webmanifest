@@ -1,0 +1,18 @@
+{
+  "name": "Vitória Régia Condomínio",
+  "short_name": "Vitória Régia",
+  "description": "Sistema condominial com moradores, portaria, encomendas, visitantes, reservas, comunicados e emergências.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f3147",
+  "theme_color": "#0f3147",
+  "icons": [
+    {
+      "src": "assets/logo-vitoria-regia.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
