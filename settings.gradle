@@ -19,3 +19,6 @@ include ':portariaApp'
 project(':portariaApp').projectDir = file('android-portaria/app')
 include ':moradorApp'
 project(':moradorApp').projectDir = file('android-morador/app')
+
+include ':sindicoApp'
+project(':sindicoApp').projectDir = file('android-sindico/app')

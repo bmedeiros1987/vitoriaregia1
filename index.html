@@ -39,8 +39,9 @@
           <span>Portaria e Moradores com acesso rápido pelo celular.</span>
         </div>
         <div class="mini-actions">
-          <a class="btn btn--outline btn--sm" href="https://github.com/bmedeiros1987/vitoriaregia1/releases/download/android-portaria-latest/vitoria-regia-portaria.apk" target="_blank" rel="noopener">Portaria</a>
           <a class="btn btn--outline btn--sm" href="https://github.com/bmedeiros1987/vitoriaregia1/releases/download/android-morador-latest/vitoria-regia-morador.apk" target="_blank" rel="noopener">Morador</a>
+          <a class="btn btn--outline btn--sm" href="https://github.com/bmedeiros1987/vitoriaregia1/releases/download/android-sindico-latest/vitoria-regia-sindico.apk" target="_blank" rel="noopener">Síndico</a>
+          <a class="btn btn--outline btn--sm" href="https://github.com/bmedeiros1987/vitoriaregia1/releases/download/android-portaria-latest/vitoria-regia-portaria.apk" target="_blank" rel="noopener">Portaria</a>
         </div>
       </div>
 
@@ -50,27 +51,16 @@
       </div>
 
       <form class="auth-form" data-login-form autocomplete="off">
-        <span class="eyebrow">Acesso ao sistema</span>
-        <h1>Escolha o perfil de acesso.</h1>
-        <p>Acesse conforme seu perfil. Versão operacional: o acesso e os dados exigem backend e banco MySQL ativos.</p>
+        <span class="eyebrow">Acesso inteligente</span>
+        <h1>Entre com seu usuário e senha.</h1>
+        <p>O sistema identifica automaticamente se o acesso é de morador, síndico, subsíndico, portaria ou administrador. Não é necessário escolher perfil ou unidade na tela inicial.</p>
+
+        <input type="hidden" name="role" value="" />
+        <input type="hidden" name="apartment" value="" />
 
         <label>
-          <span>Perfil</span>
-          <select name="role" data-login-role>
-            <option value="morador">Morador</option>
-            <option value="sindico">Síndico / Administração</option>
-            <option value="portaria">Portaria</option>
-          </select>
-        </label>
-
-        <label data-login-unit-wrap>
-          <span>Unidade</span>
-          <select name="apartment" data-login-apartment></select>
-        </label>
-
-        <label>
-          <span>E-mail / usuário</span>
-          <input name="email" type="email" required placeholder="seu@email.com" autocomplete="username" />
+          <span>Usuário ou e-mail</span>
+          <input name="email" type="text" required placeholder="seu usuário ou e-mail" autocomplete="username" />
         </label>
 
         <label>
@@ -91,7 +81,6 @@
         <span class="eyebrow">Recuperação de acesso</span>
         <h1>Receber senha temporária por e-mail.</h1>
         <p>Informe o e-mail cadastrado. Se o usuário estiver aprovado/ativo, o sistema enviará uma senha temporária para troca no próximo acesso.</p>
-        <label><span>Perfil</span><select name="role"><option value="morador">Morador</option><option value="sindico">Síndico / Administração</option><option value="portaria">Portaria</option></select></label>
         <label><span>E-mail cadastrado</span><input name="email" type="email" required autocomplete="username" /></label>
         <div class="split-buttons"><button class="btn btn--primary" type="submit">Enviar senha temporária</button><button class="btn btn--outline" type="button" data-back-login>Voltar ao login</button></div>
         <p class="form-hint" data-forgot-message></p>
@@ -228,6 +217,30 @@
           </div>
         </div>
 
+
+
+        <div class="premium-shortcut-grid" data-premium-shortcuts>
+          <a href="#financeiro" data-shortcut="financeiro" class="premium-shortcut"><span>💳</span><strong>Financeiro</strong><small>Contas, taxas e relatórios</small></a>
+          <a href="#reservas" data-shortcut="reservas" class="premium-shortcut"><span>📅</span><strong>Reservas</strong><small>Áreas comuns e agenda</small></a>
+          <a href="#visitantes-recorrentes" data-shortcut="visitantes-recorrentes" class="premium-shortcut"><span>👥</span><strong>Visitantes</strong><small>Autorizações e histórico</small></a>
+          <a href="#encomendas" data-shortcut="encomendas" class="premium-shortcut"><span>📦</span><strong>Encomendas</strong><small>Entregas e avisos</small></a>
+          <a href="#comunicados" data-shortcut="comunicados" class="premium-shortcut"><span>📣</span><strong>Comunicados</strong><small>Avisos do condomínio</small></a>
+          <a href="#portaria" data-shortcut="portaria" class="premium-shortcut" data-roles="sindico,portaria"><span>🛡️</span><strong>Portaria</strong><small>Acesso e ocorrências</small></a>
+          <a href="#automacoes" data-shortcut="automacoes" class="premium-shortcut"><span>🤖</span><strong>Automações</strong><small>Regras e mensagens</small></a>
+          <a href="#manual" data-shortcut="manual" class="premium-shortcut"><span>❔</span><strong>Ajuda</strong><small>Manuais e suporte</small></a>
+          <a href="#configuracoes" data-shortcut="configuracoes" class="premium-shortcut" data-roles="sindico"><span>⚙️</span><strong>Configurações</strong><small>Sistema e integrações</small></a>
+          <a href="#excelencia" data-shortcut="excelencia" class="premium-shortcut premium-shortcut--highlight" data-roles="sindico"><span>💎</span><strong>Central Premium</strong><small>Controle do plano e recursos</small></a>
+        </div>
+
+        <article class="panel premium-profile-panel" data-roles="sindico">
+          <div>
+            <span class="eyebrow">Perfis e permissões</span>
+            <h2>Síndico morador ou terceiro, com troca segura.</h2>
+            <p>O acesso agora é detectado pelo usuário e senha. O síndico pode ser morador, profissional externo ou empresa terceirizada. Quando houver troca de gestão, basta reatribuir o perfil e gerar uma nova senha temporária.</p>
+          </div>
+          <a href="#equipe" data-shortcut="equipe" class="btn btn--primary">Gerenciar agora</a>
+        </article>
+
         <div class="kpi-grid">
           <article class="kpi"><span>👤</span><small>Cadastros pendentes</small><strong data-kpi-pending-residents>0</strong><em>aguardando síndico</em></article>
           <article class="kpi"><span>📅</span><small>Reservas pré-agendadas</small><strong data-kpi-pending-bookings>0</strong><em>bloqueiam datas</em></article>
@@ -303,13 +316,17 @@
 
       <section id="equipe" class="section" data-section data-roles="sindico">
         <div class="section-head">
-          <div><span class="eyebrow">Exclusivo do síndico</span><h2>Usuários, administradores e permissões</h2><p>Cadastre síndico, subsíndico, portaria e outros administradores. O síndico pode ser morador também, mas seu login permanece administrativo.</p></div>
+          <div><span class="eyebrow">Exclusivo do síndico</span><h2>Usuários, administradores e permissões</h2><p>Cadastre síndico, subsíndico, portaria e administradores. O síndico pode ser morador, terceiro ou empresa terceirizada, e pode ser reatribuído com histórico e segurança.</p></div>
         </div>
         <div class="content-grid content-grid--two">
           <form class="panel form-card" data-staff-form autocomplete="off">
             <div class="panel-header"><div><span class="eyebrow">Usuários</span><h2>Novo usuário interno</h2></div></div>
             <label><span>Nome</span><input name="name" required /></label>
-            <label><span>Perfil base</span><select name="role" required><option value="sindico">Síndico</option><option value="subsindico">Subsíndico</option><option value="porteiro">Porteiro</option></select></label>
+            <label><span>Perfil base</span><select name="role" required><option value="sindico">Síndico</option><option value="subsindico">Subsíndico</option><option value="porteiro">Porteiro</option><option value="administrador">Administrador</option></select></label>
+            <div class="form-row">
+              <label><span>Tipo de vínculo</span><select name="affiliation"><option value="terceiro">Terceiro / profissional externo</option><option value="morador">Morador do condomínio</option><option value="empresa">Empresa terceirizada</option></select></label>
+              <label><span>Unidade vinculada, se houver</span><select name="staffApartment" data-staff-apartment><option value="">Sem unidade</option></select></label>
+            </div>
             <label><span>E-mail interno para recebimento</span><input name="email" type="email" placeholder="não será exibido ao morador" /></label>
             <label><span>WhatsApp interno para recebimento</span><input name="whatsapp" type="tel" placeholder="não será exibido ao morador" /></label>
             <label class="checkline checkline--boxed"><input type="checkbox" name="active" checked /><span>Cadastro ativo no sistema</span></label>
@@ -812,38 +829,36 @@ João Souza - CPF ***.000.***-**"></textarea></label>
       <section id="app-android" class="section" data-section data-roles="morador,sindico,portaria">
         <div class="section-head">
           <div>
-            <span class="eyebrow">Aplicativo</span>
-            <h2>Apps Android</h2>
-            <p>Instale os aplicativos Android da Portaria e dos Moradores. Ambos continuam usando o backend, o banco e as regras de login do sistema.</p>
+            <span class="eyebrow">Aplicativos oficiais</span>
+            <h2>Baixar aplicativos por tipo de usuário</h2>
+            <p>Instale o aplicativo correspondente ao seu perfil. O login é sempre por usuário e senha, e o perfil é detectado automaticamente pelo sistema.</p>
           </div>
         </div>
 
-        <div class="content-grid content-grid--two">
-          <article class="panel app-download-panel">
-            <div class="app-download-hero"><div class="app-phone-icon">🛡️</div><div><span class="eyebrow">Android</span><h2>Vitória Régia Portaria</h2><p>App para porteiros: visitantes, visitantes recorrentes, encomendas, câmera e leitura de etiquetas.</p></div></div>
+        <div class="app-download-grid-premium">
+          <article class="panel app-download-panel app-download-panel--morador">
+            <div class="app-download-hero"><div class="app-phone-icon">🏠</div><div><span class="eyebrow">Moradores</span><h2>App do Morador</h2><p>Comunicados, reservas, encomendas, visitantes, financeiro da unidade e emergência.</p></div></div>
+            <div class="app-download-actions"><a class="btn btn--primary" href="https://github.com/bmedeiros1987/vitoriaregia1/releases/download/android-morador-latest/vitoria-regia-morador.apk" target="_blank" rel="noopener">Baixar APK Morador</a><a class="btn btn--ghost" href="downloads/vitoria-regia-morador-android-project.zip" download>Projeto Android</a></div>
+          </article>
+          <article class="panel app-download-panel app-download-panel--sindico">
+            <div class="app-download-hero"><div class="app-phone-icon">👤</div><div><span class="eyebrow">Gestão</span><h2>App do Síndico</h2><p>Financeiro, aprovações, equipe, comunicados, relatórios, permissões e Central Premium.</p></div></div>
+            <div class="app-download-actions"><a class="btn btn--primary" href="https://github.com/bmedeiros1987/vitoriaregia1/releases/download/android-sindico-latest/vitoria-regia-sindico.apk" target="_blank" rel="noopener">Baixar APK Síndico</a><a class="btn btn--ghost" href="downloads/vitoria-regia-sindico-android-project.zip" download>Projeto Android</a></div>
+          </article>
+          <article class="panel app-download-panel app-download-panel--portaria">
+            <div class="app-download-hero"><div class="app-phone-icon">🛡️</div><div><span class="eyebrow">Portaria</span><h2>App da Portaria</h2><p>Controle de acesso, visitantes, encomendas, fotos, leitura automática de etiqueta/nota e ocorrências.</p></div></div>
             <div class="app-download-actions"><a class="btn btn--primary" href="https://github.com/bmedeiros1987/vitoriaregia1/releases/download/android-portaria-latest/vitoria-regia-portaria.apk" target="_blank" rel="noopener">Baixar APK Portaria</a><a class="btn btn--ghost" href="downloads/vitoria-regia-portaria-android-project.zip" download>Projeto Android</a></div>
           </article>
-          <article class="panel app-download-panel">
-            <div class="app-download-hero"><div class="app-phone-icon">🏠</div><div><span class="eyebrow">Android</span><h2>Vitória Régia Morador</h2><p>App para moradores: acesso rápido a encomendas, notificações, comunicados, reservas, serviços e últimos visitantes da unidade.</p></div></div>
-            <div class="app-download-actions"><a class="btn btn--primary" href="https://github.com/bmedeiros1987/vitoriaregia1/releases/download/android-morador-latest/vitoria-regia-morador.apk" target="_blank" rel="noopener">Baixar APK Morador</a><a class="btn btn--ghost" href="downloads/vitoria-regia-morador-android-project.zip" download>Projeto Android</a></div>
-            <p class="form-hint">Execute o workflow <strong>Build Android APKs</strong> para publicar os dois APKs em releases separadas.</p>
-          </article>
-
-          <article class="panel">
-            <div class="panel-header">
-              <div>
-                <span class="eyebrow">Instalação</span>
-                <h2>Como instalar no Android</h2>
-              </div>
-            </div>
-            <div class="install-steps">
-              <div><strong>1.</strong><span>Baixe o arquivo <b>vitoria-regia-portaria.apk</b> ou <b>vitoria-regia-morador.apk</b> no celular Android.</span></div>
-              <div><strong>2.</strong><span>Abra o arquivo baixado e permita instalação de apps desconhecidos, se o Android solicitar.</span></div>
-              <div><strong>3.</strong><span>Abra o app e faça login com usuário e senha da portaria. O app não deve liberar acesso sem autenticação.</span></div>
-              <div><strong>4.</strong><span>Portaria usa a câmera para visitantes/encomendas; moradores acessam rapidamente encomendas, avisos e visitantes recentes da própria unidade.</span></div>
-            </div>
-          </article>
         </div>
+
+        <article class="panel install-note-premium">
+          <div class="panel-header"><div><span class="eyebrow">Instalação</span><h2>Como instalar no Android</h2></div></div>
+          <div class="install-steps">
+            <div><strong>1.</strong><span>Baixe o APK do seu perfil.</span></div>
+            <div><strong>2.</strong><span>Abra o arquivo no celular e permita instalação de app desconhecido, se solicitado.</span></div>
+            <div><strong>3.</strong><span>Entre com o usuário e senha aprovados no sistema.</span></div>
+            <div><strong>4.</strong><span>O app identifica automaticamente as funções disponíveis para você.</span></div>
+          </div>
+        </article>
       </section>
 
       <section id="excelencia" class="section" data-section data-roles="sindico">
@@ -1060,7 +1075,7 @@ João Souza - CPF ***.000.***-**"></textarea></label>
 
   <footer class="system-version-footer" data-system-version-footer>
     <span>Sistema Vitória Régia</span>
-    <strong>v3.6.0-mysql-modulos-restaurados</strong>
+    <strong>v3.7.0-mysql-premium-app</strong>
     <small>Desenvolvido em parceria por Bruno Saraiva e ChatGPT.</small>
   </footer>
 

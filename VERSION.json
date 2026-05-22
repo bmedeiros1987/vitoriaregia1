@@ -1,22 +1,15 @@
 {
-  "version": "3.6.0-mysql-modulos-restaurados",
-  "date": "2026-05-21",
+  "version": "3.8.0-mysql-premium-apps",
+  "date": "2026-05-22",
   "database": "mysql",
-  "base": "vitoria_regia_automacoes_mensagens_portaria",
-  "description": "Versão completa com módulos antigos restaurados e compatibilidade MySQL mantida.",
-  "restoredModules": [
-    "financeiro completo",
-    "serviços",
-    "contato",
-    "automações",
-    "mensagens da portaria",
-    "visitantes recorrentes",
-    "encomendas com leitura automática da etiqueta/nota",
-    "arquivos/nuvem",
-    "comunicados",
-    "escala",
-    "calendário",
-    "central premium",
-    "configurações avançadas"
+  "base": "v3.7.0 premium app",
+  "description": "Versão premium com recuperação de senha apenas para usuários aprovados, envio de senha temporária por e-mail, projetos Android por perfil e pacote iOS/PWA preparado.",
+  "highlights": [
+    "esqueci minha senha com senha temporária simples",
+    "recuperação restrita a usuários aprovados pelo síndico/admin",
+    "envio da senha temporária por e-mail",
+    "projetos Android para Morador, Síndico e Portaria",
+    "workflow GitHub Actions para gerar APKs",
+    "pacote iOS/PWA preparado para publicação com Xcode"
   ]
 }

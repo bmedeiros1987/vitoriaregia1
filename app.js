@@ -778,7 +778,7 @@ function seedDemo() {
 
 function fillApartmentSelects() {
   const html = apartments().map((apt) => `<option value="${apt}">${apt}</option>`).join('');
-  $$('[data-login-apartment], [data-signup-apartment], [data-resident-apartment], [data-booking-apartment], [data-visitor-apartment], [data-package-apartment], [data-recurring-visitor-apartment], [data-cloud-file-apartment], [data-automation-apartment]').forEach((select) => {
+  $$('[data-login-apartment], [data-signup-apartment], [data-resident-apartment], [data-booking-apartment], [data-visitor-apartment], [data-package-apartment], [data-recurring-visitor-apartment], [data-cloud-file-apartment], [data-automation-apartment], [data-staff-apartment]').forEach((select) => {
     select.innerHTML = html;
   });
   $$('[data-recurring-unit-filter]').forEach((select) => {
@@ -990,14 +990,12 @@ function authSetup() {
   backLogin?.addEventListener('click', () => setTab('login'));
 
   function syncRoleUI() {
-    const role = roleSelect.value;
-    unitWrap.style.display = role === 'morador' ? 'grid' : 'none';
-    // O acesso temporário de implantação continua aceito no backend apenas enquanto
-    // não existir síndico/administrador válido, mas a tela de login não exibe mais
-    // aviso público sobre usuário temporário.
+    // Versão premium: o perfil e a unidade são detectados pelo usuário autenticado.
+    if (unitWrap) unitWrap.style.display = 'none';
+    if (roleSelect) roleSelect.closest('label')?.classList.add('is-hidden');
     if (bootstrapPasswordWrap) bootstrapPasswordWrap.style.display = 'none';
   }
-  roleSelect.addEventListener('change', syncRoleUI);
+  roleSelect?.addEventListener('change', syncRoleUI);
   $('[data-login-apartment]')?.addEventListener('change', syncRoleUI);
   syncRoleUI();
 
@@ -1010,12 +1008,10 @@ function authSetup() {
       return;
     }
     const form = new FormData(loginForm);
-    const role = form.get('role');
     const email = String(form.get('email') || '').trim();
     const password = String(form.get('password') || '');
-    const apartment = role === 'morador' ? form.get('apartment') : '';
     try {
-      const payload = { role, email, password, apartment, demo: false };
+      const payload = { email, password, demo: false, autoDetectProfile: true };
       const result = await createBackendSession(payload);
       await loadBackendState();
       startSession(result?.user || payload);
@@ -1030,7 +1026,7 @@ function authSetup() {
     const message = $('[data-forgot-message]');
     const form = new FormData(forgotForm);
     try {
-      const result = await requestPasswordReset({ role: form.get('role'), email: String(form.get('email') || '').trim() });
+      const result = await requestPasswordReset({ email: String(form.get('email') || '').trim(), autoDetectProfile: true });
       message.textContent = result.message || 'Se o usuário estiver cadastrado e aprovado, uma senha temporária será enviada por e-mail.';
     } catch (error) {
       message.textContent = error.message || 'Não foi possível enviar a senha temporária.';
@@ -3351,7 +3347,9 @@ function setupStaff() {
       id: uid('staff'),
       name: data.get('name').trim(),
       role: data.get('role'),
-      isAdmin: Boolean(data.get('isAdmin')) || ['sindico', 'subsindico'].includes(roleKey(data.get('role'))),
+      affiliation: data.get('affiliation') || 'terceiro',
+      apartment: data.get('staffApartment') || '',
+      isAdmin: Boolean(data.get('isAdmin')) || ['sindico', 'subsindico', 'administrador'].includes(roleKey(data.get('role'))),
       allowedTabs: normalizeAllowedTabs(data.getAll('allowedTabs')),
       email: data.get('email').trim(),
       whatsapp: data.get('whatsapp').trim(),
@@ -3380,7 +3378,7 @@ function renderStaff() {
       <div class="item-row">
         <div>
           <div class="item-title">${escapeHTML(item.name)} <span class="badge">${escapeHTML(roleLabel(item.role))}</span> ${staffIsAdministrator(item) ? '<span class="badge badge--approved">Administrador</span>' : ''} ${item.active === false ? '<span class="badge badge--danger">Inativo</span>' : '<span class="badge badge--approved">Ativo</span>'} <span class="status status--${staffStatusClass(item.status)}">${escapeHTML(staffStatusLabel(item.status))}</span></div>
-          <div class="item-sub">E-mail: ${escapeHTML(item.email || 'não informado')} • WhatsApp: ${escapeHTML(item.whatsapp || 'não informado')}</div>
+          <div class="item-sub">E-mail: ${escapeHTML(item.email || 'não informado')} • WhatsApp: ${escapeHTML(item.whatsapp || 'não informado')}<br>Vínculo: ${escapeHTML(item.affiliation || 'terceiro')} ${item.apartment ? `• Unidade ${escapeHTML(item.apartment)}` : '• Sem unidade vinculada'}</div>
           ${renderStaffAllowedTabs(item)}
           ${(item.awayFrom || item.awayTo) ? `<div class="item-sub">Período informado: ${escapeHTML(item.awayFrom || '-')} até ${escapeHTML(item.awayTo || '-')}</div>` : ''}
           ${!staffAvailable(item) ? `<div class="item-sub"><strong>Bloqueado para mensagens automáticas enquanto estiver ${escapeHTML(staffStatusLabel(item.status).toLowerCase())}.</strong></div>` : ''}

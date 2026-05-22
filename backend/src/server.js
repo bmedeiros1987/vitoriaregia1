@@ -546,9 +546,10 @@ function verifyPassword(password, storedHash = '') {
 }
 
 function temporaryPassword() {
-  const a = crypto.randomBytes(3).toString('hex').toUpperCase();
-  const b = crypto.randomBytes(3).toString('hex').toUpperCase();
-  return `VR-${a}-${b}`;
+  // Senha temporária simples para o usuário digitar, mas gerada de forma aleatória.
+  // Exemplo: VR-482913
+  const number = crypto.randomInt(100000, 1000000);
+  return `VR-${number}`;
 }
 
 function fallbackAuthAccounts() {
@@ -2362,11 +2363,11 @@ async function recordActivityLog(entry = {}, user = {}) {
 
 async function handleLogin(req, res) {
   const requested = req.body || {};
-  const requestedRole = requested.role || 'morador';
+  const requestedRole = requested.role || ''; // v3.7: perfil detectado automaticamente pelo usuário
   const email = normalizeEmail(requested.email || '');
   const password = String(requested.password || '');
 
-  if (requestedRole === 'sindico' && matchesBootstrapAdmin(email, password)) {
+  if (matchesBootstrapAdmin(email, password)) {
     const user = {
       id: 'bootstrap-admin',
       role: 'sindico',
@@ -2394,10 +2395,9 @@ async function handleLogin(req, res) {
   }
   if (!verifyPassword(password, account.passwordHash)) return res.status(401).send('E-mail ou senha inválidos.');
 
-  const target = resolveAccountTarget(email, requestedRole);
-  const role = target.role || account.role || allowedRole(email, requestedRole);
-  if (requestedRole === 'sindico' && role !== 'sindico') return res.status(403).send('E-mail não autorizado para acesso de síndico/administração.');
-  if (requestedRole === 'portaria' && role !== 'portaria') return res.status(403).send('E-mail não autorizado para acesso de portaria.');
+  const target = resolveAccountTarget(email, requestedRole || account.role || '');
+  const role = target.role || account.role || allowedRole(email, requestedRole || account.role || '');
+  // v3.7: não existe seleção pública de perfil. O tipo de acesso é definido pelo cadastro do usuário.
   if (role === 'morador' && REQUIRE_APPROVED_RESIDENT && !target.resident) return res.status(403).send('Cadastro de morador não aprovado ou não localizado para este e-mail.');
   if (target.staff && !staffAvailable(target.staff)) return res.status(403).send('Usuário de equipe indisponível, afastado, ausente ou de férias. O acesso/mensagens estão bloqueados enquanto durar a indisponibilidade.');
 
@@ -2537,25 +2537,44 @@ app.post('/auth/password/admin-reset', requireDatabaseReady, requireSyndicUser, 
 });
 
 app.post('/auth/password/forgot', requireDatabaseReady, async (req, res) => {
+  const genericMessage = 'Se o usuário estiver cadastrado e já tiver sido aprovado pelo síndico, enviaremos uma senha temporária por e-mail.';
   try {
     const email = normalizeEmail(req.body?.email || '');
     if (!email) return res.status(400).send('Informe o e-mail cadastrado.');
-    const target = resolveAccountTarget(email, req.body?.role || '');
-    if (!target.resident && !target.staff) return res.json({ ok: true, message: 'Se o e-mail estiver cadastrado e aprovado, enviaremos uma senha temporária.' });
+
+    // Segurança: só permite recuperação para conta já liberada/aprovada.
+    // Cadastro pendente ou reprovado não recebe senha temporária.
+    const account = await authAccountByEmail(email);
+    if (!account || account.active !== true) {
+      return res.json({ ok: true, message: genericMessage });
+    }
+
+    const target = resolveAccountTarget(email, req.body?.role || '', { residentId: account.residentId, staffId: account.staffId });
+    if (!target.resident && !target.staff) {
+      return res.json({ ok: true, message: genericMessage });
+    }
+    if (target.staff && !staffAvailable(target.staff)) {
+      return res.json({ ok: true, message: genericMessage });
+    }
+
     const temp = temporaryPassword();
     await upsertAuthAccount({
       email,
-      role: target.role,
-      residentId: target.resident?.id || null,
-      staffId: target.staff?.id || null,
+      role: target.role || account.role || 'morador',
+      residentId: target.resident?.id || account.residentId || null,
+      staffId: target.staff?.id || account.staffId || null,
       password: temp,
       active: true,
       mustChangePassword: true,
-      metadata: { source: 'forgot-password', at: new Date().toISOString() },
+      metadata: { ...(account.metadata || {}), source: 'forgot-password', at: new Date().toISOString() },
     });
+
     await sendTemporaryPassword(email, temp, target.resident?.name || target.staff?.name || 'usuário');
-    res.json({ ok: true, message: 'Senha temporária enviada para o e-mail cadastrado.' });
-  } catch (error) { res.status(400).send(error.message); }
+    res.json({ ok: true, message: 'Senha temporária enviada para o e-mail cadastrado. Verifique sua caixa de entrada e spam.' });
+  } catch (error) {
+    console.warn('Falha ao processar esqueci minha senha:', error.message);
+    res.status(400).send(error.message || 'Não foi possível enviar a senha temporária. Verifique as configurações de e-mail.');
+  }
 });
 
 app.post('/auth/password/change', requireDatabaseReady, async (req, res) => {

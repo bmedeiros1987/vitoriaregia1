@@ -1703,3 +1703,115 @@ body.vr-authenticated [data-login-screen] {
 @media (max-width: 720px) {
   .system-version-footer { position: static; margin: 12px; border-radius: 16px; justify-content: center; text-align: center; }
 }
+
+
+/* Vitória Régia Premium App v3.7.0-mysql-premium-app */
+:root {
+  --vr-navy: #062a47;
+  --vr-blue: #0b4e7a;
+  --vr-teal: #0f9f8b;
+  --vr-mint: #e8f8f5;
+  --vr-bg-premium: #f4f8fb;
+  --vr-card: rgba(255,255,255,.86);
+  --vr-shadow-premium: 0 20px 55px rgba(4, 30, 54, .13);
+}
+body {
+  background:
+    radial-gradient(circle at top right, rgba(15,159,139,.12), transparent 34%),
+    linear-gradient(135deg, #f8fbfd 0%, #eef5f8 100%);
+}
+.login-screen {
+  background-image: linear-gradient(120deg, rgba(4, 30, 54, .64), rgba(4, 30, 54, .18)), url('assets/condominio-fachada.png') !important;
+  background-size: cover !important;
+  background-position: center !important;
+}
+.login-building { filter: saturate(1.05) contrast(1.02); }
+.login-card {
+  backdrop-filter: blur(18px);
+  background: rgba(255,255,255,.88) !important;
+  border: 1px solid rgba(255,255,255,.68);
+  box-shadow: 0 28px 90px rgba(0, 22, 44, .28) !important;
+}
+.login-card h1 { letter-spacing: -0.04em; }
+.login-tabs, [data-login-role], [data-login-unit-wrap] { display: none !important; }
+.shell { background: rgba(255,255,255,.68); }
+.sidebar {
+  width: 76px !important;
+  border-radius: 0 28px 28px 0;
+  box-shadow: 16px 0 35px rgba(4, 30, 54, .13);
+}
+.sidebar a { justify-content: center; padding: 12px 10px !important; }
+.sidebar a span + * { display: none; }
+.main-header {
+  background: rgba(255,255,255,.78) !important;
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(255,255,255,.75);
+  box-shadow: var(--vr-shadow-premium);
+}
+.hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.72);
+  background:
+    linear-gradient(110deg, rgba(255,255,255,.96) 0%, rgba(255,255,255,.86) 48%, rgba(255,255,255,.38) 100%),
+    url('assets/condominio-fachada.png') center right / cover no-repeat !important;
+  box-shadow: var(--vr-shadow-premium);
+  min-height: 220px;
+}
+.hero::after {
+  content: '';
+  position: absolute;
+  inset: auto -80px -140px auto;
+  width: 380px;
+  height: 380px;
+  border-radius: 50%;
+  background: rgba(15,159,139,.12);
+  pointer-events: none;
+}
+.hero-image { display: none !important; }
+.hero h2 { font-size: clamp(1.6rem, 3vw, 2.65rem); letter-spacing: -.05em; }
+.premium-shortcut-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(130px, 1fr));
+  gap: 14px;
+  margin: 18px 0;
+}
+.premium-shortcut {
+  text-decoration: none;
+  color: #0d2235;
+  min-height: 132px;
+  padding: 18px;
+  border-radius: 24px;
+  background: var(--vr-card);
+  border: 1px solid rgba(255,255,255,.82);
+  box-shadow: 0 14px 34px rgba(5, 39, 68, .10);
+  display: grid;
+  align-content: space-between;
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+.premium-shortcut:hover { transform: translateY(-3px); box-shadow: 0 22px 50px rgba(5, 39, 68, .16); border-color: rgba(15,159,139,.36); }
+.premium-shortcut span {
+  width: 42px; height: 42px; border-radius: 16px; display: grid; place-items: center;
+  background: linear-gradient(135deg, #eaf8f6, #eef6ff); font-size: 1.25rem;
+}
+.premium-shortcut strong { font-size: .98rem; }
+.premium-shortcut small { color: #64798c; line-height: 1.35; }
+.premium-shortcut--highlight { background: linear-gradient(135deg, rgba(232,248,245,.96), rgba(255,255,255,.9)); border-color: rgba(15,159,139,.36); }
+.premium-profile-panel { display: flex; gap: 18px; align-items: center; justify-content: space-between; }
+.app-download-grid-premium { display: grid; grid-template-columns: repeat(3, minmax(220px, 1fr)); gap: 18px; }
+.app-download-panel { background: rgba(255,255,255,.9) !important; box-shadow: var(--vr-shadow-premium); border: 1px solid rgba(255,255,255,.75); }
+.app-download-panel--morador .app-phone-icon { background: #0f9f8b; }
+.app-download-panel--sindico .app-phone-icon { background: #1f6eaa; }
+.app-download-panel--portaria .app-phone-icon { background: #6d8192; }
+.system-version-footer { backdrop-filter: blur(14px); }
+@media (max-width: 1180px) {
+  .premium-shortcut-grid { grid-template-columns: repeat(3, minmax(150px, 1fr)); }
+  .app-download-grid-premium { grid-template-columns: 1fr; }
+}
+@media (max-width: 780px) {
+  .sidebar { width: 100% !important; border-radius: 0; }
+  .premium-shortcut-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .premium-shortcut { min-height: 106px; padding: 14px; border-radius: 18px; }
+  .premium-profile-panel { align-items: stretch; flex-direction: column; }
+  .hero { min-height: 190px; }
+}

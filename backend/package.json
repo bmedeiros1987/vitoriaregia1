@@ -1,8 +1,8 @@
 {
   "name": "vitoria-regia-backend-operacional",
-  "version": "3.6.0-mysql-modulos-restaurados",
+  "version": "3.8.0-mysql-premium-apps",
   "private": true,
-  "description": "Backend Express/MySQL do Sistema Vitória Régia com módulos antigos restaurados.",
+  "description": "Backend Express/MySQL do Sistema Vitória Régia Premium com recuperação de senha e módulos restaurados.",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
