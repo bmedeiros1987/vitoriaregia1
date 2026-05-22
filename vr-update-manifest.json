@@ -1,26 +1,27 @@
 {
-  "name": "Vitória Régia Sistema Condominial",
-  "version": "2026.05.21.3",
-  "channel": "stable",
-  "minimumNode": "18",
-  "packageName": "vitoriaregia_update.zip",
-  "summary": "Atualização profissional com central de updates, proteção do backend, dashboard compacto, saudação, background do prédio, notificações e emergência.",
-  "features": [
-    "Central de Atualizações no painel administrativo",
-    "Atualizador estilo sistema operacional: backup, validação, instalação, rollback e logs",
-    "Proteção contra remoção acidental de backend/src/server.js",
-    "Dashboard compacto com ações rápidas por perfil",
-    "Saudação por horário e nome do usuário",
-    "Imagem do prédio como background do dashboard",
-    "Botão discreto de emergência com giroflex em todas as páginas",
-    "Notificações gerais e por unidade",
-    "Fluxo de pânico: morador aciona, síndico/portaria confirma e moradores são avisados"
-  ],
+  "name": "Sistema Vitória Régia",
+  "version": "3.0.0-restauracao-total",
+  "type": "full-restore",
+  "date": "2026-05-21",
   "criticalFiles": [
+    "index.html",
+    "app.js",
+    "styles.css",
+    "render.yaml",
     "backend/package.json",
     "backend/src/server.js",
-    "backend/src/db.js",
-    "index.html"
+    "backend/src/db.js"
   ],
-  "createdAt": "2026-05-21T00:00:00-03:00"
+  "features": [
+    "Dashboard compacto",
+    "Saudação personalizada",
+    "Background do prédio",
+    "Botão de emergência discreto",
+    "Notificações do navegador",
+    "Comunicados gerais e por unidade",
+    "Moradores separados em cadastro e consulta",
+    "Usuários internos separados em cadastro e consulta",
+    "Correção Render Not Found",
+    "Servidor de recuperação tolerante a falha de banco"
+  ]
 }

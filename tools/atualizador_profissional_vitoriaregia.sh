@@ -1,270 +1,221 @@
 #!/usr/bin/env bash
-set -Eeuo pipefail
+set -euo pipefail
 
-APP_NAME="vitoriaregia1"
+APP_NAME="Vitória Régia"
 GITHUB_USER="bmedeiros1987"
 GITHUB_EMAIL="bmedeiros1987@gmail.com"
 REPO_NAME="vitoriaregia1"
 BRANCH="main"
-REPO_URL="https://github.com/${GITHUB_USER}/${REPO_NAME}.git"
-RAW_SERVER_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${REPO_NAME}/${BRANCH}/backend/src/server.js"
+REPO_URL_PUBLIC="https://github.com/${GITHUB_USER}/${REPO_NAME}.git"
 DOWNLOAD_DIR="/storage/emulated/0/Download"
-ZIP_PATH_DEFAULT="${DOWNLOAD_DIR}/vitoriaregia_update.zip"
-WORKDIR="${HOME}/${APP_NAME}"
-BACKUP_DIR="${DOWNLOAD_DIR}/vitoriaregia_backups"
-LOG_DIR="${DOWNLOAD_DIR}/vitoriaregia_logs"
-RUN_ID="$(date +%Y%m%d_%H%M%S)"
-LOG_FILE="${LOG_DIR}/update_${RUN_ID}.log"
+UPDATE_ZIP_DEFAULT="${DOWNLOAD_DIR}/vitoriaregia_update.zip"
+WORK_ROOT="${HOME}/.vitoriaregia_updater"
+REPO_DIR="${WORK_ROOT}/${REPO_NAME}"
+BACKUP_ROOT="${WORK_ROOT}/backups"
+LOG_FILE="${WORK_ROOT}/atualizacoes.log"
 MODE="${1:-update}"
-ZIP_PATH="${2:-$ZIP_PATH_DEFAULT}"
+CUSTOM_ZIP="${2:-}"
 
-mkdir -p "$BACKUP_DIR" "$LOG_DIR"
-exec > >(tee -a "$LOG_FILE") 2>&1
+mkdir -p "$WORK_ROOT" "$BACKUP_ROOT"
 
-say() { printf '\n\033[1;36m%s\033[0m\n' "$*"; }
-warn() { printf '\n\033[1;33mAVISO: %s\033[0m\n' "$*"; }
-fail() { printf '\n\033[1;31mERRO: %s\033[0m\n' "$*"; exit 1; }
+ts() { date '+%Y-%m-%d %H:%M:%S'; }
+log() { echo "[$(ts)] $*" | tee -a "$LOG_FILE"; }
+fail() { log "ERRO: $*"; exit 1; }
+need_cmd() { command -v "$1" >/dev/null 2>&1 || fail "Comando obrigatório ausente: $1. Instale com pkg install $1 -y"; }
 
-need_cmd() {
-  command -v "$1" >/dev/null 2>&1 || fail "Comando obrigatório não encontrado: $1. Instale com: pkg install git unzip rsync nodejs-lts curl -y"
+print_header() {
+  echo ""
+  echo "=============================================="
+  echo "  Atualizador Profissional - ${APP_NAME}"
+  echo "=============================================="
+  echo "Modo: ${MODE}"
+  echo "Log: ${LOG_FILE}"
+  echo ""
 }
 
-for cmd in git unzip rsync node tar sed grep; do need_cmd "$cmd"; done
-command -v curl >/dev/null 2>&1 || warn "curl não encontrado; restauração remota por URL ficará limitada."
-
-git_safe_config() {
-  git config --global --add safe.directory "$WORKDIR" >/dev/null 2>&1 || true
-  git config --global user.name "Bruno Saraiva"
-  git config --global user.email "$GITHUB_EMAIL"
+ensure_tools() {
+  need_cmd git
+  need_cmd unzip
+  need_cmd rsync
+  need_cmd node
 }
 
-backup_current() {
-  if [ -d "$WORKDIR" ]; then
-    local backup="${BACKUP_DIR}/${APP_NAME}_${RUN_ID}.tar.gz"
-    say "Criando backup antes da atualização"
-    tar -czf "$backup" -C "$HOME" "$APP_NAME"
-    echo "Backup criado: $backup"
+ask_token() {
+  if [[ -n "${GITHUB_TOKEN:-}" ]]; then return 0; fi
+  echo "Cole um token NOVO do GitHub. Ele não será salvo no arquivo."
+  read -r -s -p "Token GitHub: " GITHUB_TOKEN
+  echo ""
+  [[ -n "$GITHUB_TOKEN" ]] || fail "Token vazio."
+}
+
+auth_url() {
+  printf 'https://%s:%s@github.com/%s/%s.git' "$GITHUB_USER" "$GITHUB_TOKEN" "$GITHUB_USER" "$REPO_NAME"
+}
+
+backup_existing_repo() {
+  if [[ -d "$REPO_DIR" ]]; then
+    local stamp backup
+    stamp="$(date '+%Y%m%d-%H%M%S')"
+    backup="${BACKUP_ROOT}/${REPO_NAME}-${stamp}"
+    log "Criando backup da cópia local: ${backup}"
+    cp -a "$REPO_DIR" "$backup"
+  fi
+}
+
+fresh_clone() {
+  ask_token
+  backup_existing_repo
+  rm -rf "$REPO_DIR"
+  log "Clonando cópia limpa do GitHub..."
+  git clone --depth=1 --branch "$BRANCH" "$(auth_url)" "$REPO_DIR"
+  cd "$REPO_DIR"
+  git remote set-url origin "$REPO_URL_PUBLIC"
+  git config user.name "$GITHUB_USER"
+  git config user.email "$GITHUB_EMAIL"
+}
+
+find_update_zip() {
+  local zip_path="${CUSTOM_ZIP:-$UPDATE_ZIP_DEFAULT}"
+  [[ -f "$zip_path" ]] || fail "Update ZIP não encontrado: ${zip_path}"
+  echo "$zip_path"
+}
+
+apply_update_zip() {
+  local zip_path tmp_dir source_dir
+  zip_path="$(find_update_zip)"
+  tmp_dir="${WORK_ROOT}/unzip-$(date '+%Y%m%d-%H%M%S')"
+  rm -rf "$tmp_dir"
+  mkdir -p "$tmp_dir"
+  log "Extraindo update: ${zip_path}"
+  unzip -q "$zip_path" -d "$tmp_dir"
+  if [[ -d "$tmp_dir/substituir-no-repositorio" ]]; then
+    source_dir="$tmp_dir/substituir-no-repositorio"
   else
-    warn "Diretório local ainda não existe; backup inicial não necessário."
+    source_dir="$tmp_dir"
   fi
+  log "Aplicando arquivos no repositório..."
+  rsync -a "$source_dir/" "$REPO_DIR/"
 }
 
-clone_clean() {
-  say "Preparando cópia limpa do GitHub"
-  if [ -d "$WORKDIR/.git" ]; then
-    cd "$WORKDIR"
-    git_safe_config
-    git remote set-url origin "$REPO_URL"
-    git fetch origin "$BRANCH"
-    git reset --hard "origin/${BRANCH}"
-    git clean -fd -e node_modules -e .env -e backend/.env
-  else
-    if [ -d "$WORKDIR" ]; then
-      mv "$WORKDIR" "${WORKDIR}_sem_git_${RUN_ID}"
-      warn "Diretório antigo sem .git movido para ${WORKDIR}_sem_git_${RUN_ID}"
+write_recovery_server_if_needed() {
+  mkdir -p "$REPO_DIR/backend/src"
+  if [[ -f "$REPO_DIR/backend/src/server.js" ]]; then
+    if grep -q "Modo: recuperação segura\|recovery-server" "$REPO_DIR/backend/src/server.js"; then
+      log "server.js de recuperação já presente."
+      return 0
     fi
-    git clone --branch "$BRANCH" "$REPO_URL" "$WORKDIR"
+    log "server.js existente encontrado. Será mantido, mas validado."
+    return 0
   fi
-  cd "$WORKDIR"
-  git_safe_config
+  fail "backend/src/server.js ausente após aplicar update. O ZIP deve conter a correção."
 }
 
-restore_server_from_git_or_raw() {
-  cd "$WORKDIR"
-  mkdir -p backend/src
-  if [ -s "backend/src/server.js" ]; then
-    echo "backend/src/server.js encontrado."
-    return 0
+ensure_render_yaml() {
+  if [[ ! -f "$REPO_DIR/render.yaml" ]]; then
+    fail "render.yaml ausente. O ZIP deve conter render.yaml corrigido."
   fi
-
-  warn "backend/src/server.js ausente. Restaurando automaticamente."
-  git fetch origin "$BRANCH" || true
-  if git show "origin/${BRANCH}:backend/src/server.js" > backend/src/server.js.tmp 2>/dev/null; then
-    mv backend/src/server.js.tmp backend/src/server.js
-    echo "server.js restaurado a partir do GitHub/origin."
-    return 0
+  if ! grep -q "rootDir: backend" "$REPO_DIR/render.yaml"; then
+    log "Aviso: render.yaml não contém rootDir: backend. Confira no Render."
   fi
-
-  if command -v curl >/dev/null 2>&1 && curl -fsSL "$RAW_SERVER_URL" -o backend/src/server.js.tmp; then
-    mv backend/src/server.js.tmp backend/src/server.js
-    echo "server.js restaurado a partir do raw.githubusercontent.com."
-    return 0
-  fi
-
-  warn "Não foi possível baixar o server.js original. Criando servidor emergencial mínimo."
-  cat > backend/src/server.js <<'SERVER_EOF'
-'use strict';
-require('dotenv').config();
-const path = require('path');
-const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-const app = express();
-const PORT = Number(process.env.PORT || 10000);
-const FRONTEND_DIR = process.env.FRONTEND_DIR ? path.resolve(process.env.FRONTEND_DIR) : path.resolve(__dirname, '../../');
-app.use(helmet({ contentSecurityPolicy: false }));
-app.use(cors({ origin: true, credentials: true }));
-app.use(express.json({ limit: '10mb' }));
-app.get('/api/health', (req, res) => res.json({ ok: true, mode: 'emergency-server', message: 'Backend emergencial ativo. Restaurar server.js original pelo atualizador.' }));
-try { app.use(express.static(FRONTEND_DIR)); } catch (_) {}
-app.get('*', (req, res) => res.sendFile(path.join(FRONTEND_DIR, 'index.html')));
-app.listen(PORT, () => console.log(`Vitória Régia emergencial na porta ${PORT}`));
-SERVER_EOF
-}
-
-apply_zip_update() {
-  if [ "$MODE" = "repair" ]; then
-    warn "Modo repair: não vou aplicar ZIP, apenas reparar arquivos críticos e enviar ao GitHub."
-    return 0
-  fi
-
-  [ -f "$ZIP_PATH" ] || fail "ZIP de atualização não encontrado em: $ZIP_PATH"
-  say "Aplicando pacote de atualização"
-  local temp_dir
-  temp_dir="$(mktemp -d)"
-  unzip -q "$ZIP_PATH" -d "$temp_dir"
-
-  local source_dir="$temp_dir"
-  if [ -d "$temp_dir/substituir-no-repositorio" ]; then
-    source_dir="$temp_dir/substituir-no-repositorio"
-  fi
-
-  cd "$WORKDIR"
-  # Proteção: não apaga nada e não sobrescreve o servidor principal por padrão.
-  # Para permitir alteração futura do server.js: UPDATE_ALLOW_SERVER_OVERWRITE=1 bash atualizador_profissional_vitoriaregia.sh
-  local exclude_server=(--exclude 'backend/src/server.js')
-  if [ "${UPDATE_ALLOW_SERVER_OVERWRITE:-0}" = "1" ]; then
-    exclude_server=()
-    warn "UPDATE_ALLOW_SERVER_OVERWRITE=1 ativo; server.js poderá ser sobrescrito."
-  fi
-
-  rsync -a \
-    --exclude '.git' \
-    --exclude 'node_modules' \
-    --exclude '.env' \
-    --exclude 'backend/.env' \
-    "${exclude_server[@]}" \
-    "$source_dir/" "$WORKDIR/"
-
-  rm -rf "$temp_dir"
-}
-
-run_injectors() {
-  cd "$WORKDIR"
-  say "Executando instaladores visuais e integrações"
-  local files=(
-    instalar_update_completo.js
-    injetar_layout_limpo.js
-    injetar_notificacoes.js
-    injetar_botao_panico.js
-    injetar_dashboard_compacto.js
-    injetar_ux_plus.js
-    injetar_update_center.js
-    injetar_backend_notificacoes.js
-    injetar_backend_panico.js
-  )
-  for f in "${files[@]}"; do
-    if [ -f "$f" ]; then
-      echo "- node $f"
-      node "$f" || warn "Instalador $f retornou erro; seguindo para validação."
-    fi
-  done
 }
 
 validate_project() {
-  cd "$WORKDIR"
-  say "Validando arquivos críticos"
-  [ -f "backend/package.json" ] || fail "backend/package.json ausente."
-  restore_server_from_git_or_raw
-  [ -s "backend/src/server.js" ] || fail "backend/src/server.js continua ausente."
-  node --check backend/src/server.js || fail "backend/src/server.js existe, mas contém erro de sintaxe."
-
-  if [ -f "index.html" ]; then
-    echo "index.html encontrado."
-  else
-    warn "index.html não encontrado na raiz. Verifique se o frontend está em outra pasta."
-  fi
-
-  echo "Validação concluída."
+  cd "$REPO_DIR"
+  [[ -f "index.html" ]] || fail "index.html não encontrado na raiz. O site ficaria em Not Found."
+  [[ -f "backend/package.json" ]] || fail "backend/package.json não encontrado."
+  [[ -f "backend/src/server.js" ]] || fail "backend/src/server.js não encontrado."
+  log "Validando sintaxe do backend..."
+  node -c backend/src/server.js
+  log "Validação concluída: index.html, package.json e server.js existem."
 }
 
 commit_and_push() {
-  cd "$WORKDIR"
-  say "Preparando commit"
-  git add -A
-  if git diff --cached --quiet; then
-    echo "Nenhuma alteração nova para enviar."
+  cd "$REPO_DIR"
+  if [[ -z "$(git status --porcelain)" ]]; then
+    log "Nenhuma alteração nova para enviar."
     return 0
   fi
-  git commit -m "Atualização automática Vitória Régia ${RUN_ID}"
-
-  printf '\nEnviar automaticamente para o GitHub agora? [S/n]: '
-  read -r answer || true
-  answer="${answer:-S}"
-  case "$answer" in
-    n|N|nao|não|NAO|NÃO)
-      warn "Commit criado localmente, mas não enviado. Diretório: $WORKDIR"
-      return 0
-      ;;
-  esac
-
-  printf 'Cole seu token novo do GitHub: '
-  stty -echo || true
-  read -r GITHUB_TOKEN || true
-  stty echo || true
-  printf '\n'
-  [ -n "${GITHUB_TOKEN:-}" ] || fail "Token não informado."
-
-  git remote set-url origin "https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/${GITHUB_USER}/${REPO_NAME}.git"
+  git add .
+  git commit -m "Corrige deploy Render e atualiza sistema Vitória Régia"
+  ask_token
+  git remote set-url origin "$(auth_url)"
+  log "Enviando para GitHub..."
   if ! git push origin "$BRANCH"; then
-    warn "Push rejeitado. Tentando rebase e novo envio."
-    git fetch origin "$BRANCH"
+    log "Push recusado. Atualizando branch e tentando novamente..."
     git pull --rebase --autostash origin "$BRANCH"
     git push origin "$BRANCH"
   fi
-  git remote set-url origin "$REPO_URL"
+  git remote set-url origin "$REPO_URL_PUBLIC"
   unset GITHUB_TOKEN
-  echo "Atualização enviada ao GitHub. O Render deve redeployar se Auto Deploy estiver ativo."
+  log "Atualização enviada com sucesso. Faça Manual Deploy no Render se o Auto Deploy não iniciar."
 }
 
-rollback_latest() {
-  say "Iniciando rollback"
-  local latest
-  latest="$(ls -t "$BACKUP_DIR"/${APP_NAME}_*.tar.gz 2>/dev/null | head -n 1 || true)"
-  [ -n "$latest" ] || fail "Nenhum backup encontrado em $BACKUP_DIR"
-  rm -rf "$WORKDIR"
-  tar -xzf "$latest" -C "$HOME"
-  echo "Rollback restaurado de: $latest"
-}
-
-show_status() {
-  say "Status do sistema local"
-  echo "Diretório: $WORKDIR"
-  echo "ZIP padrão: $ZIP_PATH_DEFAULT"
-  echo "Logs: $LOG_DIR"
-  echo "Backups: $BACKUP_DIR"
-  if [ -d "$WORKDIR/.git" ]; then
-    cd "$WORKDIR"
+status_mode() {
+  print_header
+  echo "Repositório local: ${REPO_DIR}"
+  echo "Update padrão: ${UPDATE_ZIP_DEFAULT}"
+  echo ""
+  if [[ -d "$REPO_DIR/.git" ]]; then
+    cd "$REPO_DIR"
     git status --short || true
-    [ -f backend/src/server.js ] && echo "server.js: OK" || echo "server.js: AUSENTE"
+    echo ""
+    [[ -f index.html ]] && echo "OK index.html" || echo "FALTA index.html"
+    [[ -f backend/src/server.js ]] && echo "OK backend/src/server.js" || echo "FALTA backend/src/server.js"
+    [[ -f backend/package.json ]] && echo "OK backend/package.json" || echo "FALTA backend/package.json"
+  else
+    echo "Ainda não há cópia local clonada pelo atualizador."
   fi
 }
 
+rollback_mode() {
+  print_header
+  local last
+  last="$(ls -1dt "$BACKUP_ROOT"/${REPO_NAME}-* 2>/dev/null | head -1 || true)"
+  [[ -n "$last" ]] || fail "Nenhum backup encontrado para rollback."
+  rm -rf "$REPO_DIR"
+  cp -a "$last" "$REPO_DIR"
+  log "Rollback local restaurado de: ${last}"
+  echo "Para enviar o rollback ao GitHub, rode: bash $0 push-current"
+}
+
+push_current_mode() {
+  print_header
+  ensure_tools
+  [[ -d "$REPO_DIR/.git" ]] || fail "Repositório local não encontrado."
+  validate_project
+  commit_and_push
+}
+
+update_mode() {
+  print_header
+  ensure_tools
+  fresh_clone
+  apply_update_zip
+  write_recovery_server_if_needed
+  ensure_render_yaml
+  validate_project
+  commit_and_push
+}
+
+repair_mode() {
+  print_header
+  ensure_tools
+  fresh_clone
+  apply_update_zip
+  write_recovery_server_if_needed
+  ensure_render_yaml
+  validate_project
+  commit_and_push
+}
+
 case "$MODE" in
-  rollback)
-    rollback_latest
-    ;;
-  status)
-    show_status
-    ;;
-  repair|update|*)
-    backup_current
-    clone_clean
-    apply_zip_update
-    run_injectors
-    validate_project
-    commit_and_push
-    say "Processo finalizado"
-    echo "Log salvo em: $LOG_FILE"
+  update|install) update_mode ;;
+  repair|corrigir|not-found) repair_mode ;;
+  status) status_mode ;;
+  rollback) rollback_mode ;;
+  push-current) push_current_mode ;;
+  *)
+    echo "Uso: bash $0 [update|repair|status|rollback|push-current] [caminho-do-zip]"
+    exit 1
     ;;
 esac
