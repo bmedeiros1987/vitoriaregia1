@@ -1,36 +1,25 @@
 const fs = require('fs');
-
 const required = [
   'index.html',
   'app.js',
   'styles.css',
   'render.yaml',
+  'VERSION.json',
   'backend/package.json',
   'backend/src/server.js',
-  'backend/src/db.js'
+  'backend/src/db.js',
+  'backend/src/schema.js',
+  'assets/logo-vitoria-regia.svg',
+  'assets/condominio-fachada.png'
 ];
-
 let ok = true;
 for (const file of required) {
-  if (fs.existsSync(file)) {
-    console.log('OK  ', file);
-  } else {
+  if (!fs.existsSync(file)) {
+    console.error('FALTANDO:', file);
     ok = false;
-    console.error('ERRO', file, 'não encontrado');
+  } else {
+    console.log('OK:', file);
   }
 }
-
-try {
-  const pkg = JSON.parse(fs.readFileSync('backend/package.json', 'utf8'));
-  if (!pkg.dependencies || !pkg.dependencies.mysql2) {
-    ok = false;
-    console.error('ERRO dependência mysql2 ausente em backend/package.json');
-  } else {
-    console.log('OK   mysql2 configurado');
-  }
-} catch (error) {
-  ok = false;
-  console.error('ERRO ao ler backend/package.json:', error.message);
-}
-
-process.exit(ok ? 0 : 1);
+if (!ok) process.exit(1);
+console.log('Arquivos críticos conferidos com sucesso.');

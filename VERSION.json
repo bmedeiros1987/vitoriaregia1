@@ -1,13 +1,22 @@
 {
-  "version": "3.5.0-mysql",
-  "name": "Vitória Régia Premium",
-  "database": "mysql",
+  "version": "3.6.0-mysql-modulos-restaurados",
   "date": "2026-05-21",
-  "highlights": [
-    "Recuperação do módulo Financeiro",
-    "Cobranças por unidade",
-    "Livro caixa com receitas e despesas",
-    "Visão do morador para cobranças da própria unidade",
-    "Notificações financeiras por unidade"
+  "database": "mysql",
+  "base": "vitoria_regia_automacoes_mensagens_portaria",
+  "description": "Versão completa com módulos antigos restaurados e compatibilidade MySQL mantida.",
+  "restoredModules": [
+    "financeiro completo",
+    "serviços",
+    "contato",
+    "automações",
+    "mensagens da portaria",
+    "visitantes recorrentes",
+    "encomendas com leitura automática da etiqueta/nota",
+    "arquivos/nuvem",
+    "comunicados",
+    "escala",
+    "calendário",
+    "central premium",
+    "configurações avançadas"
   ]
 }

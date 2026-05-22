@@ -1,28 +1,50 @@
 services:
   - type: web
     name: vitoriaregia1
-    env: node
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
     plan: free
-    rootDir: .
-    buildCommand: cd backend && npm install
-    startCommand: cd backend && npm start
     autoDeploy: true
     envVars:
       - key: NODE_ENV
         value: production
-      - key: FRONTEND_DIR
-        value: ..
+      - key: APP_URL
+        value: https://vitoriaregia1.onrender.com
       - key: DATABASE_PROVIDER
         value: mysql
       - key: REQUIRE_DATABASE
-        value: false
+        value: "false"
+      - key: AUTO_INIT_DB
+        value: "true"
+      - key: MYSQL_HOST
+        sync: false
+      - key: MYSQL_PORT
+        sync: false
+      - key: MYSQL_DATABASE
+        sync: false
+      - key: MYSQL_USER
+        sync: false
+      - key: MYSQL_PASSWORD
+        sync: false
       - key: MYSQL_SSL
-        value: true
+        value: "true"
+      - key: MYSQL_SSL_MODE
+        value: REQUIRED
       - key: MYSQL_SSL_REJECT_UNAUTHORIZED
-        value: false
-      - key: MYSQL_CONNECTION_LIMIT
-        value: 5
+        value: "false"
       - key: SESSION_SECRET
         generateValue: true
-      - key: CLOUD_PROVIDER
-        value: local
+      - key: BOOTSTRAP_ADMIN_ENABLED
+        value: "true"
+      - key: BOOTSTRAP_ADMIN_EMAIL
+        value: bmedeiros1987@gmail.com
+      - key: BOOTSTRAP_ADMIN_PASSWORD
+        sync: false
+      - key: BOOTSTRAP_DISABLE_AFTER_FIRST_SINDICO
+        value: "true"
+      - key: ALLOW_LEGACY_DEMO_LOGIN
+        value: "false"
+      - key: REQUIRE_APPROVED_RESIDENT
+        value: "true"
