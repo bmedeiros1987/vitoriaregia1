@@ -9,7 +9,9 @@
   <link rel="icon" href="assets/logo-vitoria-regia.svg" type="image/svg+xml" />
   <link rel="manifest" href="site.webmanifest" />
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="vr-cadastros-premium.css" />
   <link rel="stylesheet" href="vr-premium-clean.css" />
+  <link rel="stylesheet" href="vr-emergency-premium.css" />
 </head>
 <body>
   <section class="login-screen" data-login-screen>
@@ -196,7 +198,7 @@
           <h1 data-page-title>Dashboard</h1>
         </div>
         <div class="topbar-actions">
-          <button class="btn btn--outline btn--sm" type="button" data-clear-cache data-roles="sindico">Recarregar do banco</button>
+          <button class="btn btn--outline btn--sm" type="button" data-clear-cache data-system-admin-only title="Limpa apenas os dados temporários deste navegador e baixa novamente as informações salvas no banco MySQL. Use se a tela parecer desatualizada.">Recarregar banco</button>
           <button class="btn btn--ghost btn--sm" type="button" data-logout>Sair</button>
         </div>
       </header>
@@ -916,15 +918,86 @@ João Souza - CPF ***.000.***-**"></textarea></label>
       </section>
 
       <section id="manual" class="section" data-section data-roles="morador,sindico,portaria">
-        <div class="section-head">
-          <div><span class="eyebrow">Ajuda simples</span><h2>Manuais e suporte</h2><p>Guias objetivos para moradores, portaria e administração. Linguagem simples para crianças, adultos e idosos.</p></div>
+        <div class="section-head vr-help-premium-head">
+          <div>
+            <span class="eyebrow">Ajuda guiada</span>
+            <h2>Vídeos, manuais e suporte</h2>
+            <p>Conteúdo separado por perfil. Cada usuário vê primeiro o que precisa para usar o sistema com segurança, de forma simples e objetiva.</p>
+          </div>
         </div>
-        <div class="vr-help-grid">
-          <article class="vr-help-card"><span>👨‍👩‍👧</span><h3>Moradores</h3><p>Comunicados, reservas, encomendas, visitantes, financeiro e emergência.</p><a class="btn btn--primary" href="docs/Manual_dos_Moradores_v3.9.0.pdf" target="_blank">Abrir manual</a></article>
-          <article class="vr-help-card"><span>🛡️</span><h3>Portaria</h3><p>Visitantes, encomendas, fotos, avisos e ocorrências.</p><a class="btn btn--primary" href="docs/Manual_da_Portaria_v3.9.0.pdf" target="_blank">Abrir manual</a></article>
-          <article class="vr-help-card"><span>👤</span><h3>Síndico/Administração</h3><p>Cadastros, permissões, financeiro, notificações e configurações.</p><a class="btn btn--primary" href="docs/Manual_do_Sindico_v3.9.0.pdf" target="_blank">Abrir manual</a></article>
-          <article class="vr-help-card"><span>📘</span><h3>Funcionalidades</h3><p>Resumo geral de tudo que o sistema faz.</p><a class="btn btn--outline" href="docs/Funcionalidades_do_Sistema_v3.9.0.pdf" target="_blank">Ver funcionalidades</a></article>
+
+        <div class="vr-help-tabs" aria-label="Áreas da ajuda">
+          <a href="#help-videos">Vídeos rápidos</a>
+          <a href="#help-manuals">Manuais</a>
+          <a href="#help-apps">Apps</a>
+          <a href="#help-support">Suporte</a>
         </div>
+
+        <article id="help-videos" class="panel vr-help-section-block">
+          <div class="panel-header">
+            <div><span class="eyebrow">Aprenda assistindo</span><h3>Vídeos explicativos</h3><p>Vídeos curtos, com textos grandes e passos simples. Use fone ou assista sem som, pois todos têm legenda na tela.</p></div>
+          </div>
+          <div class="vr-video-grid">
+            <article class="vr-video-card" data-roles="morador">
+              <video controls preload="metadata" poster="assets/help-posters/morador_primeiro_acesso.png"><source src="assets/help-videos/morador_primeiro_acesso.mp4" type="video/mp4"></video>
+              <div><span>Morador</span><h4>Primeiro acesso</h4><p>Entrar no sistema, encontrar os atalhos e usar a ajuda.</p></div>
+            </article>
+            <article class="vr-video-card" data-roles="morador">
+              <video controls preload="metadata" poster="assets/help-posters/morador_visitantes_encomendas.png"><source src="assets/help-videos/morador_visitantes_encomendas.mp4" type="video/mp4"></video>
+              <div><span>Morador</span><h4>Visitantes e encomendas</h4><p>Autorizar visitas e acompanhar entregas com foto.</p></div>
+            </article>
+            <article class="vr-video-card" data-roles="portaria">
+              <video controls preload="metadata" poster="assets/help-posters/portaria_rotina.png"><source src="assets/help-videos/portaria_rotina.mp4" type="video/mp4"></video>
+              <div><span>Portaria</span><h4>Rotina rápida</h4><p>Registrar visitantes, encomendas e ocorrências.</p></div>
+            </article>
+            <article class="vr-video-card" data-roles="sindico">
+              <video controls preload="metadata" poster="assets/help-posters/sindico_administracao.png"><source src="assets/help-videos/sindico_administracao.mp4" type="video/mp4"></video>
+              <div><span>Síndico/Administração</span><h4>Administração simples</h4><p>Aprovar usuários, gerenciar permissões e configurações.</p></div>
+            </article>
+            <article class="vr-video-card">
+              <video controls preload="metadata" poster="assets/help-posters/emergencia_segura.png"><source src="assets/help-videos/emergencia_segura.mp4" type="video/mp4"></video>
+              <div><span>Todos</span><h4>Emergência segura</h4><p>Como usar o botão com giroflex sem toque acidental.</p></div>
+            </article>
+            <article class="vr-video-card">
+              <video controls preload="metadata" poster="assets/help-posters/apps_e_ajuda.png"><source src="assets/help-videos/apps_e_ajuda.mp4" type="video/mp4"></video>
+              <div><span>Todos</span><h4>Apps e ajuda</h4><p>Baixar aplicativos, abrir manuais e pedir suporte.</p></div>
+            </article>
+          </div>
+        </article>
+
+        <article id="help-manuals" class="panel vr-help-section-block">
+          <div class="panel-header">
+            <div><span class="eyebrow">Leitura simples</span><h3>Manuais por perfil</h3><p>Manuais ilustrativos, com linguagem acessível para crianças, idosos e usuários iniciantes.</p></div>
+          </div>
+          <div class="vr-help-grid">
+            <article class="vr-help-card" data-roles="morador"><span>👨‍👩‍👧</span><h3>Moradores</h3><p>Comunicados, reservas, encomendas, visitantes, financeiro e emergência.</p><a class="btn btn--primary" href="docs/Manual_dos_Moradores_v4.1.1.pdf" target="_blank">Abrir manual</a></article>
+            <article class="vr-help-card" data-roles="portaria"><span>🛡️</span><h3>Portaria</h3><p>Visitantes, encomendas, fotos, avisos e ocorrências do turno.</p><a class="btn btn--primary" href="docs/Manual_da_Portaria_v4.1.1.pdf" target="_blank">Abrir manual</a></article>
+            <article class="vr-help-card" data-roles="sindico"><span>👤</span><h3>Síndico/Administração</h3><p>Cadastros, permissões, financeiro, notificações e configurações.</p><a class="btn btn--primary" href="docs/Manual_do_Sindico_v4.1.1.pdf" target="_blank">Abrir manual</a></article>
+            <article class="vr-help-card"><span>📘</span><h3>Funcionalidades</h3><p>Resumo geral de tudo que o sistema faz.</p><a class="btn btn--outline" href="docs/Funcionalidades_do_Sistema_v4.1.1.pdf" target="_blank">Ver funcionalidades</a></article>
+          </div>
+        </article>
+
+        <article id="help-apps" class="panel vr-help-section-block">
+          <div class="panel-header">
+            <div><span class="eyebrow">Celular</span><h3>Baixar aplicativos</h3><p>Escolha o aplicativo conforme sua função. O sistema também funciona pelo navegador do celular.</p></div>
+          </div>
+          <div class="vr-download-grid">
+            <a class="vr-download-card" data-roles="morador" href="downloads/vitoria-regia-morador.apk" download><strong>App do Morador</strong><small>Reservas, encomendas, visitantes, comunicados e ajuda.</small><span>Baixar APK</span></a>
+            <a class="vr-download-card" data-roles="sindico" href="downloads/vitoria-regia-sindico.apk" download><strong>App do Síndico</strong><small>Gestão, aprovações, financeiro, configurações e emergência.</small><span>Baixar APK</span></a>
+            <a class="vr-download-card" data-roles="portaria" href="downloads/vitoria-regia-portaria.apk" download><strong>App da Portaria</strong><small>Visitantes, encomendas, turno, alertas e ocorrências.</small><span>Baixar APK</span></a>
+          </div>
+        </article>
+
+        <article id="help-support" class="panel vr-help-section-block">
+          <div class="panel-header">
+            <div><span class="eyebrow">Suporte</span><h3>Precisa de ajuda?</h3><p>Use o contato do sistema. A mensagem identifica o usuário, o perfil e o sistema sem exibir dados sensíveis na tela.</p></div>
+          </div>
+          <div class="vr-help-support-actions">
+            <a class="btn btn--primary" href="#contato">Enviar mensagem pelo sistema</a>
+            <a class="btn btn--outline" target="_blank" href="https://wa.me/5561996071663?text=Ol%C3%A1%2C%20preciso%20de%20ajuda%20com%20o%20Sistema%20Vit%C3%B3ria%20R%C3%A9gia.">Abrir WhatsApp de suporte</a>
+          </div>
+          <p class="form-hint">Sistema desenvolvido em parceria por Bruno Saraiva e ChatGPT. Texto dos manuais revisado por Marina Cazilda de Moura Alves e Laura Moura Saraiva de Medeiros.</p>
+        </article>
       </section>
 
       <section id="configuracoes" class="section" data-section data-roles="sindico">
@@ -1076,11 +1149,13 @@ João Souza - CPF ***.000.***-**"></textarea></label>
 
   <footer class="system-version-footer" data-system-version-footer>
     <span>Sistema Vitória Régia</span>
-    <strong>v3.9.0-mysql-premium-clean</strong>
-    <small>Desenvolvido em parceria por Bruno Saraiva e ChatGPT.</small>
+    <strong>v4.1.0-mysql-emergencia-segura</strong>
+    <small>Desenvolvido em parceria por Bruno Saraiva e ChatGPT — design, automação e evolução premium.</small>
   </footer>
 
   <script src="app.js"></script>
   <script src="vr-premium-clean.js"></script>
+  <script src="vr-cadastros-premium.js"></script>
+  <script src="vr-emergency-premium.js"></script>
 </body>
 </html>

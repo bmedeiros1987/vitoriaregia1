@@ -1,0 +1,35 @@
+{
+  "version": "v4.2.0",
+  "videos": [
+    {
+      "slug": "morador_primeiro_acesso",
+      "perfil": "Morador",
+      "title": "Morador: primeiro acesso"
+    },
+    {
+      "slug": "morador_visitantes_encomendas",
+      "perfil": "Morador",
+      "title": "Morador: visitantes e encomendas"
+    },
+    {
+      "slug": "portaria_rotina",
+      "perfil": "Portaria",
+      "title": "Portaria: rotina rápida"
+    },
+    {
+      "slug": "sindico_administracao",
+      "perfil": "Síndico",
+      "title": "Síndico: administração simples"
+    },
+    {
+      "slug": "emergencia_segura",
+      "perfil": "Todos",
+      "title": "Emergência segura"
+    },
+    {
+      "slug": "apps_e_ajuda",
+      "perfil": "Todos",
+      "title": "Apps e Ajuda"
+    }
+  ]
+}

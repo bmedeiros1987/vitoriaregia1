@@ -904,8 +904,38 @@ function isSyndic() {
 }
 function isResident() { return currentRole() === 'morador'; }
 
+function greetingByTime() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Bom dia';
+  if (hour < 18) return 'Boa tarde';
+  return 'Boa noite';
+}
+function firstName(value = '') {
+  const clean = String(value || '').trim();
+  if (!clean) return 'usuário';
+  const name = clean.split(/\s+/)[0];
+  return name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+}
+function isSystemAdministrator() {
+  const staffRole = roleKey(session?.staffRole || session?.originalRole || '');
+  const accessRole = roleKey(session?.accessRole || '');
+  const email = String(session?.email || '').trim().toLowerCase();
+  return Boolean(
+    session?.bootstrap ||
+    session?.systemAdmin ||
+    session?.isOwner ||
+    session?.owner ||
+    accessRole === 'admin' ||
+    accessRole === 'proprietario' ||
+    staffRole === 'administrador' ||
+    staffRole === 'admin' ||
+    email === 'bmedeiros1987@gmail.com'
+  );
+}
+
 function applyPermissions() {
   $$('[data-roles]').forEach((el) => el.classList.toggle('is-role-hidden', !elementAllowed(el)));
+  $$('[data-system-admin-only]').forEach((el) => el.classList.toggle('is-role-hidden', !isSystemAdministrator()));
   $$('[data-schedule-manager]').forEach((el) => el.classList.toggle('is-role-hidden', !canManageSchedule()));
   const profileName = $('[data-profile-name]');
   const profileUnit = $('[data-profile-unit]');
@@ -915,8 +945,9 @@ function applyPermissions() {
   if (title) title.textContent = roles[currentRole()]?.title || 'Sistema';
   const heroTitle = $('[data-hero-title]');
   const heroText = $('[data-hero-text]');
-  if (heroTitle) heroTitle.textContent = currentRole() === 'portaria' ? 'Portaria inteligente e integrada.' : currentRole() === 'sindico' ? 'Painel completo de gestão do síndico.' : 'Área do morador simples e segura.';
-  if (heroText) heroText.textContent = currentRole() === 'portaria' ? 'Registre visitantes, fotos, encomendas e avise moradores rapidamente.' : currentRole() === 'sindico' ? 'Aprove cadastros, valide reservas, gere boletos reais pelo Asaas e gerencie o calendário.' : 'Solicite reservas, acompanhe comunicados e veja disponibilidade sem expor dados de outras unidades.';
+  const welcomeName = firstName(session?.name || session?.email || '');
+  if (heroTitle) heroTitle.textContent = `${greetingByTime()}, ${welcomeName}.`;
+  if (heroText) heroText.textContent = currentRole() === 'portaria' ? 'Acesse portaria, visitantes, encomendas e avisos em telas mais limpas e separadas por cadastro e consulta.' : currentRole() === 'sindico' ? 'Gerencie o condomínio com módulos separados para cadastrar, consultar e acompanhar tudo com mais clareza.' : 'Acompanhe seus avisos, reservas, visitantes e encomendas em uma experiência simples e segura.';
   updateActiveSection();
 }
 
@@ -1093,7 +1124,11 @@ function navigationSetup() {
   $('[data-sidebar-shadow]')?.addEventListener('click', closeMenu);
   $$('[data-logout]').forEach((btn) => btn.addEventListener('click', async () => { await destroyBackendSession(); endSession(); }));
   $('[data-clear-cache]')?.addEventListener('click', async () => {
-    if (!confirm('Limpar apenas o cache local deste navegador e recarregar os dados do banco?')) return;
+    if (!isSystemAdministrator()) {
+      alert('Este botão é restrito ao administrador do sistema. Ele serve para limpar dados temporários deste navegador e baixar novamente as informações salvas no banco.');
+      return;
+    }
+    if (!confirm('Limpar apenas os dados temporários deste navegador e recarregar as informações salvas no banco MySQL?')) return;
     clearAppLocalCache();
     await loadBackendState();
     fillApartmentSelects();

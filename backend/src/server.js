@@ -64,6 +64,15 @@ const DEFAULT_STATE = {
   automationRequests: [],
   financeRecords: [],
   cloudFiles: [],
+  emergencyEvents: [],
+  emergencySettings: {
+    elevatorCompany: '',
+    elevatorPhone: '',
+    elevatorWhatsapp: '',
+    elevatorContract: '',
+    elevatorInstructions: 'Mantenha a calma. Não tente abrir a porta à força. Avise portaria e síndico pelo sistema.',
+    notifyResidentsAfterConfirm: true,
+  },
   settings: null,
 };
 
@@ -2974,6 +2983,167 @@ app.post('/api/packages', requireDatabaseReady, async (req, res) => {
   store.state.packages = [item, ...(store.state.packages || [])];
   await saveStore(store);
   res.json({ ok: true, data: item });
+});
+
+
+
+// Central de emergência segura — v4.1.0
+const VR_EMERGENCY_TYPES = {
+  medical: { label: 'Emergência médica', critical: true },
+  water: { label: 'Vazamento de água', critical: false },
+  gas: { label: 'Vazamento de gás', critical: true },
+  elevator: { label: 'Preso no elevador', critical: true },
+  security: { label: 'Segurança / invasão', critical: true },
+  other: { label: 'Outra emergência', critical: false },
+};
+
+function emergencyDefaultSettings() {
+  return {
+    elevatorCompany: '', elevatorPhone: '', elevatorWhatsapp: '', elevatorContract: '',
+    elevatorInstructions: 'Mantenha a calma. Não tente abrir a porta à força. Avise portaria e síndico pelo sistema.',
+    notifyResidentsAfterConfirm: true,
+  };
+}
+function emergencySettings() { return { ...emergencyDefaultSettings(), ...(store.state?.emergencySettings || {}) }; }
+function brazilParts(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false }).formatToParts(date);
+  const o = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+  return { date: `${o.year}-${o.month}-${o.day}`, hour: Number(o.hour || 0) };
+}
+function emergencyShiftNow(date = new Date()) {
+  const { hour } = brazilParts(date);
+  if (hour >= 6 && hour < 14) return 'manha';
+  if (hour >= 14 && hour < 22) return 'tarde';
+  return 'noite';
+}
+function normalizeRoleText(value = '') { return String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+function staffIsPorter(person = {}) { const r = normalizeRoleText(`${person.role || ''} ${person.staffRole || ''} ${person.position || ''}`); return r.includes('port') || r.includes('porteiro') || r.includes('vigia') || r.includes('seguranca'); }
+function staffIsSyndicAdmin(person = {}) { const r = normalizeRoleText(`${person.role || ''} ${person.staffRole || ''} ${person.position || ''}`); return r.includes('sindico') || r.includes('subsindico') || r.includes('admin'); }
+function scheduleMatchesCurrentShift(schedule = {}, date = new Date()) {
+  const { date: today } = brazilParts(date); const shift = emergencyShiftNow(date);
+  if (String(schedule.date || '').slice(0, 10) !== today) return false;
+  const raw = normalizeRoleText(`${schedule.shift || ''} ${schedule.turn || ''} ${schedule.period || ''}`);
+  if (!raw) return true;
+  if (shift === 'manha') return raw.includes('manha') || raw.includes('dia') || raw.includes('06') || raw.includes('7') || raw.includes('matut');
+  if (shift === 'tarde') return raw.includes('tarde') || raw.includes('14') || raw.includes('vesp');
+  return raw.includes('noite') || raw.includes('22') || raw.includes('notur') || raw.includes('madr');
+}
+function uniqueEmergencyRecipients(items = []) {
+  const seen = new Set();
+  return items.filter((item) => {
+    const key = normalizeEmail(item.email || '') || String(item.whatsapp || item.id || item.name || '').trim().toLowerCase();
+    if (!key || seen.has(key)) return false; seen.add(key); return true;
+  });
+}
+function activePortersForEmergency(date = new Date()) {
+  const staff = Array.isArray(store.state?.staff) ? store.state.staff.filter((p) => p.active !== false) : [];
+  const schedules = Array.isArray(store.state?.staffSchedules) ? store.state.staffSchedules : [];
+  const scheduled = schedules.filter((s) => scheduleMatchesCurrentShift(s, date)).map((s) => {
+    const staffId = String(s.staffId || s.personId || '').trim();
+    return staff.find((p) => String(p.id || '').trim() === staffId) || (s.email ? staff.find((p) => normalizeEmail(p.email) === normalizeEmail(s.email)) : null) || { id: s.staffId || s.id, name: s.staffName || s.name || 'Porteiro escalado', role: s.staffRole || s.role || 'portaria', email: s.email || '', whatsapp: s.whatsapp || '' };
+  }).filter(staffIsPorter);
+  if (scheduled.length) return uniqueEmergencyRecipients(scheduled);
+  return uniqueEmergencyRecipients(staff.filter(staffIsPorter));
+}
+function syndicsForEmergency() {
+  const staff = Array.isArray(store.state?.staff) ? store.state.staff.filter((p) => p.active !== false) : [];
+  return uniqueEmergencyRecipients(staff.filter(staffIsSyndicAdmin));
+}
+function residentsForEmergency() {
+  const residents = Array.isArray(store.state?.residents) ? store.state.residents : [];
+  return uniqueEmergencyRecipients(residents.filter((r) => r.active !== false && r.status !== 'pending'));
+}
+async function notifyEmergencyRecipients(recipients = [], event = {}, scope = 'initial') {
+  const type = VR_EMERGENCY_TYPES[event.type] || VR_EMERGENCY_TYPES.other;
+  const subject = scope === 'broadcast' ? `Alerta geral: ${type.label}` : `Emergência aguardando confirmação: ${type.label}`;
+  const message = `${subject}\n\nUsuário: ${event.userName || event.userEmail || '-'}\nPerfil: ${event.userRole || '-'}\nUnidade: ${event.apartment || '-'}\nObservação: ${event.notes || '-'}\nData: ${new Date(event.createdAt || Date.now()).toLocaleString('pt-BR')}\n\nSistema Vitória Régia.`;
+  const results = [];
+  for (const person of recipients.slice(0, 30)) {
+    if (person.email) { try { results.push({ recipient: person.email, channel: 'email', ...(await sendEmailNotification({ to: person.email, subject, message })) }); } catch (error) { results.push({ recipient: person.email, channel: 'email', ok: false, error: error.message }); } }
+    if (person.whatsapp) { try { results.push({ recipient: person.whatsapp, channel: 'whatsapp', ...(await sendWhatsAppNotification({ to: person.whatsapp, message })) }); } catch (error) { results.push({ recipient: person.whatsapp, channel: 'whatsapp', ok: false, error: error.message }); } }
+  }
+  await logNotification({ channel: 'in-app', recipient: `${recipients.length} destinatários`, subject, message, status: 'queued', providerResponse: { scope, results } }).catch(() => {});
+  return results;
+}
+
+app.get('/api/emergency/settings', requireDatabaseReady, requireAuthenticatedUser, async (req, res) => {
+  res.json({ ok: true, settings: emergencySettings() });
+});
+app.post('/api/emergency/settings', requireDatabaseReady, requireSyndicUser, async (req, res) => {
+  try {
+    const body = req.body || {};
+    const current = emergencySettings();
+    const next = {
+      ...current,
+      elevatorCompany: String(body.elevatorCompany || '').trim(),
+      elevatorPhone: String(body.elevatorPhone || '').trim(),
+      elevatorWhatsapp: String(body.elevatorWhatsapp || '').trim(),
+      elevatorContract: String(body.elevatorContract || '').trim(),
+      elevatorInstructions: String(body.elevatorInstructions || current.elevatorInstructions || '').trim(),
+      notifyResidentsAfterConfirm: body.notifyResidentsAfterConfirm !== false,
+    };
+    store.state = { ...DEFAULT_STATE, ...(store.state || {}), emergencySettings: next };
+    await saveStore(store);
+    await recordActivityLog({ action: 'Atualizou configurações de emergência', entityType: 'emergency-settings', summary: 'Contato do elevador e regras de emergência atualizados.' }, req.session.user || {}).catch(() => {});
+    res.json({ ok: true, settings: next });
+  } catch (error) { res.status(500).json({ ok: false, error: error.message }); }
+});
+app.post('/api/emergency/request', requireDatabaseReady, requireAuthenticatedUser, async (req, res) => {
+  try {
+    const user = req.session.user || {};
+    const type = String(req.body?.type || '').trim();
+    if (!VR_EMERGENCY_TYPES[type]) return res.status(400).json({ ok: false, error: 'Escolha um tipo de emergência válido.' });
+    const typeInfo = VR_EMERGENCY_TYPES[type];
+    const initialRecipients = uniqueEmergencyRecipients([...syndicsForEmergency(), ...activePortersForEmergency(new Date())]);
+    const event = {
+      id: `emergency-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      type, typeLabel: typeInfo.label, critical: Boolean(typeInfo.critical), status: 'pending-review',
+      userName: user.name || user.email || 'Usuário', userEmail: user.email || '', userRole: user.role || user.staffRole || '',
+      apartment: user.apartment || '', notes: String(req.body?.notes || '').trim(), createdAt: new Date().toISOString(),
+      createdBy: user.email || user.name || 'sistema', initialRecipients: initialRecipients.map((p) => ({ id: p.id, name: p.name, role: p.role, email: p.email, whatsapp: p.whatsapp })),
+      elevatorAssistance: type === 'elevator' ? emergencySettings() : null,
+    };
+    const state = { ...DEFAULT_STATE, ...(store.state || {}) };
+    state.emergencyEvents = [event, ...(Array.isArray(state.emergencyEvents) ? state.emergencyEvents : [])].slice(0, 200);
+    store.state = state; await saveStore(store);
+    await recordActivityLog({ action: 'Emergência acionada', entityType: 'emergency', entityId: event.id, apartment: event.apartment, summary: `${typeInfo.label} acionada por ${event.userName}`, details: event }, user).catch(() => {});
+    notifyEmergencyRecipients(initialRecipients, event, 'initial').catch((error) => console.error('Falha ao notificar emergência:', error.message));
+    res.json({ ok: true, event, notified: { initialCount: initialRecipients.length, portersOnDuty: activePortersForEmergency(new Date()).length, residents: 0 } });
+  } catch (error) { res.status(500).json({ ok: false, error: error.message }); }
+});
+app.get('/api/emergency/events', requireDatabaseReady, requireAuthenticatedUser, async (req, res) => {
+  const user = req.session.user || {};
+  const all = Array.isArray(store.state?.emergencyEvents) ? store.state.emergencyEvents : [];
+  const allowed = ['sindico', 'portaria'].includes(user.role) || isSyndicOrSubsyndicSession(user);
+  const events = allowed ? all : all.filter((e) => e.userEmail === user.email || (e.status === 'broadcasted' && e.critical));
+  res.json({ ok: true, events: events.slice(0, 80) });
+});
+app.post('/api/emergency/events/:id/confirm', requireDatabaseReady, requirePortariaOrSyndicUser, async (req, res) => {
+  try {
+    const state = { ...DEFAULT_STATE, ...(store.state || {}) };
+    const list = Array.isArray(state.emergencyEvents) ? state.emergencyEvents : [];
+    const idx = list.findIndex((e) => e.id === req.params.id);
+    if (idx < 0) return res.status(404).json({ ok: false, error: 'Emergência não encontrada.' });
+    const event = { ...list[idx], status: 'broadcasted', confirmedAt: new Date().toISOString(), confirmedBy: req.session.user?.email || req.session.user?.name || '', confirmNote: String(req.body?.note || '').trim() };
+    const residents = emergencySettings().notifyResidentsAfterConfirm === false ? [] : residentsForEmergency();
+    event.broadcastRecipients = residents.map((p) => ({ id: p.id, name: p.name, email: p.email, whatsapp: p.whatsapp, apartment: p.apartment }));
+    list[idx] = event; state.emergencyEvents = list; store.state = state; await saveStore(store);
+    await recordActivityLog({ action: 'Alerta geral confirmado', entityType: 'emergency', entityId: event.id, apartment: event.apartment, summary: `${event.typeLabel || event.type} confirmado para moradores`, details: event }, req.session.user || {}).catch(() => {});
+    notifyEmergencyRecipients(residents, event, 'broadcast').catch((error) => console.error('Falha ao notificar moradores:', error.message));
+    res.json({ ok: true, event, message: `Alerta geral confirmado. Moradores notificados: ${residents.length}.` });
+  } catch (error) { res.status(500).json({ ok: false, error: error.message }); }
+});
+app.post('/api/emergency/events/:id/reset', requireDatabaseReady, requirePortariaOrSyndicUser, async (req, res) => {
+  try {
+    const state = { ...DEFAULT_STATE, ...(store.state || {}) };
+    const list = Array.isArray(state.emergencyEvents) ? state.emergencyEvents : [];
+    const idx = list.findIndex((e) => e.id === req.params.id);
+    if (idx < 0) return res.status(404).json({ ok: false, error: 'Emergência não encontrada.' });
+    const event = { ...list[idx], status: 'reset', resetAt: new Date().toISOString(), resetBy: req.session.user?.email || req.session.user?.name || '', resetNote: String(req.body?.note || '').trim() };
+    list[idx] = event; state.emergencyEvents = list; store.state = state; await saveStore(store);
+    await recordActivityLog({ action: 'Alarme de emergência resetado', entityType: 'emergency', entityId: event.id, apartment: event.apartment, summary: `${event.typeLabel || event.type} resetado`, details: event }, req.session.user || {}).catch(() => {});
+    res.json({ ok: true, event, message: 'Alarme resetado pela portaria/síndico.' });
+  } catch (error) { res.status(500).json({ ok: false, error: error.message }); }
 });
 
 if (fs.existsSync(path.join(FRONTEND_DIR, 'index.html'))) {

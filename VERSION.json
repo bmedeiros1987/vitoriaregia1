@@ -1,17 +1,22 @@
 {
-  "version": "3.9.0-mysql-premium-clean",
+  "version": "v4.2.1-mysql-compacto",
   "date": "2026-05-22",
   "database": "mysql",
-  "base": "v3.8.0 mysql apps",
-  "description": "Versão premium clean com menu lateral recolhível, login minimalista, notificações internas, botão único de emergência e manuais simples para moradores, portaria e síndico.",
+  "base": "v4.2.0 mysql ajuda videos",
+  "description": "Versão completa compactada para upload pelo navegador do GitHub com menos de 100 arquivos.",
   "highlights": [
-    "menu lateral premium recolhível para PC e celular",
-    "login premium com mínimo de informação",
-    "notificações internas no app além de e-mail, WhatsApp e Telegram",
-    "botão flutuante único de emergência com giroflex",
-    "configurações reorganizadas em subabas",
-    "preferências de acessibilidade para aumentar texto, contraste e reduzir movimentos",
-    "apps de celular dentro do sistema",
-    "manuais mais simples, claros e acessíveis"
+    "menos de 100 arquivos no pacote",
+    "mantém layout premium, menu recolhível e dashboard clean",
+    "mantém emergência segura com giroflex dentro do sistema",
+    "mantém ajuda com manuais ilustrativos e vídeos",
+    "mantém downloads dos projetos Android/iOS em arquivos compactados",
+    "base MySQL preservada"
+  ],
+  "name": "Vitória Régia Premium - Pacote Compacto",
+  "updatedAt": "2026-05-22",
+  "notes": [
+    "Os projetos Android/iOS foram mantidos em ZIP dentro de downloads/ para reduzir quantidade de arquivos no GitHub.",
+    "Foram removidos documentos antigos duplicados e mantidos os manuais mais recentes.",
+    "Suba todo o conteúdo extraído para a raiz do repositório, sem pasta extra."
   ]
 }
