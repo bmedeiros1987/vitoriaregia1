@@ -151,16 +151,51 @@
     panel.dataset.vrNotificationPanel = 'true';
     panel.hidden = true;
     panel.innerHTML = `
-      <div class="vr-notification-head"><h3>Notificações</h3><button class="btn btn--outline btn--sm" type="button" data-vr-mark-read>Marcar lidas</button></div>
+      <div class="vr-notification-head">
+        <div><h3>Notificações</h3><small>Central interna do aplicativo</small></div>
+        <div class="vr-notification-head-actions">
+          <button class="btn btn--outline btn--sm" type="button" data-vr-mark-read>Marcar lidas</button>
+          <button class="icon-btn vr-notification-close" type="button" data-vr-close-notifications aria-label="Fechar notificações">×</button>
+        </div>
+      </div>
       <div data-vr-notification-list></div>
     `;
     document.body.appendChild(panel);
 
     btn.addEventListener('click', () => { panel.hidden = !panel.hidden; renderNotificationCenter(); });
-    panel.querySelector('[data-vr-mark-read]').addEventListener('click', () => {
+    panel.querySelector('[data-vr-close-notifications]')?.addEventListener('click', () => { panel.hidden = true; });
+    panel.querySelector('[data-vr-mark-read]')?.addEventListener('click', () => {
       saveNotificationList(notificationList().map((item) => ({ ...item, read: true })));
       renderNotificationCenter();
+      panel.hidden = true;
     });
+    panel.addEventListener('click', (event) => {
+      const readBtn = event.target.closest('[data-vr-notification-read]');
+      const removeBtn = event.target.closest('[data-vr-notification-remove]');
+      const itemNode = event.target.closest('[data-vr-notification-id]');
+      if (!itemNode) return;
+      const id = itemNode.dataset.vrNotificationId;
+      if (readBtn) {
+        saveNotificationList(notificationList().map((item) => item.id === id ? { ...item, read: true } : item));
+        renderNotificationCenter();
+        return;
+      }
+      if (removeBtn) {
+        saveNotificationList(notificationList().filter((item) => item.id !== id));
+        renderNotificationCenter();
+        return;
+      }
+      if (!event.target.closest('button,a')) {
+        saveNotificationList(notificationList().map((item) => item.id === id ? { ...item, read: true } : item));
+        renderNotificationCenter();
+      }
+    });
+    document.addEventListener('keydown', (event) => { if (event.key === 'Escape') panel.hidden = true; });
+    document.addEventListener('click', (event) => {
+      if (panel.hidden) return;
+      if (panel.contains(event.target) || btn.contains(event.target)) return;
+      panel.hidden = true;
+    }, true);
   }
   function renderNotificationCenter() {
     ensureNotificationCenter();
@@ -172,10 +207,14 @@
     if (!box) return;
     if (!list.length) { box.innerHTML = '<div class="vr-notification-empty">Nenhuma notificação interna por enquanto.</div>'; return; }
     box.innerHTML = list.slice(0, 12).map((item) => `
-      <div class="vr-notification-item" data-type="${escapeHTML(item.type)}">
+      <div class="vr-notification-item ${item.read ? 'is-read' : 'is-unread'}" data-type="${escapeHTML(item.type)}" data-vr-notification-id="${escapeHTML(item.id)}">
         <strong>${item.read ? '' : '• '}${escapeHTML(item.title)}</strong>
         <span>${escapeHTML(item.text || '')}</span>
         <small>${new Date(item.date).toLocaleString('pt-BR')}</small>
+        <div class="vr-notification-item-actions">
+          ${item.read ? '' : '<button class="btn btn--outline btn--sm" type="button" data-vr-notification-read>Lida</button>'}
+          <button class="btn btn--ghost btn--sm" type="button" data-vr-notification-remove>Remover</button>
+        </div>
       </div>
     `).join('');
   }
@@ -221,10 +260,11 @@
         <div><span class="eyebrow">Ajuda simples</span><h2>Manuais e suporte</h2><p>Guias objetivos, feitos para qualquer pessoa usar: criança, adulto ou idoso. Clique no manual do seu perfil.</p></div>
       </div>
       <div class="vr-help-grid">
-        <article class="vr-help-card"><span>👨‍👩‍👧</span><h3>Moradores</h3><p>Aprenda a ver comunicados, reservas, encomendas, visitantes, financeiro e emergência.</p><a class="btn btn--primary" href="docs/Manual_dos_Moradores_v4.1.1.pdf" target="_blank">Abrir manual</a></article>
-        <article class="vr-help-card"><span>🛡️</span><h3>Portaria</h3><p>Passo a passo para registrar visitantes, encomendas, fotos e avisos.</p><a class="btn btn--primary" href="docs/Manual_da_Portaria_v4.1.1.pdf" target="_blank">Abrir manual</a></article>
-        <article class="vr-help-card"><span>👤</span><h3>Síndico/Administração</h3><p>Cadastros, permissões, financeiro, notificações e configurações.</p><a class="btn btn--primary" href="docs/Manual_do_Sindico_v4.1.1.pdf" target="_blank">Abrir manual</a></article>
-        <article class="vr-help-card"><span>📘</span><h3>Funcionalidades</h3><p>Visão geral do sistema e de todos os módulos disponíveis.</p><a class="btn btn--outline" href="docs/Funcionalidades_do_Sistema_v4.1.1.pdf" target="_blank">Ver funcionalidades</a></article>
+        <article class="vr-help-card"><span>📚</span><h3>Manual completo</h3><p>Guia detalhado com todas as abas, cadastros, financeiro, administração e emergência.</p><a class="btn btn--primary" href="docs/Manual_Completo_do_Sistema_v4.2.8.pdf" target="_blank">Abrir manual completo</a></article>
+        <article class="vr-help-card"><span>👨‍👩‍👧</span><h3>Moradores</h3><p>Aprenda a ver comunicados, reservas, encomendas, visitantes, financeiro e emergência.</p><a class="btn btn--primary" href="docs/Manual_dos_Moradores_v4.2.8.pdf" target="_blank">Abrir manual</a></article>
+        <article class="vr-help-card"><span>🛡️</span><h3>Portaria</h3><p>Passo a passo para registrar visitantes, encomendas, fotos e avisos.</p><a class="btn btn--primary" href="docs/Manual_da_Portaria_v4.2.8.pdf" target="_blank">Abrir manual</a></article>
+        <article class="vr-help-card"><span>👤</span><h3>Síndico/Administração</h3><p>Cadastros, permissões, financeiro, notificações e configurações.</p><a class="btn btn--primary" href="docs/Manual_do_Sindico_v4.2.8.pdf" target="_blank">Abrir manual</a></article>
+        <article class="vr-help-card"><span>📘</span><h3>Funcionalidades</h3><p>Visão geral do sistema e de todos os módulos disponíveis.</p><a class="btn btn--outline" href="docs/Funcionalidades_do_Sistema_v4.2.8.pdf" target="_blank">Ver funcionalidades</a></article>
       </div>
     `;
   }

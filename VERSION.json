@@ -1,22 +1,22 @@
 {
-  "version": "v4.2.1-mysql-compacto",
+  "version": "v4.2.8-mysql-telegram-integrado",
   "date": "2026-05-22",
   "database": "mysql",
   "base": "v4.2.0 mysql ajuda videos",
-  "description": "Versão completa compactada para upload pelo navegador do GitHub com menos de 100 arquivos.",
+  "description": "Telegram integrado ao sistema, emergência e manuais com QR Code Android/iOS.",
   "highlights": [
-    "menos de 100 arquivos no pacote",
-    "mantém layout premium, menu recolhível e dashboard clean",
-    "mantém emergência segura com giroflex dentro do sistema",
-    "mantém ajuda com manuais ilustrativos e vídeos",
-    "mantém downloads dos projetos Android/iOS em arquivos compactados",
-    "base MySQL preservada"
+    "campo Telegram nos cadastros principais",
+    "Telegram salvo como @usuario ou Chat ID",
+    "uso do Telegram nas notificações automáticas quando configurado",
+    "base MySQL preservada",
+    "pacote abaixo de 100 arquivos"
   ],
-  "name": "Vitória Régia Premium - Pacote Compacto",
+  "name": "Vitória Régia Premium",
   "updatedAt": "2026-05-22",
-  "notes": [
-    "Os projetos Android/iOS foram mantidos em ZIP dentro de downloads/ para reduzir quantidade de arquivos no GitHub.",
-    "Foram removidos documentos antigos duplicados e mantidos os manuais mais recentes.",
-    "Suba todo o conteúdo extraído para a raiz do repositório, sem pasta extra."
-  ]
+  "notes": "Inclui Telegram nos formulários e grava como telegramChatId para uso em notificações automáticas.",
+  "label": "Vitória Régia v4.2.7 - Telegram nos cadastros",
+  "display": "v4.2.7 - Telegram nos cadastros",
+  "release": "Adiciona campo Telegram aos cadastros de moradores, usuários internos e visitantes recorrentes.",
+  "filesLimit": "menos de 100 arquivos",
+  "releaseDate": "2026-05-22"
 }
