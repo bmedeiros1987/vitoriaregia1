@@ -1,15 +1,17 @@
 {
-  "version": "3.8.0-mysql-premium-apps",
+  "version": "3.9.0-mysql-premium-clean",
   "date": "2026-05-22",
   "database": "mysql",
-  "base": "v3.7.0 premium app",
-  "description": "Versão premium com recuperação de senha apenas para usuários aprovados, envio de senha temporária por e-mail, projetos Android por perfil e pacote iOS/PWA preparado.",
+  "base": "v3.8.0 mysql apps",
+  "description": "Versão premium clean com menu lateral recolhível, login minimalista, notificações internas, botão único de emergência e manuais simples para moradores, portaria e síndico.",
   "highlights": [
-    "esqueci minha senha com senha temporária simples",
-    "recuperação restrita a usuários aprovados pelo síndico/admin",
-    "envio da senha temporária por e-mail",
-    "projetos Android para Morador, Síndico e Portaria",
-    "workflow GitHub Actions para gerar APKs",
-    "pacote iOS/PWA preparado para publicação com Xcode"
+    "menu lateral premium recolhível para PC e celular",
+    "login premium com mínimo de informação",
+    "notificações internas no app além de e-mail, WhatsApp e Telegram",
+    "botão flutuante único de emergência com giroflex",
+    "configurações reorganizadas em subabas",
+    "preferências de acessibilidade para aumentar texto, contraste e reduzir movimentos",
+    "apps de celular dentro do sistema",
+    "manuais mais simples, claros e acessíveis"
   ]
 }

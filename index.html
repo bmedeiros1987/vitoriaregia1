@@ -9,6 +9,7 @@
   <link rel="icon" href="assets/logo-vitoria-regia.svg" type="image/svg+xml" />
   <link rel="manifest" href="site.webmanifest" />
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="vr-premium-clean.css" />
 </head>
 <body>
   <section class="login-screen" data-login-screen>
@@ -173,9 +174,9 @@
         <a href="#atividades-portaria" data-nav data-roles="sindico"><span>🧾</span> Logs da portaria</a>
         <a href="#arquivos" data-nav data-roles="morador,sindico,portaria"><span>☁️</span> Arquivos</a>
         <a href="#comunicados" data-nav data-roles="morador,sindico,portaria"><span>📣</span> Comunicados</a>
-        <a href="#app-android" data-nav data-roles="morador,sindico,portaria"><span>📱</span> App Android</a>
+        <a href="#app-android" data-nav data-roles="morador,sindico,portaria"><span>📱</span> Apps</a>
         <a href="#excelencia" data-nav data-roles="sindico"><span>🏆</span> Central premium</a>
-        <a href="#manual" data-nav data-roles="sindico"><span>📘</span> Manual</a>
+        <a href="#manual" data-nav data-roles="morador,sindico,portaria"><span>📘</span> Ajuda</a>
         <a href="#configuracoes" data-nav data-roles="sindico"><span>⚙️</span> Configurações</a>
       </nav>
       <div class="sidebar-profile">
@@ -914,16 +915,16 @@ João Souza - CPF ***.000.***-**"></textarea></label>
         </article>
       </section>
 
-      <section id="manual" class="section" data-section data-roles="sindico">
+      <section id="manual" class="section" data-section data-roles="morador,sindico,portaria">
         <div class="section-head">
-          <div><span class="eyebrow">Exclusivo da administração</span><h2>Manual completo do sistema</h2><p>Documento oficial para consulta de síndico, subsíndico e administradores autorizados.</p></div>
-          <a class="btn btn--outline" href="/api/admin/manual/download" target="_blank" rel="noopener">Baixar PDF</a>
+          <div><span class="eyebrow">Ajuda simples</span><h2>Manuais e suporte</h2><p>Guias objetivos para moradores, portaria e administração. Linguagem simples para crianças, adultos e idosos.</p></div>
         </div>
-        <article class="panel">
-          <div class="panel-header"><div><span class="eyebrow">Manual incorporado</span><h2>Sistema Vitória Régia</h2></div></div>
-          <p class="form-hint">O manual é protegido pelo login administrativo. Moradores e portaria não visualizam esta aba.</p>
-          <iframe title="Manual do Sistema Vitória Régia" src="/api/admin/manual" style="width:100%;min-height:72vh;border:1px solid var(--border);border-radius:18px;background:#fff;"></iframe>
-        </article>
+        <div class="vr-help-grid">
+          <article class="vr-help-card"><span>👨‍👩‍👧</span><h3>Moradores</h3><p>Comunicados, reservas, encomendas, visitantes, financeiro e emergência.</p><a class="btn btn--primary" href="docs/Manual_dos_Moradores_v3.9.0.pdf" target="_blank">Abrir manual</a></article>
+          <article class="vr-help-card"><span>🛡️</span><h3>Portaria</h3><p>Visitantes, encomendas, fotos, avisos e ocorrências.</p><a class="btn btn--primary" href="docs/Manual_da_Portaria_v3.9.0.pdf" target="_blank">Abrir manual</a></article>
+          <article class="vr-help-card"><span>👤</span><h3>Síndico/Administração</h3><p>Cadastros, permissões, financeiro, notificações e configurações.</p><a class="btn btn--primary" href="docs/Manual_do_Sindico_v3.9.0.pdf" target="_blank">Abrir manual</a></article>
+          <article class="vr-help-card"><span>📘</span><h3>Funcionalidades</h3><p>Resumo geral de tudo que o sistema faz.</p><a class="btn btn--outline" href="docs/Funcionalidades_do_Sistema_v3.9.0.pdf" target="_blank">Ver funcionalidades</a></article>
+        </div>
       </section>
 
       <section id="configuracoes" class="section" data-section data-roles="sindico">
@@ -1075,10 +1076,11 @@ João Souza - CPF ***.000.***-**"></textarea></label>
 
   <footer class="system-version-footer" data-system-version-footer>
     <span>Sistema Vitória Régia</span>
-    <strong>v3.7.0-mysql-premium-app</strong>
+    <strong>v3.9.0-mysql-premium-clean</strong>
     <small>Desenvolvido em parceria por Bruno Saraiva e ChatGPT.</small>
   </footer>
 
   <script src="app.js"></script>
+  <script src="vr-premium-clean.js"></script>
 </body>
 </html>
