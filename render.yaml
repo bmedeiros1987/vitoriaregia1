@@ -1,42 +1,20 @@
 services:
   - type: web
     name: vitoriaregia1
-    runtime: node
-    rootDir: backend
-    buildCommand: npm install
-    startCommand: npm start
+    env: node
     plan: free
+    rootDir: .
+    buildCommand: cd backend && npm install
+    startCommand: cd backend && npm start
     autoDeploy: true
     envVars:
       - key: NODE_ENV
         value: production
-      - key: APP_URL
-        value: https://vitoriaregia1.onrender.com
       - key: FRONTEND_DIR
-        value: /opt/render/project/src
-      - key: DATABASE_PROVIDER
-        value: postgres
-      - key: DATABASE_URL
-        sync: false
-      - key: PGSSLMODE
-        value: require
-      - key: PGSSL_REJECT_UNAUTHORIZED
-        value: "false"
+        value: ..
       - key: REQUIRE_DATABASE
-        value: "false"
-      - key: AUTO_INIT_DB
-        value: "true"
+        value: false
       - key: SESSION_SECRET
         generateValue: true
-      - key: BOOTSTRAP_ADMIN_ENABLED
-        value: "true"
-      - key: BOOTSTRAP_ADMIN_EMAIL
-        value: bmedeiros1987@gmail.com
-      - key: BOOTSTRAP_ADMIN_PASSWORD
-        sync: false
-      - key: BOOTSTRAP_DISABLE_AFTER_FIRST_SINDICO
-        value: "true"
-      - key: ALLOW_LEGACY_DEMO_LOGIN
-        value: "false"
-      - key: REQUIRE_APPROVED_RESIDENT
-        value: "true"
+      - key: CLOUD_PROVIDER
+        value: local

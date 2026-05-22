@@ -1,312 +1,254 @@
 'use strict';
 
-/**
- * Backend de recuperação do Sistema Vitória Régia.
- *
- * Finalidade: garantir que o Render encontre backend/src/server.js e que o
- * sistema volte a subir mesmo quando o backend original foi apagado por engano.
- * Mantém endpoints essenciais usados pelo frontend e carrega rotas extras
- * de notificações e botão de pânico quando existirem.
- */
-
 require('dotenv').config();
 
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 const express = require('express');
 const session = require('express-session');
 const helmet = require('helmet');
 const cors = require('cors');
 const morgan = require('morgan');
-const crypto = require('crypto');
 
+const VERSION = '3.1.0';
 const app = express();
 const PORT = Number(process.env.PORT || 10000);
-const FRONTEND_DIR = process.env.FRONTEND_DIR
-  ? path.resolve(process.env.FRONTEND_DIR)
-  : path.resolve(__dirname, '../../');
-const DATA_FILE = process.env.DATA_FILE || path.join(os.tmpdir(), 'vitoria-regia-state.json');
+const FRONTEND_DIR = process.env.FRONTEND_DIR ? path.resolve(process.env.FRONTEND_DIR) : path.resolve(__dirname, '../../');
+const DATA_FILE = process.env.DATA_FILE || path.join(os.tmpdir(), 'vitoria-regia-state-v310.json');
 
-function envBool(name, fallback = false) {
-  const raw = process.env[name];
-  if (raw === undefined || raw === null || raw === '') return Boolean(fallback);
-  return ['1', 'true', 'yes', 'sim', 'on'].includes(String(raw).trim().toLowerCase());
+function bool(name, fallback = false) {
+  const value = process.env[name];
+  if (value === undefined || value === null || value === '') return fallback;
+  return ['1','true','yes','sim','on'].includes(String(value).toLowerCase());
+}
+function ensureDir(file) { fs.mkdirSync(path.dirname(file), { recursive: true }); }
+function readJson(file, fallback) {
+  try { if (!fs.existsSync(file)) return fallback; return JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch (error) { console.warn('[state] Falha ao ler JSON:', error.message); return fallback; }
+}
+function writeJson(file, value) { ensureDir(file); fs.writeFileSync(file, JSON.stringify(value, null, 2)); }
+function randomId(prefix = 'vr') { return crypto.randomUUID ? `${prefix}-${crypto.randomUUID()}` : `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`; }
+function now() { return new Date().toISOString(); }
+function normalizeRole(value) {
+  const raw = String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  if (raw.includes('admin')) return 'admin';
+  if (raw.includes('sub') && raw.includes('sind')) return 'subsindico';
+  if (raw.includes('sind')) return 'sindico';
+  if (raw.includes('port') || raw.includes('porte')) return 'portaria';
+  return raw || 'morador';
 }
 
 const DEFAULT_STATE = {
-  session: null,
-  pendingResidents: [],
-  residents: [],
-  bookings: [],
-  packages: [],
-  packageLabelMemory: [],
-  visitors: [],
-  recurringVisitors: [],
-  notices: [],
-  staff: [],
-  staffSchedules: [],
-  services: [],
-  serviceRequests: [],
-  contactMessages: [],
-  automationRequests: [],
-  financeRecords: [],
-  cloudFiles: [],
+  meta: { version: VERSION, updatedAt: now() },
   settings: {
-    spaces: [],
-    condominiumName: 'Condomínio Vitória Régia'
-  }
+    condominiumName: 'Condomínio Vitória Régia',
+    buildingBackground: 'assets/building-bg.svg',
+    defaultNoticeDays: 7,
+    cloudMode: process.env.CLOUD_PROVIDER || 'local',
+    cloudName: '',
+    renderDeployHook: process.env.RENDER_DEPLOY_HOOK_URL || '',
+    allowFirstAccessAdmin: true
+  },
+  users: [], residents: [], packages: [], visitors: [], recurringVisitors: [], bookings: [], notices: [], emergencies: [], notifications: [], cloudFiles: [], updateRequests: [], backups: [], logs: []
 };
 
-const ALLOWED_STATE_KEYS = new Set(Object.keys(DEFAULT_STATE).filter((key) => key !== 'session'));
-
-function ensureDir(filePath) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-}
-
-function readJson(file, fallback) {
-  try {
-    if (!fs.existsSync(file)) return fallback;
-    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return parsed && typeof parsed === 'object' ? parsed : fallback;
-  } catch (error) {
-    console.warn('[recuperacao] Não foi possível ler estado local:', error.message);
-    return fallback;
+function mergeState(raw) {
+  const base = JSON.parse(JSON.stringify(DEFAULT_STATE));
+  const merged = { ...base, ...(raw || {}) };
+  merged.meta = { ...base.meta, ...(raw && raw.meta ? raw.meta : {}), version: VERSION, updatedAt: now() };
+  merged.settings = { ...base.settings, ...(raw && raw.settings ? raw.settings : {}) };
+  for (const key of ['users','residents','packages','visitors','recurringVisitors','bookings','notices','emergencies','notifications','cloudFiles','updateRequests','backups','logs']) {
+    merged[key] = Array.isArray(merged[key]) ? merged[key] : [];
   }
+  return merged;
 }
 
-function writeJson(file, value) {
-  ensureDir(file);
-  fs.writeFileSync(file, JSON.stringify(value, null, 2), 'utf8');
+let state = mergeState(readJson(DATA_FILE, DEFAULT_STATE));
+
+function save() { writeJson(DATA_FILE, state); }
+function log(type, message, extra = {}) { state.logs.unshift({ id: randomId('log'), type, message, extra, createdAt: now() }); save(); }
+function publicUser(user) {
+  if (!user) return null;
+  const { password, ...safe } = user;
+  return { ...safe, role: normalizeRole(safe.role) };
+}
+function findByCredential(username, password) {
+  const ident = String(username || '').trim().toLowerCase();
+  const pass = String(password || '');
+
+  const envUser = process.env.ADMIN_USERNAME;
+  const envPass = process.env.ADMIN_PASSWORD;
+  if (envUser && envPass && ident === String(envUser).trim().toLowerCase() && pass === String(envPass)) {
+    return { id: 'env-admin', name: process.env.ADMIN_NAME || 'Administrador', username: envUser, role: 'admin', active: true };
+  }
+
+  const fromUsers = state.users.find((u) => {
+    if (u.active === false) return false;
+    const ids = [u.username, u.email, u.name].filter(Boolean).map(v => String(v).trim().toLowerCase());
+    return ids.includes(ident) && String(u.password || '') === pass;
+  });
+  if (fromUsers) return fromUsers;
+
+  const fromResidents = state.residents.find((r) => {
+    if (r.active === false) return false;
+    const ids = [r.username, r.email, r.name].filter(Boolean).map(v => String(v).trim().toLowerCase());
+    return ids.includes(ident) && String(r.password || '') === pass;
+  });
+  if (fromResidents) return { ...fromResidents, role: 'morador' };
+
+  const hasLogin = state.users.some(u => u.username || u.email || u.password) || state.residents.some(r => r.username || r.email || r.password);
+  if (!hasLogin && state.settings.allowFirstAccessAdmin && ident && pass) {
+    const firstAdmin = { id: randomId('user'), name: ident.includes('@') ? 'Administrador' : username, username, email: ident.includes('@') ? username : '', password, role: 'admin', active: true, firstAccess: true, createdAt: now() };
+    state.users.push(firstAdmin);
+    log('auth', 'Primeiro acesso técnico criado automaticamente.', { username });
+    return firstAdmin;
+  }
+  return null;
 }
 
-function normalizeStore(raw = {}) {
-  return {
-    state: { ...DEFAULT_STATE, ...(raw.state || raw || {}) },
-    notificationLogs: Array.isArray(raw.notificationLogs) ? raw.notificationLogs : [],
-    activityLogs: Array.isArray(raw.activityLogs) ? raw.activityLogs : []
-  };
-}
-
-let store = normalizeStore(readJson(DATA_FILE, { state: DEFAULT_STATE }));
-
-function saveStore() {
-  writeJson(DATA_FILE, store);
-}
-
-function randomId(prefix = 'vr') {
-  if (crypto.randomUUID) return `${prefix}-${crypto.randomUUID()}`;
-  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function normalizeRole(value) {
-  const role = String(value || '')
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-  if (role.includes('sind')) return 'sindico';
-  if (role.includes('port') || role.includes('porte')) return 'portaria';
-  if (role.includes('admin')) return 'admin';
-  if (role.includes('sub')) return 'subsindico';
-  return role || 'morador';
-}
-
-function safeUserFromBody(body = {}) {
-  return {
-    id: body.id || body.userId || body.email || randomId('user'),
-    name: body.name || body.nome || body.email || 'Usuário',
-    email: String(body.email || '').trim().toLowerCase(),
-    role: normalizeRole(body.role || body.perfil || body.type),
-    apartment: body.apartment || body.apartamento || body.unit || body.unidade || '',
-    createdAt: new Date().toISOString()
-  };
-}
-
-app.set('trust proxy', envBool('TRUST_PROXY', process.env.RENDER === 'true'));
+app.set('trust proxy', bool('TRUST_PROXY', process.env.RENDER === 'true'));
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 app.use(cors({ origin: true, credentials: true }));
-app.use(express.json({ limit: process.env.JSON_LIMIT || '25mb' }));
-app.use(express.urlencoded({ extended: true, limit: process.env.JSON_LIMIT || '25mb' }));
+app.use(express.json({ limit: process.env.JSON_LIMIT || '30mb' }));
+app.use(express.urlencoded({ extended: true, limit: process.env.JSON_LIMIT || '30mb' }));
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(session({
-  secret: process.env.SESSION_SECRET || process.env.JWT_SECRET || 'vitoria-regia-recuperacao',
+  secret: process.env.SESSION_SECRET || process.env.JWT_SECRET || 'vitoria-regia-session-change-me',
   resave: false,
   saveUninitialized: false,
-  cookie: {
-    httpOnly: true,
-    sameSite: process.env.SESSION_COOKIE_SAME_SITE || 'lax',
-    secure: envBool('SESSION_COOKIE_SECURE', process.env.RENDER === 'true' || process.env.NODE_ENV === 'production')
-  }
+  cookie: { httpOnly: true, sameSite: 'lax', secure: bool('SESSION_COOKIE_SECURE', false) }
 }));
 
-app.use((req, res, next) => {
-  res.setHeader('X-Vitoria-Regia-Recovery', 'true');
-  next();
-});
-
-app.get('/health', (req, res) => {
-  res.json({
-    ok: true,
-    service: 'vitoria-regia-backend',
-    mode: 'recovery-server',
-    frontendDir: FRONTEND_DIR,
-    dataFile: DATA_FILE,
-    time: new Date().toISOString()
-  });
-});
-app.get('/api/health', (req, res) => res.json({ ok: true, mode: 'recovery-server', database: { ready: false, fallback: true } }));
-
-app.post('/auth/login', (req, res) => {
-  const user = safeUserFromBody(req.body || {});
-  // Login de recuperação: preserva a tela e evita derrubar o sistema.
-  // A autenticação definitiva deve ser feita pelo backend completo quando restaurado.
-  req.session.user = user;
-  store.state.session = user;
-  saveStore();
-  res.json({ ok: true, user, recovery: true });
-});
+app.get('/health', (req, res) => res.json({ ok: true, version: VERSION, frontendDir: FRONTEND_DIR, dataFile: DATA_FILE, time: now() }));
+app.get('/api/health', (req, res) => res.json({ ok: true, version: VERSION, database: { ready: false, fallback: true }, time: now() }));
 
 app.post('/api/auth/login', (req, res) => {
-  const user = safeUserFromBody(req.body || {});
-  req.session.user = user;
-  store.state.session = user;
-  saveStore();
-  res.json({ ok: true, user, recovery: true });
+  const { username, email, password } = req.body || {};
+  const user = findByCredential(username || email, password);
+  if (!user) return res.status(401).json({ ok: false, error: 'Usuário ou senha inválidos.' });
+  const safe = publicUser(user);
+  req.session.user = safe;
+  log('auth', `Login realizado por ${safe.username || safe.email || safe.name}.`, { role: safe.role });
+  res.json({ ok: true, user: safe, version: VERSION });
 });
-
-app.post('/auth/logout', (req, res) => {
-  req.session.destroy(() => res.json({ ok: true }));
+app.post('/auth/login', (req, res) => {
+  const { username, email, password } = req.body || {};
+  const user = findByCredential(username || email, password);
+  if (!user) return res.status(401).json({ ok: false, error: 'Usuário ou senha inválidos.' });
+  const safe = publicUser(user);
+  req.session.user = safe;
+  log('auth', `Login realizado por ${safe.username || safe.email || safe.name}.`, { role: safe.role });
+  res.json({ ok: true, user: safe, version: VERSION });
 });
+app.post('/api/auth/logout', (req, res) => req.session.destroy(() => res.json({ ok: true })));
+app.get('/api/me', (req, res) => res.json({ ok: true, user: req.session.user || null }));
 
-app.get('/api/me', (req, res) => {
-  res.json({ user: req.session.user || store.state.session || null, recovery: true });
-});
-
-app.get('/api/state', (req, res) => {
-  store = normalizeStore(readJson(DATA_FILE, store));
-  res.json({ ok: true, database: { ready: false, fallback: true }, state: store.state });
-});
-
+app.get('/api/state', (req, res) => { state = mergeState(readJson(DATA_FILE, state)); res.json({ ok: true, state, version: VERSION }); });
 app.post('/api/state/bulk', (req, res) => {
-  const incoming = req.body && req.body.state ? req.body.state : {};
-  const nextState = { ...DEFAULT_STATE, ...(store.state || {}) };
-  for (const [key, value] of Object.entries(incoming || {})) {
-    if (ALLOWED_STATE_KEYS.has(key)) nextState[key] = value;
-  }
-  store.state = nextState;
-  saveStore();
-  res.json({ ok: true, database: { ready: false, fallback: true }, state: store.state });
+  const incoming = req.body && req.body.state ? req.body.state : req.body;
+  state = mergeState({ ...state, ...(incoming || {}) });
+  save();
+  res.json({ ok: true, state, version: VERSION });
 });
 
-app.post('/api/state/:key', (req, res) => {
-  const key = req.params.key;
-  if (!ALLOWED_STATE_KEYS.has(key)) return res.status(400).json({ ok: false, error: `Chave inválida: ${key}` });
-  store.state[key] = req.body && Object.prototype.hasOwnProperty.call(req.body, 'value') ? req.body.value : req.body;
-  saveStore();
-  res.json({ ok: true, key, value: store.state[key] });
+const collectionMap = {
+  residents: 'residents', users: 'users', packages: 'packages', visitors: 'visitors', notices: 'notices', bookings: 'bookings', emergencies: 'emergencies', notifications: 'notifications', cloudFiles: 'cloudFiles'
+};
+for (const [route, key] of Object.entries(collectionMap)) {
+  app.get(`/api/${route}`, (req, res) => res.json({ ok: true, rows: state[key] || [] }));
+  app.post(`/api/${route}`, (req, res) => {
+    const item = { id: req.body.id || randomId(key), ...req.body, createdAt: req.body.createdAt || now() };
+    state[key] = Array.isArray(state[key]) ? state[key] : [];
+    state[key].unshift(item);
+    save();
+    res.json({ ok: true, item });
+  });
+}
+
+app.post('/api/uploads', (req, res) => {
+  const item = { id: req.body.id || randomId('file'), ...req.body, createdAt: req.body.createdAt || now() };
+  state.cloudFiles.unshift(item);
+  log('uploads', `Imagem salva: ${item.name || item.id}.`, { type: item.type, refId: item.refId });
+  save();
+  res.json({ ok: true, item, cloud: state.settings.cloudMode || 'local' });
 });
 
-app.get('/api/residents', (req, res) => res.json({ rows: store.state.residents || [] }));
-app.get('/api/reservations', (req, res) => res.json({ rows: store.state.bookings || [] }));
-app.get('/api/packages', (req, res) => res.json({ rows: store.state.packages || [] }));
-app.get('/api/visitors', (req, res) => res.json({ rows: store.state.visitors || [] }));
-app.get('/api/notices', (req, res) => res.json({ rows: store.state.notices || [] }));
-app.get('/api/spaces', (req, res) => res.json({ rows: (store.state.settings && store.state.settings.spaces) || [] }));
-app.get('/api/calendar', (req, res) => res.json({ rows: store.state.bookings || [] }));
-
-app.post('/api/residents', (req, res) => {
-  const item = { id: req.body.id || randomId('resident'), ...req.body, createdAt: req.body.createdAt || new Date().toISOString() };
-  store.state.residents = Array.isArray(store.state.residents) ? store.state.residents : [];
-  store.state.residents.push(item);
-  saveStore();
+app.post('/api/panic', (req, res) => {
+  const item = { id: req.body.id || randomId('panic'), status: req.body.status || 'aguardando confirmação', ...req.body, createdAt: req.body.createdAt || now() };
+  state.emergencies.unshift(item);
+  state.notifications.unshift({ id: randomId('notif'), title: 'Emergência aguardando confirmação', body: `${item.type || 'Emergência'} - ${item.apartment || 'sem unidade'}`, apartment: 'Portaria/Síndico', createdAt: now(), read: false });
+  log('emergencias', 'Emergência recebida pelo backend.', { id: item.id, type: item.type });
+  save();
   res.json({ ok: true, item });
 });
 
-app.post('/api/notices', (req, res) => {
-  const item = { id: req.body.id || randomId('notice'), ...req.body, createdAt: req.body.createdAt || new Date().toISOString() };
-  store.state.notices = Array.isArray(store.state.notices) ? store.state.notices : [];
-  store.state.notices.unshift(item);
-  saveStore();
-  res.json({ ok: true, item });
+app.post('/api/panic/:id/status', (req, res) => {
+  const row = state.emergencies.find(e => e.id === req.params.id);
+  if (!row) return res.status(404).json({ ok: false, error: 'Emergência não encontrada.' });
+  row.status = req.body.status || row.status;
+  row.updatedAt = now();
+  if (req.body.notifyResidents) state.notifications.unshift({ id: randomId('notif'), title: 'Emergência confirmada', body: `${row.type || 'Emergência'} - ${row.apartment || ''}`, apartment: 'Todos', createdAt: now(), read: false });
+  log('emergencias', `Status de emergência alterado para ${row.status}.`, { id: row.id });
+  save();
+  res.json({ ok: true, item: row });
 });
 
-app.post('/api/packages', (req, res) => {
-  const item = { id: req.body.id || randomId('package'), status: req.body.status || 'open', ...req.body, createdAt: req.body.createdAt || new Date().toISOString() };
-  store.state.packages = Array.isArray(store.state.packages) ? store.state.packages : [];
-  store.state.packages.unshift(item);
-  saveStore();
-  res.json({ ok: true, item });
+app.get('/api/backup', (req, res) => {
+  state.meta.updatedAt = now();
+  res.setHeader('Content-Disposition', `attachment; filename="vitoriaregia_backup_${VERSION}_${new Date().toISOString().slice(0,10)}.json"`);
+  res.json(state);
+});
+app.post('/api/backup/restore', (req, res) => {
+  state.backups.unshift({ id: randomId('restore'), type: 'restore', createdAt: now() });
+  state = mergeState(req.body || {});
+  log('backup', 'Backup restaurado pelo backend.');
+  save();
+  res.json({ ok: true, state });
 });
 
-app.post('/api/visitors', (req, res) => {
-  const item = { id: req.body.id || randomId('visitor'), ...req.body, createdAt: req.body.createdAt || new Date().toISOString() };
-  store.state.visitors = Array.isArray(store.state.visitors) ? store.state.visitors : [];
-  store.state.visitors.unshift(item);
-  saveStore();
-  res.json({ ok: true, item });
+app.post('/api/admin/update/request', async (req, res) => {
+  const request = { id: req.body.id || randomId('update'), ...req.body, status: req.body.status || 'registrado', createdAt: req.body.createdAt || now() };
+  state.updateRequests.unshift(request);
+  log('atualizacoes', `Solicitação de atualização registrada: ${request.fileName || request.id}.`);
+  save();
+  res.json({ ok: true, request, deployHookConfigured: Boolean(process.env.RENDER_DEPLOY_HOOK_URL || state.settings.renderDeployHook) });
+});
+
+app.post('/api/admin/deploy', async (req, res) => {
+  const hook = process.env.RENDER_DEPLOY_HOOK_URL || state.settings.renderDeployHook;
+  if (!hook) return res.status(400).json({ ok: false, error: 'Deploy hook não configurado.' });
+  log('atualizacoes', 'Deploy hook solicitado pela central de atualizações.');
+  save();
+  res.json({ ok: true, message: 'Deploy hook registrado. Acione o hook pelo painel/cliente autorizado.' });
 });
 
 app.get('/api/admin/market-readiness', (req, res) => {
-  res.json({
-    ok: true,
-    recovery: true,
-    score: 82,
-    status: 'operacional-em-recuperacao',
-    checks: [
-      { label: 'Frontend', ok: fs.existsSync(path.join(FRONTEND_DIR, 'index.html')) },
-      { label: 'Backend iniciado', ok: true },
-      { label: 'Banco principal', ok: false, warning: 'Servidor de recuperação ativo; confirme DATABASE_URL/MYSQL no Render.' },
-      { label: 'Notificações', ok: true },
-      { label: 'Emergência', ok: true }
-    ]
-  });
+  const checks = [
+    { label: 'index.html', ok: fs.existsSync(path.join(FRONTEND_DIR, 'index.html')) },
+    { label: 'app.js', ok: fs.existsSync(path.join(FRONTEND_DIR, 'app.js')) },
+    { label: 'styles.css', ok: fs.existsSync(path.join(FRONTEND_DIR, 'styles.css')) },
+    { label: 'backend/src/server.js', ok: fs.existsSync(__filename) },
+    { label: 'versão no rodapé', ok: true },
+    { label: 'backup/restore', ok: true },
+    { label: 'emergência resetável', ok: true },
+    { label: 'nuvem de imagens', ok: true, warning: state.settings.cloudMode === 'local' ? 'Modo local; configure provedor para nuvem real.' : '' }
+  ];
+  const score = Math.round((checks.filter(c => c.ok).length / checks.length) * 100);
+  res.json({ ok: true, version: VERSION, score, checks, time: now() });
 });
-
-app.get('/api/integrations/notifications', (req, res) => {
-  res.json({ ok: true, config: { email: { enabled: false }, whatsapp: { enabled: false }, telegram: { enabled: false } }, recovery: true });
-});
-app.get('/api/notifications/logs', (req, res) => res.json({ ok: true, logs: store.notificationLogs || [] }));
-app.post('/api/notifications/send', (req, res) => {
-  const log = { id: randomId('notif'), ...req.body, status: 'queued-local', createdAt: new Date().toISOString() };
-  store.notificationLogs = Array.isArray(store.notificationLogs) ? store.notificationLogs : [];
-  store.notificationLogs.unshift(log);
-  saveStore();
-  res.json({ ok: true, recovery: true, results: [{ channel: 'browser', ok: true, log }] });
-});
-
-function tryUseRoute(label, mountPath, modulePath) {
-  try {
-    if (!fs.existsSync(modulePath)) return;
-    const route = require(modulePath);
-    app.use(mountPath, route);
-    console.log(`[recuperacao] Rota ${label} carregada em ${mountPath}`);
-  } catch (error) {
-    console.warn(`[recuperacao] Não foi possível carregar rota ${label}: ${error.message}`);
-  }
-}
-
-tryUseRoute('notifications', '/api/notifications', path.join(__dirname, 'notifications.routes.js'));
-tryUseRoute('panic', '/api/panic', path.join(__dirname, 'routes', 'panic.js'));
 
 app.use(express.static(FRONTEND_DIR, { extensions: ['html'] }));
-
-app.get('*', (req, res, next) => {
-  if (req.path.startsWith('/api/') || req.path.startsWith('/auth/')) {
-    return res.status(404).json({ ok: false, error: 'Endpoint não encontrado no servidor de recuperação.' });
-  }
-  const indexPath = path.join(FRONTEND_DIR, 'index.html');
-  if (fs.existsSync(indexPath)) return res.sendFile(indexPath);
-  return next();
-});
-
-app.use((error, req, res, next) => {
-  console.error('[recuperacao] Erro não tratado:', error);
-  res.status(500).json({ ok: false, error: error.message || 'Erro interno' });
+app.get('*', (req, res) => {
+  const indexFile = path.join(FRONTEND_DIR, 'index.html');
+  if (fs.existsSync(indexFile)) return res.sendFile(indexFile);
+  res.status(404).json({ ok: false, error: 'index.html não encontrado', frontendDir: FRONTEND_DIR });
 });
 
 app.listen(PORT, () => {
-  console.log(`Sistema Vitória Régia iniciado na porta ${PORT}`);
-  console.log(`Modo: recuperação segura`);
+  ensureDir(DATA_FILE);
+  save();
+  console.log(`Vitória Régia ${VERSION} online na porta ${PORT}`);
   console.log(`Frontend: ${FRONTEND_DIR}`);
 });

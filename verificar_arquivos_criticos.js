@@ -1,4 +1,6 @@
 const fs = require('fs');
+const path = require('path');
+
 const required = [
   'index.html',
   'app.js',
@@ -6,19 +8,15 @@ const required = [
   'render.yaml',
   'backend/package.json',
   'backend/src/server.js',
-  'backend/src/db.js',
-  'backend/src/notifications.routes.js',
-  'backend/src/routes/panic.js',
   'assets/building-bg.svg'
 ];
+
 let ok = true;
 for (const file of required) {
-  if (!fs.existsSync(file)) {
-    console.error('FALTANDO:', file);
-    ok = false;
-  } else {
-    console.log('OK:', file);
-  }
+  const full = path.join(process.cwd(), file);
+  if (fs.existsSync(full)) console.log(`OK   ${file}`);
+  else { console.error(`FALTA ${file}`); ok = false; }
 }
+
 if (!ok) process.exit(1);
-console.log('\nTodos os arquivos críticos estão presentes.');
+console.log('Todos os arquivos críticos estão presentes.');

@@ -1,24 +1,19 @@
 {
   "name": "vitoria-regia-backend",
-  "version": "2.6.0-recovery",
-  "description": "Backend do Sistema Vitória Régia com recuperação contra erro Not Found no Render.",
+  "version": "3.1.0",
+  "description": "Backend do Sistema Condominial Vitória Régia",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "check": "node -c src/server.js",
-    "health": "node -e \"require('fs').accessSync('src/server.js'); console.log('server.js OK')\""
+    "check": "node --check src/server.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
-    "express": "^4.21.2",
+    "express": "^4.19.2",
     "express-session": "^1.18.1",
-    "helmet": "^8.0.0",
-    "morgan": "^1.10.0",
-    "mysql2": "^3.11.5",
-    "pg": "^8.13.1"
+    "helmet": "^7.2.0",
+    "morgan": "^1.10.0"
   },
-  "engines": {
-    "node": ">=20"
-  }
+  "engines": { "node": ">=18" }
 }
