@@ -1,20 +1,18 @@
 {
-  "version": "v4.3.5",
+  "version": "v4.3.7",
   "name": "Vitória Régia",
   "database": "mysql",
-  "build": "complete-full-restored",
-  "release": "restauracao-premium-clean-login-menu",
+  "build": "complete-full",
+  "release": "dashboard-financeiro-objetivo-perfil",
   "releasedAt": "2026-05-23",
-  "label": "Vitória Régia v4.3.5",
-  "display": "v4.3.5 - Restauração premium clean, login e menu corrigidos",
+  "label": "Vitória Régia v4.3.7",
+  "display": "v4.3.7 - Dashboard objetivo, perfil e financeiro segregado",
   "notes": [
-    "Base restaurada da versão premium estável v4.3.0",
-    "Tela de login limpa novamente, sem notificações ou mensagens indevidas",
-    "Menu lateral restaurado, escuro, rolável e clicável no celular e PC",
-    "Correção da mensagem indevida de usuário cadastrado com sucesso na tela de login",
-    "Cadastro de funcionário sem unidade vinculada preservado",
-    "Editor seguro de usuário dentro do sistema, sem interferir no login",
-    "Senha temporária com copiar e envio por Telegram preservada dentro da tela de edição",
-    "Dashboard com saudação e privacidade por perfil sem expor dados gerais ao morador"
+    "Dashboard com saudação única",
+    "Notificações do síndico após a saudação",
+    "Informações relevantes clicáveis por perfil",
+    "Meu Perfil permite atualizar e-mail, WhatsApp, Telegram e senha",
+    "Financeiro administrativo separado do financeiro público para moradores",
+    "Estrutura para banco do condomínio, boletos recorrentes e envio multicanal por unidade"
   ]
 }
