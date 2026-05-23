@@ -3614,7 +3614,7 @@ const VR_CHANNEL_DEFAULTS = {
   emailTestTo: process.env.EMAIL_TEST_TO || '',
   whatsappEnabled: true,
   whatsappProvider: 'Periskope',
-  periskopeId: process.env.PERISKOPE_ID || "",
+  periskopeId: process.env.PERISKOPE_ID || '',
   periskopeApiUrl: process.env.PERISKOPE_API_URL || '',
   periskopeToken: process.env.PERISKOPE_TOKEN || '',
   whatsappTestTo: process.env.WHATSAPP_TEST_TO || ''

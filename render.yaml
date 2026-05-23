@@ -3,11 +3,13 @@ services:
     name: vitoriaregia1
     runtime: node
     rootDir: backend
-    buildCommand: npm install
+    buildCommand: rm -f package-lock.json && npm cache clean --force && npm install --omit=dev --no-audit --no-fund --legacy-peer-deps --registry=https://registry.npmjs.org/
     startCommand: npm start
     plan: free
     autoDeploy: true
     envVars:
+      - key: NODE_VERSION
+        value: "20"
       - key: NODE_ENV
         value: production
       - key: APP_URL

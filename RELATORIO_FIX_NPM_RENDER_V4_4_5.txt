@@ -1,0 +1,18 @@
+RELATÓRIO — Vitória Régia v4.4.5
+
+Correção aplicada para erro do Render/npm:
+
+Erro observado:
+npm error Exit handler never called!
+
+Correções:
+- Removido backend/package-lock.json.
+- Adicionado backend/.npmrc com registry=https://registry.npmjs.org/.
+- package-lock=false para evitar recriar lock problemático no build.
+- Build command alterado para:
+  rm -f package-lock.json && npm cache clean --force && npm install --omit=dev --no-audit --no-fund --legacy-peer-deps --registry=https://registry.npmjs.org/
+- package.json ajustado para Node 20.x e npm 10.x.
+- ZIP continua sem tokens/senhas.
+
+Após subir ao GitHub:
+Render → Manual Deploy → Clear build cache & deploy.

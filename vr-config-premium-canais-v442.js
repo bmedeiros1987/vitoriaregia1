@@ -22,7 +22,7 @@
     emailTestTo: '',
     whatsappEnabled: true,
     whatsappProvider: 'Periskope',
-    periskopeId: "",
+    periskopeId: '',
     periskopeApiUrl: '',
     periskopeToken: '',
     whatsappTestTo: ''

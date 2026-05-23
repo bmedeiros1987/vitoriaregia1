@@ -1,18 +1,18 @@
 {
-  "version": "v4.4.4",
+  "version": "v4.4.5",
   "name": "Vitória Régia",
   "database": "mysql",
   "build": "complete-clean-no-secrets",
-  "release": "sem-segredos-configuracoes-premium",
+  "release": "fix-npm-render",
   "releasedAt": "2026-05-23",
-  "label": "Vitória Régia v4.4.4",
-  "display": "v4.4.4 - Correções sem dados sensíveis",
+  "label": "Vitória Régia v4.4.5",
+  "display": "v4.4.5 - Correção npm/Render sem dados sensíveis",
   "notes": [
-    "Base v4.4.2 preservada com configurações premium e subabas",
-    "Removidos tokens, senhas e chaves do código e de exemplos",
-    "Canais Telegram, e-mail e WhatsApp/Periskope agora dependem das variáveis do Render",
-    "Atualização pelo sistema preservada sem GITHUB_UPDATE_TOKEN no repositório",
-    "GitHub pode receber este ZIP sem segredos embutidos",
-    "Adicionado .gitignore reforçado para bloquear arquivos .env e scripts com credenciais"
+    "Removido backend/package-lock.json para evitar registry/cache problemático no Render",
+    "Adicionado backend/.npmrc com registry público npm",
+    "Build command do render.yaml corrigido para npm install produção sem audit/fund",
+    "Node fixado em 20.x e npm em 10.x",
+    "Sem tokens, senhas ou dados sensíveis no ZIP",
+    "Base v4.4.4 preservada"
   ]
 }
