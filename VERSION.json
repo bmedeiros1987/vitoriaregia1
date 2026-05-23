@@ -1,18 +1,20 @@
 {
-  "version": "v4.3.4",
+  "version": "v4.3.5",
   "name": "Vitória Régia",
   "database": "mysql",
-  "build": "complete-compact",
-  "release": "edicao-usuarios-senha-temporaria",
+  "build": "complete-full-restored",
+  "release": "restauracao-premium-clean-login-menu",
   "releasedAt": "2026-05-23",
-  "label": "Vitória Régia v4.3.4",
-  "display": "v4.3.4 - Edição de usuários e senha temporária",
+  "label": "Vitória Régia v4.3.5",
+  "display": "v4.3.5 - Restauração premium clean, login e menu corrigidos",
   "notes": [
-    "Tela modal de edição de usuário semelhante ao cadastro",
-    "Alteração de dados, perfil, status, Telegram e unidade",
-    "Opção de resetar senha para síndico/admin/proprietário",
-    "Senha temporária visível para síndico/admin/proprietário copiar",
-    "Envio de senha temporária pelo Telegram",
-    "Confirmação de usuário salvo com sucesso e retorno para tela de usuários cadastrados"
+    "Base restaurada da versão premium estável v4.3.0",
+    "Tela de login limpa novamente, sem notificações ou mensagens indevidas",
+    "Menu lateral restaurado, escuro, rolável e clicável no celular e PC",
+    "Correção da mensagem indevida de usuário cadastrado com sucesso na tela de login",
+    "Cadastro de funcionário sem unidade vinculada preservado",
+    "Editor seguro de usuário dentro do sistema, sem interferir no login",
+    "Senha temporária com copiar e envio por Telegram preservada dentro da tela de edição",
+    "Dashboard com saudação e privacidade por perfil sem expor dados gerais ao morador"
   ]
 }

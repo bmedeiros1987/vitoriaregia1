@@ -1,0 +1,94 @@
+name: Build Android Apps
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'android-portaria/**'
+      - 'android-morador/**'
+      - 'app/**'
+      - 'build.gradle'
+      - 'settings.gradle'
+      - '.github/workflows/main.yml'
+      - '.github/workflows/build-android-apks.yml'
+      - '.github/workflows/build-portaria-apk.yml'
+
+permissions:
+  contents: write
+
+env:
+  GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx2g
+
+jobs:
+  build-android-apps:
+    name: Gerar APKs Android Portaria e Morador
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+
+      - name: Mostrar estrutura Android
+        run: |
+          echo "Diretório atual: $(pwd)"
+          ls -la
+          echo "android-portaria:" && find android-portaria -maxdepth 3 -type f | sort | sed 's#^#- #'
+          echo "android-morador:" && find android-morador -maxdepth 3 -type f | sort | sed 's#^#- #'
+
+      - name: Compilar APK Portaria
+        working-directory: android-portaria
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Compilar APK Morador
+        working-directory: android-morador
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Renomear APKs
+        run: |
+          mkdir -p dist/android
+          cp android-portaria/app/build/outputs/apk/debug/app-debug.apk dist/android/vitoria-regia-portaria.apk
+          cp android-morador/app/build/outputs/apk/debug/app-debug.apk dist/android/vitoria-regia-morador.apk
+          ls -lh dist/android
+
+      - name: Enviar APKs como artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitoria-regia-android-apks
+          path: |
+            dist/android/vitoria-regia-portaria.apk
+            dist/android/vitoria-regia-morador.apk
+
+      - name: Publicar APK Portaria em release estável
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-portaria-latest
+          name: APK Android Portaria
+          body: APK Android da Portaria do Condomínio Vitória Régia. Baixe o arquivo vitoria-regia-portaria.apk.
+          files: dist/android/vitoria-regia-portaria.apk
+          make_latest: false
+          prerelease: false
+
+      - name: Publicar APK Morador em release estável
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-morador-latest
+          name: APK Android Morador
+          body: APK Android do Morador do Condomínio Vitória Régia. Baixe o arquivo vitoria-regia-morador.apk.
+          files: dist/android/vitoria-regia-morador.apk
+          make_latest: false
+          prerelease: false
