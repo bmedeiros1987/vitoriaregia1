@@ -1,2 +1,0 @@
-OK node --check backend/src/server.js
-OK node --check app.js

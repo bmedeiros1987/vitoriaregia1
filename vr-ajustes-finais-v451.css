@@ -1,0 +1,437 @@
+
+/* Vitória Régia v4.5.1 — ajustes finais: emergência, menu, configurações, boleto e versão */
+
+/* Login: uma única versão, padronizada com VERSION.json */
+.vr443-login-version,
+.vr446-login-version {
+  display: none !important;
+}
+
+.vr451-login-version {
+  position: fixed;
+  left: 50%;
+  bottom: max(10px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 60;
+  width: min(92vw, 520px);
+  border-radius: 16px;
+  padding: 8px 12px;
+  background: rgba(255,255,255,.86);
+  border: 1px solid rgba(18,58,90,.10);
+  color: #123a5a;
+  text-align: center;
+  font-size: .78rem;
+  line-height: 1.25;
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+  box-shadow: 0 12px 28px rgba(13,45,68,.08);
+}
+
+body.vr-authenticated .vr451-login-version,
+body:not(.auth-locked) .vr451-login-version {
+  display: none !important;
+}
+
+.vr451-login-version strong {
+  color: #0e7c86;
+  font-weight: 900;
+}
+
+/* Menu lateral: sem bloco "Menu Fechar"; desktop/Edge sempre visível */
+.vr440-menu-head,
+.vr441-menu-head,
+.vr442-menu-head,
+.vr447-menu-head,
+.vr450-menu-head {
+  display: none !important;
+}
+
+.vr451-menu-close-floating {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin-left: auto;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 14px;
+  background: rgba(255,255,255,.12);
+  color: #fff;
+  font-size: 1.15rem;
+  font-weight: 900;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+@media (min-width: 901px) {
+  .sidebar[data-sidebar] {
+    position: sticky !important;
+    top: 0 !important;
+    left: auto !important;
+    transform: none !important;
+    display: flex !important;
+    flex-direction: column !important;
+    width: 280px !important;
+    min-width: 260px !important;
+    max-width: 300px !important;
+    height: 100dvh !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    z-index: 20 !important;
+  }
+
+  body.sidebar-open .sidebar-shadow[data-sidebar-shadow],
+  .sidebar-shadow[data-sidebar-shadow] {
+    display: none !important;
+  }
+
+  .vr451-menu-close-floating {
+    display: none !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .sidebar[data-sidebar] {
+    display: flex !important;
+    flex-direction: column !important;
+    width: min(86vw, 330px) !important;
+    max-width: 330px !important;
+    height: 100dvh !important;
+    padding: 14px !important;
+    gap: 8px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    background: linear-gradient(180deg, #061a33 0%, #0b2c48 58%, #0a3c4b 100%) !important;
+    transform: translateX(-110%) !important;
+    z-index: 10020 !important;
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    right: auto !important;
+  }
+
+  body.sidebar-open .sidebar[data-sidebar],
+  .sidebar[data-sidebar].is-open {
+    transform: translateX(0) !important;
+  }
+
+  .sidebar[data-sidebar]::before,
+  .sidebar[data-sidebar]::after {
+    display: none !important;
+    content: none !important;
+  }
+
+  .vr451-menu-close-floating {
+    display: inline-flex !important;
+  }
+
+  .sidebar-shadow[data-sidebar-shadow] {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 10010 !important;
+    background: rgba(6,26,51,.58) !important;
+    display: none !important;
+    backdrop-filter: blur(3px) !important;
+  }
+
+  body.sidebar-open .sidebar-shadow[data-sidebar-shadow],
+  .sidebar-shadow[data-sidebar-shadow].is-open {
+    display: block !important;
+  }
+}
+
+/* Emergência: sem dados flutuantes, sem bolinhas/checkbox/radio */
+.vr-emergency-user-card {
+  display: none !important;
+}
+
+.vr-emergency-types {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+}
+
+.vr-emergency-type {
+  position: relative !important;
+  display: grid !important;
+  gap: 8px !important;
+  min-height: 118px !important;
+  padding: 18px !important;
+  border-radius: 22px !important;
+  background: rgba(255,255,255,.96) !important;
+  border: 1px solid rgba(18,58,90,.12) !important;
+  cursor: pointer !important;
+  box-shadow: 0 12px 26px rgba(13,45,68,.06) !important;
+}
+
+.vr-emergency-type input[type="radio"],
+.vr-emergency-type input[type="checkbox"] {
+  position: absolute !important;
+  opacity: 0 !important;
+  width: 1px !important;
+  height: 1px !important;
+  pointer-events: none !important;
+  clip: rect(0 0 0 0) !important;
+}
+
+.vr-emergency-type strong {
+  font-size: clamp(1rem, 2.2vw, 1.25rem) !important;
+  color: #123a5a !important;
+  line-height: 1.18 !important;
+}
+
+.vr-emergency-type small {
+  color: #637386 !important;
+  line-height: 1.28 !important;
+  font-weight: 650 !important;
+}
+
+.vr-emergency-type::after {
+  content: "Selecionar";
+  justify-self: start;
+  margin-top: 2px;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: #eef7fb;
+  color: #0e7c86;
+  font-weight: 900;
+  font-size: .82rem;
+}
+
+.vr-emergency-type:has(input:checked),
+.vr-emergency-type.is-selected {
+  border-color: rgba(14,124,134,.65) !important;
+  background: linear-gradient(135deg, rgba(14,124,134,.10), rgba(255,255,255,.98)) !important;
+  box-shadow: 0 16px 34px rgba(14,124,134,.16) !important;
+}
+
+.vr-emergency-type:has(input:checked)::after,
+.vr-emergency-type.is-selected::after {
+  content: "Selecionado";
+  background: linear-gradient(135deg,#123a5a,#0e7c86);
+  color: #fff;
+}
+
+@media (max-width: 720px) {
+  .vr-emergency-types {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Configurações isoladas */
+#configuracoes.vr450-config-ready > .vr451-settings,
+#configuracoes.vr447-config-ready > .vr451-settings {
+  display: grid !important;
+}
+
+#configuracoes.vr451-config-ready > :not(.vr451-settings) {
+  display: none !important;
+}
+
+.vr451-settings {
+  display: grid;
+  gap: 15px;
+  margin: 0 0 24px;
+}
+
+.vr451-settings * {
+  box-sizing: border-box;
+}
+
+.vr451-hero {
+  border-radius: 28px;
+  padding: 18px;
+  background: linear-gradient(135deg,#061a33,#0e7c86);
+  color: #fff;
+  box-shadow: 0 18px 42px rgba(6,26,51,.14);
+}
+
+.vr451-hero h2 {
+  margin: 0 0 6px;
+  color: #fff;
+  font-size: clamp(1.35rem, 3vw, 2rem);
+}
+
+.vr451-hero p {
+  margin: 0;
+  color: rgba(255,255,255,.84);
+  line-height: 1.35;
+}
+
+.vr451-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px;
+  border-radius: 22px;
+  background: rgba(255,255,255,.88);
+  border: 1px solid rgba(18,58,90,.10);
+}
+
+.vr451-tab {
+  border: none;
+  border-radius: 999px;
+  padding: 10px 13px;
+  background: #eef7fb;
+  color: #123a5a;
+  cursor: pointer;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.vr451-tab.is-active {
+  color: #fff;
+  background: linear-gradient(135deg,#123a5a,#0e7c86);
+}
+
+.vr451-panel {
+  display: none;
+  border-radius: 24px;
+  background: rgba(255,255,255,.97);
+  border: 1px solid rgba(18,58,90,.10);
+  box-shadow: 0 14px 34px rgba(13,45,68,.08);
+  padding: 16px;
+}
+
+.vr451-panel.is-active {
+  display: grid;
+  gap: 14px;
+}
+
+.vr451-grid {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 12px;
+}
+
+.vr451-card {
+  border-radius: 22px;
+  border: 1px solid rgba(18,58,90,.10);
+  background: #f8fbfd;
+  padding: 15px;
+  display: grid;
+  gap: 10px;
+  color: #123a5a;
+}
+
+.vr451-card h3 {
+  margin: 0;
+  color: #123a5a;
+}
+
+.vr451-card p {
+  margin: 0;
+  color: #637386;
+  line-height: 1.35;
+}
+
+.vr451-field {
+  display: grid;
+  gap: 6px;
+}
+
+.vr451-field span {
+  font-weight: 900;
+  color: #123a5a;
+  font-size: .88rem;
+}
+
+.vr451-field input,
+.vr451-field select,
+.vr451-field textarea {
+  width: 100%;
+  min-height: 42px;
+  border-radius: 14px;
+  border: 1px solid rgba(18,58,90,.16);
+  background: #fff;
+  padding: 10px 12px;
+  color: #123a5a;
+}
+
+.vr451-check {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  color: #123a5a;
+  font-weight: 800;
+}
+
+.vr451-note {
+  border-radius: 18px;
+  padding: 12px 14px;
+  background: #fff8e7;
+  border: 1px solid #f3dfae;
+  color: #74520b;
+  line-height: 1.35;
+}
+
+.vr451-status {
+  border-radius: 16px;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid rgba(18,58,90,.08);
+  color: #637386;
+  min-height: 42px;
+  line-height: 1.35;
+}
+
+.vr451-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.vr451-btn {
+  border: none;
+  border-radius: 14px;
+  padding: 10px 13px;
+  background: #eef7fb;
+  color: #123a5a;
+  cursor: pointer;
+  font-weight: 900;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.vr451-btn.primary {
+  background: linear-gradient(135deg,#123a5a,#0e7c86);
+  color: #fff;
+}
+
+.vr451-btn.warn {
+  background: #fff4df;
+  color: #7b4f00;
+}
+
+.vr451-progress {
+  height: 15px;
+  border-radius: 999px;
+  background: #e6eef4;
+  overflow: hidden;
+}
+
+.vr451-progress > span {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg,#123a5a,#0e7c86);
+  border-radius: inherit;
+  transition: width .25s ease;
+}
+
+@media (max-width: 780px) {
+  .vr451-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .vr451-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+}

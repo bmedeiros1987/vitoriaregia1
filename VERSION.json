@@ -1,19 +1,21 @@
 {
-  "version": "v4.4.7",
+  "version": "v4.5.1",
   "name": "Vitória Régia",
   "database": "mysql",
-  "build": "complete-clean-no-secrets",
-  "release": "layout-config-update-fix",
+  "build": "premium-final-no-secrets",
+  "release": "emergencia-menu-config-boleto-login",
   "releasedAt": "2026-05-23",
-  "label": "Vitória Régia v4.4.7",
-  "display": "v4.4.7 - Menu, dashboard e configurações reorganizados",
+  "label": "Vitória Régia v4.5.1",
+  "display": "v4.5.1 - ajustes finais premium sem dados sensíveis",
   "notes": [
-    "Removido botão Fechar duplicado no menu mobile",
-    "Dashboard mostra somente uma saudação, avisos do síndico e atalhos rápidos",
-    "Configurações reorganizadas em subabas limpas e premium",
-    "Subaba Atualização do sistema restaurada com upload de ZIP e barra de progresso",
-    "Canais de Telegram, e-mail e WhatsApp testáveis sem expor senhas no frontend",
-    "Financeiro morador, permissões, emergências, apps e ajuda setorizados",
+    "Emergência sem usuário/perfil/unidade flutuantes",
+    "Emergência sem checkbox/radio visível",
+    "Menu lateral sem bloco 'Menu Fechar'",
+    "Menu lateral ajustado para Edge, PC e celular",
+    "Configurações isoladas por abas: Telegram, E-mail, WhatsApp, Boleto/Banco, Atualização, Permissões, Emergência e Apps/Ajuda",
+    "Configurações editáveis de Telegram, e-mail e WhatsApp com campos sensíveis ocultos",
+    "Aba Boleto/Banco adicionada com Asaas/banco, regras de vencimento, multa e juros",
+    "Tela de login usa a mesma versão do VERSION.json",
     "Sem tokens, senhas ou dados sensíveis no ZIP"
   ]
 }

@@ -1,0 +1,26 @@
+RELATÓRIO — Vitória Régia v4.5.1
+
+Correções aplicadas:
+- Emergência:
+  - removidos usuário identificado, perfil e unidade;
+  - removidas bolinhas/checkbox/radio visíveis;
+  - tipos de emergência viraram cartões clicáveis.
+
+- Menu lateral:
+  - removido bloco "Menu / Fechar / X";
+  - mantido apenas botão X discreto no celular;
+  - desktop/Edge com sidebar visível e estável.
+
+- Configurações:
+  - abas isoladas por tema;
+  - Telegram editável;
+  - E-mail/SMTP editável;
+  - WhatsApp/Periskope editável;
+  - nova aba Boleto/Banco;
+  - atualização do sistema com upload de ZIP e progresso.
+
+- Login:
+  - versão padronizada com VERSION.json.
+
+- Segurança:
+  - nenhum token/senha/chave no ZIP.
