@@ -13,6 +13,8 @@ const nodemailer = require('nodemailer');
 
 const { getPool, hasDatabaseConfig, query, testConnection, rowsOf } = require('./db');
 const { initDatabase } = require('./schema');
+const notificationRoutes = require('./notifications.routes');
+const panicRoutes = require('./routes/panic');
 
 const app = express();
 function envBool(name, fallback = false) {
@@ -2316,6 +2318,7 @@ app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: true, credentials: true }));
 app.use(morgan('tiny'));
 app.use(express.json({ limit: process.env.JSON_LIMIT || '80mb' }));
+app.use('/api/panic', panicRoutes);
 app.use(express.urlencoded({ extended: true, limit: process.env.JSON_LIMIT || '80mb' }));
 app.use(session({
   secret: process.env.SESSION_SECRET || 'troque-esta-chave-em-producao',
