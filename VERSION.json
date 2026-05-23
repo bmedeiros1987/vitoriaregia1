@@ -1,18 +1,20 @@
 {
-  "version": "v4.3.8",
+  "version": "v4.4.0",
   "name": "Vitória Régia",
   "database": "mysql",
-  "build": "complete-full",
-  "release": "home-minimal-menu-emergencia",
+  "build": "complete-clean",
+  "release": "menu-financeiro-emergencia-clean",
   "releasedAt": "2026-05-23",
-  "label": "Vitória Régia v4.3.8",
-  "display": "v4.3.8 - Home minimalista, menu e emergência corrigidos",
+  "label": "Vitória Régia v4.4.0",
+  "display": "v4.4.0 - Menu corrigido, financeiro morador e emergência clean",
   "notes": [
-    "Página inicial mínima por perfil",
-    "Menu lateral restaurado e rolável",
-    "Botão financeiro corrigido",
-    "Emergências como botões, sem checkbox",
-    "Meu perfil para dados e senha",
-    "Testes de sintaxe realizados"
+    "Menu lateral mobile reorganizado, rolável e sem painel vazio",
+    "Página inicial mais sucinta para morador, síndico/admin e portaria",
+    "Botão Financeiro do morador abre a área correta",
+    "Morador não vê financeiro geral do prédio",
+    "Financeiro morador aparece como permissão separada",
+    "Emergência não mostra dados desnecessários do usuário",
+    "Emergência usa apenas botões de ação rápida, sem checkbox/radio",
+    "Scripts conflitantes v4.3.7/v4.3.8 removidos do carregamento"
   ]
 }

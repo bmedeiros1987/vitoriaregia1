@@ -3356,7 +3356,44 @@ if (fs.existsSync(path.join(FRONTEND_DIR, 'index.html'))) {
 
 async function start() {
   store = await loadStore();
-  app.listen(PORT, '0.0.0.0', () => {
+  
+// Vitória Régia v4.3.9 - status e histórico da Central de Atualizações
+const VR_UPDATE_LOG_FILE = path.join(DATA_DIR || path.join(__dirname, '..', 'data'), 'system-update-log.json');
+
+function vrReadUpdateLog() {
+  try {
+    if (!fs.existsSync(VR_UPDATE_LOG_FILE)) return [];
+    return JSON.parse(fs.readFileSync(VR_UPDATE_LOG_FILE, 'utf8'));
+  } catch (_) {
+    return [];
+  }
+}
+
+app.get('/api/admin/system/update-status', (req, res) => {
+  let version = {};
+  try {
+    const versionPath = path.join(FRONTEND_DIR, 'VERSION.json');
+    if (fs.existsSync(versionPath)) version = JSON.parse(fs.readFileSync(versionPath, 'utf8'));
+  } catch (_) {}
+  res.json({ ok: true, version, log: vrReadUpdateLog().slice(0, 20) });
+});
+
+app.post('/api/admin/system/update-log', (req, res) => {
+  const log = vrReadUpdateLog();
+  const item = {
+    version: req.body && req.body.version,
+    by: req.body && req.body.by,
+    registeredAt: req.body && req.body.registeredAt || new Date().toISOString(),
+    source: 'admin-panel'
+  };
+  log.unshift(item);
+  fs.mkdirSync(path.dirname(VR_UPDATE_LOG_FILE), { recursive: true });
+  fs.writeFileSync(VR_UPDATE_LOG_FILE, JSON.stringify(log.slice(0, 100), null, 2));
+  res.json({ ok: true, item, total: log.length });
+});
+
+
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`Backend Vitória Régia online na porta ${PORT}`);
     console.log(`Frontend: ${FRONTEND_DIR}`);
     console.log(`Banco configurado: ${hasDatabaseConfig() ? 'sim' : 'não'} | pronto: ${databaseReady ? 'sim' : 'não'}`);
