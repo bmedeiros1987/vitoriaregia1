@@ -1,18 +1,18 @@
 {
-  "version": "v4.3.7",
+  "version": "v4.3.8",
   "name": "Vitória Régia",
   "database": "mysql",
   "build": "complete-full",
-  "release": "dashboard-financeiro-objetivo-perfil",
+  "release": "home-minimal-menu-emergencia",
   "releasedAt": "2026-05-23",
-  "label": "Vitória Régia v4.3.7",
-  "display": "v4.3.7 - Dashboard objetivo, perfil e financeiro segregado",
+  "label": "Vitória Régia v4.3.8",
+  "display": "v4.3.8 - Home minimalista, menu e emergência corrigidos",
   "notes": [
-    "Dashboard com saudação única",
-    "Notificações do síndico após a saudação",
-    "Informações relevantes clicáveis por perfil",
-    "Meu Perfil permite atualizar e-mail, WhatsApp, Telegram e senha",
-    "Financeiro administrativo separado do financeiro público para moradores",
-    "Estrutura para banco do condomínio, boletos recorrentes e envio multicanal por unidade"
+    "Página inicial mínima por perfil",
+    "Menu lateral restaurado e rolável",
+    "Botão financeiro corrigido",
+    "Emergências como botões, sem checkbox",
+    "Meu perfil para dados e senha",
+    "Testes de sintaxe realizados"
   ]
 }

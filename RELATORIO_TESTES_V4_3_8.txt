@@ -1,0 +1,10 @@
+index.html: OK
+app.js: OK
+styles.css: OK
+backend/src/server.js: OK
+backend/src/db.js: OK
+backend/package.json: OK
+VERSION.json: OK
+backend/src/server.js syntax: OK
+app.js syntax: OK
+vr-home-minimal-menu-emergencia-v438.js syntax: OK
