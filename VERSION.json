@@ -1,21 +1,18 @@
 {
-  "version": "v4.5.1",
+  "version": "v4.5.4",
   "name": "Vitória Régia",
   "database": "mysql",
-  "build": "premium-final-no-secrets",
-  "release": "emergencia-menu-config-boleto-login",
+  "build": "clima-no-inicio-no-secrets",
+  "release": "clima-somente-dashboard",
   "releasedAt": "2026-05-23",
-  "label": "Vitória Régia v4.5.1",
-  "display": "v4.5.1 - ajustes finais premium sem dados sensíveis",
+  "label": "Vitória Régia v4.5.4",
+  "display": "v4.5.4 - clima somente no início sem dados sensíveis",
   "notes": [
-    "Emergência sem usuário/perfil/unidade flutuantes",
-    "Emergência sem checkbox/radio visível",
-    "Menu lateral sem bloco 'Menu Fechar'",
-    "Menu lateral ajustado para Edge, PC e celular",
-    "Configurações isoladas por abas: Telegram, E-mail, WhatsApp, Boleto/Banco, Atualização, Permissões, Emergência e Apps/Ajuda",
-    "Configurações editáveis de Telegram, e-mail e WhatsApp com campos sensíveis ocultos",
-    "Aba Boleto/Banco adicionada com Asaas/banco, regras de vencimento, multa e juros",
-    "Tela de login usa a mesma versão do VERSION.json",
+    "Mantida a atualização v4.5.3 como base",
+    "Removido tempo, temperatura e alerta do menu lateral",
+    "Clima passa a aparecer dentro do card de saudação do Início/dashboard",
+    "Card separado de clima da versão anterior fica oculto para evitar duplicidade",
+    "Configurações → Clima continua funcionando",
     "Sem tokens, senhas ou dados sensíveis no ZIP"
   ]
 }

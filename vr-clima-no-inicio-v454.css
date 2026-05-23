@@ -1,0 +1,74 @@
+
+/* Vitória Régia v4.5.4 — clima somente no Início/dashboard */
+
+/* Remove clima do menu lateral */
+.sidebar[data-sidebar] .vr453-menu-weather,
+.sidebar[data-sidebar] .vr453-menu-alert,
+.sidebar[data-sidebar] [data-vr453-weather-main],
+.sidebar[data-sidebar] [data-vr453-weather-sub],
+.sidebar[data-sidebar] [data-vr453-alert] {
+  display: none !important;
+}
+
+.vr453-menu-top {
+  gap: 6px !important;
+  padding-bottom: 8px !important;
+}
+
+.vr453-menu-actions {
+  justify-content: space-between !important;
+}
+
+/* Clima integrado à saudação no Início */
+.vr454-hero-weather {
+  margin-top: 12px;
+  display: grid;
+  gap: 7px;
+  padding: 12px;
+  border-radius: 20px;
+  background: rgba(255,255,255,.13);
+  border: 1px solid rgba(255,255,255,.18);
+  color: #fff;
+}
+
+.vr454-hero-weather-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  font-weight: 900;
+}
+
+.vr454-hero-weather-main b {
+  color: #fff;
+  font-size: clamp(1.05rem, 3vw, 1.35rem);
+}
+
+.vr454-hero-weather-main span {
+  color: rgba(255,255,255,.86);
+}
+
+.vr454-hero-weather-sub {
+  color: rgba(255,255,255,.78);
+  font-size: .9rem;
+  line-height: 1.25;
+}
+
+.vr454-hero-alert {
+  border-radius: 14px;
+  padding: 9px 10px;
+  background: rgba(255,244,223,.95);
+  color: #7b4f00;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.vr454-hero-alert.ok {
+  background: rgba(238,249,246,.95);
+  color: #0e6b65;
+}
+
+/* Se ainda existir o card separado de clima da v4.5.3, ocultar para não duplicar */
+.vr453-inicio > .vr453-weather-card {
+  display: none !important;
+}
