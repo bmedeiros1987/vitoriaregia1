@@ -1,18 +1,19 @@
 {
-  "version": "v4.4.6",
+  "version": "v4.4.7",
   "name": "Vitória Régia",
   "database": "mysql",
   "build": "complete-clean-no-secrets",
-  "release": "login-freeze-fix",
+  "release": "layout-config-update-fix",
   "releasedAt": "2026-05-23",
-  "label": "Vitória Régia v4.4.6",
-  "display": "v4.4.6 - Correção de travamento no login",
+  "label": "Vitória Régia v4.4.7",
+  "display": "v4.4.7 - Menu, dashboard e configurações reorganizados",
   "notes": [
-    "Corrigido possível travamento na tela de login",
-    "Desativado observer agressivo do rodapé v4.4.3",
-    "Configurações premium só são injetadas após login e quando necessário",
-    "Adicionado rodapé leve de versão no login",
-    "Mantidas correções de npm/Render da v4.4.5",
+    "Removido botão Fechar duplicado no menu mobile",
+    "Dashboard mostra somente uma saudação, avisos do síndico e atalhos rápidos",
+    "Configurações reorganizadas em subabas limpas e premium",
+    "Subaba Atualização do sistema restaurada com upload de ZIP e barra de progresso",
+    "Canais de Telegram, e-mail e WhatsApp testáveis sem expor senhas no frontend",
+    "Financeiro morador, permissões, emergências, apps e ajuda setorizados",
     "Sem tokens, senhas ou dados sensíveis no ZIP"
   ]
 }
