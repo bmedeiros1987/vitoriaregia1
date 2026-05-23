@@ -1,18 +1,18 @@
 {
-  "version": "v4.4.5",
+  "version": "v4.4.6",
   "name": "Vitória Régia",
   "database": "mysql",
   "build": "complete-clean-no-secrets",
-  "release": "fix-npm-render",
+  "release": "login-freeze-fix",
   "releasedAt": "2026-05-23",
-  "label": "Vitória Régia v4.4.5",
-  "display": "v4.4.5 - Correção npm/Render sem dados sensíveis",
+  "label": "Vitória Régia v4.4.6",
+  "display": "v4.4.6 - Correção de travamento no login",
   "notes": [
-    "Removido backend/package-lock.json para evitar registry/cache problemático no Render",
-    "Adicionado backend/.npmrc com registry público npm",
-    "Build command do render.yaml corrigido para npm install produção sem audit/fund",
-    "Node fixado em 20.x e npm em 10.x",
-    "Sem tokens, senhas ou dados sensíveis no ZIP",
-    "Base v4.4.4 preservada"
+    "Corrigido possível travamento na tela de login",
+    "Desativado observer agressivo do rodapé v4.4.3",
+    "Configurações premium só são injetadas após login e quando necessário",
+    "Adicionado rodapé leve de versão no login",
+    "Mantidas correções de npm/Render da v4.4.5",
+    "Sem tokens, senhas ou dados sensíveis no ZIP"
   ]
 }

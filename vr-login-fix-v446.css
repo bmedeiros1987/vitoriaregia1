@@ -1,0 +1,54 @@
+
+/* Vitória Régia v4.4.6 — correção de travamento no login */
+.vr446-login-version {
+  position: fixed;
+  left: 50%;
+  bottom: max(10px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 50;
+  width: min(92vw, 520px);
+  border-radius: 16px;
+  padding: 8px 12px;
+  background: rgba(255,255,255,.82);
+  border: 1px solid rgba(18,58,90,.10);
+  color: #123a5a;
+  text-align: center;
+  font-size: .78rem;
+  line-height: 1.25;
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+
+.vr446-login-version strong {
+  color: #0e7c86;
+  font-weight: 900;
+}
+
+body.vr-authenticated .vr446-login-version,
+body:not(.auth-locked) .vr446-login-version {
+  display: none !important;
+}
+
+/* Garante que a tela de login permaneça clicável */
+[data-login-screen],
+.login-screen,
+.auth-card,
+.login-card,
+form {
+  pointer-events: auto !important;
+}
+
+body:not(.vr-authenticated) [data-app][hidden],
+body:not(.vr-authenticated) .app[hidden] {
+  display: none !important;
+}
+
+/* Evita sobreposição de painéis administrativos antes do login */
+body.auth-locked .vr442-settings,
+body.auth-locked #vr442-settings,
+body.auth-locked .vr441-update,
+body.auth-locked #vr441-update-center,
+body.auth-locked .vr440-emergency-modal,
+body.auth-locked .vr443-login-version {
+  display: none !important;
+}

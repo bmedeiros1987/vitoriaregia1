@@ -499,13 +499,22 @@
     setRoleClass();
     fixMenu();
     addSyndicNotices();
-    injectSettings();
+    if (location.hash === '#configuracoes' || document.querySelector('[data-section="configuracoes"], [data-page="configuracoes"]')) {
+      injectSettings();
+    }
     updateFooter();
   }
 
   document.addEventListener('DOMContentLoaded', init);
   window.addEventListener('load', init);
   window.addEventListener('hashchange', () => setTimeout(init, 120));
-  const observer = new MutationObserver(() => init());
-  observer.observe(document.documentElement, { childList: true, subtree: true });
+  let vr442Timer = null;
+  const observer = new MutationObserver(() => {
+    if (vr442Timer) return;
+    vr442Timer = setTimeout(() => {
+      vr442Timer = null;
+      if (logged()) init();
+    }, 500);
+  });
+  observer.observe(document.body || document.documentElement, { childList: true, subtree: false });
 })();

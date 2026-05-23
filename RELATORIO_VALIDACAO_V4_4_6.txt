@@ -1,0 +1,4 @@
+OK node --check app.js
+OK node --check backend/src/server.js
+OK node --check vr-login-fix-v446.js
+OK node --check vr-config-premium-canais-v442.js
