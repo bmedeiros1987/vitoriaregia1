@@ -1,20 +1,18 @@
 {
-  "version": "v4.2.5-mysql-telegram-clean",
-  "date": "2026-05-22",
+  "version": "v4.3.4",
+  "name": "Vitória Régia",
   "database": "mysql",
-  "base": "v4.2.0 mysql ajuda videos",
-  "description": "Versão completa compactada para upload pelo navegador do GitHub com menos de 100 arquivos.",
-  "highlights": [
-    "menos de 100 arquivos no pacote",
-    "menu/configurações mais limpos e agrupados por assunto",
-    "Telegram Bot integrado ao backend",
-    "diagnóstico rápido de e-mail, Telegram e WhatsApp no topo",
-    "QR Code oficial para baixar Telegram na aba Apps",
-    "base MySQL preservada"
-  ],
-  "name": "Vitória Régia Premium Clean - Telegram e configurações organizadas",
-  "updatedAt": "2026-05-22",
-  "notes": "Implementa envio por Telegram, reorganiza Configurações, coloca diagnóstico rápido no topo e adiciona QR Code para baixar Telegram na aba Apps/Ajuda.",
-  "label": "Vitória Régia v4.2.5 - Telegram e configurações limpas",
-  "display": "v4.2.5 - Telegram/configurações"
+  "build": "complete-compact",
+  "release": "edicao-usuarios-senha-temporaria",
+  "releasedAt": "2026-05-23",
+  "label": "Vitória Régia v4.3.4",
+  "display": "v4.3.4 - Edição de usuários e senha temporária",
+  "notes": [
+    "Tela modal de edição de usuário semelhante ao cadastro",
+    "Alteração de dados, perfil, status, Telegram e unidade",
+    "Opção de resetar senha para síndico/admin/proprietário",
+    "Senha temporária visível para síndico/admin/proprietário copiar",
+    "Envio de senha temporária pelo Telegram",
+    "Confirmação de usuário salvo com sucesso e retorno para tela de usuários cadastrados"
+  ]
 }

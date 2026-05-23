@@ -1,0 +1,9 @@
+{
+  "name": "vitoria-regia-sistema-completo",
+  "version": "3.4.0-mysql",
+  "private": true,
+  "scripts": {
+    "start": "cd backend && npm start",
+    "check": "node verificar_arquivos_criticos.js && cd backend && npm run check"
+  }
+}

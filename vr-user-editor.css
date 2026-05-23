@@ -1,0 +1,271 @@
+
+/* Vitória Régia v4.3.4 - Edição de usuários e senha temporária */
+.vr-user-editor-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10020;
+  background: rgba(8, 24, 39, .58);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  backdrop-filter: blur(6px);
+}
+
+.vr-user-editor-backdrop.is-open {
+  display: flex;
+}
+
+.vr-user-editor-modal {
+  width: min(960px, 100%);
+  max-height: min(92vh, 920px);
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  border-radius: 26px;
+  background: #f8fbfd;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, .28);
+  border: 1px solid rgba(255,255,255,.62);
+}
+
+.vr-user-editor-header {
+  padding: 18px 20px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  background: linear-gradient(135deg, #123a5a, #0e7c86);
+  color: #fff;
+}
+
+.vr-user-editor-header h2 {
+  margin: 0 0 4px;
+  color: #fff;
+  font-size: clamp(1.1rem, 2.4vw, 1.55rem);
+}
+
+.vr-user-editor-header p {
+  margin: 0;
+  color: rgba(255,255,255,.85);
+  font-size: .9rem;
+}
+
+.vr-user-editor-close {
+  border: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.14);
+  color: #fff;
+  font-size: 1.35rem;
+  cursor: pointer;
+}
+
+.vr-user-editor-body {
+  overflow: auto;
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+.vr-user-editor-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.vr-user-editor-tab {
+  border: 1px solid rgba(18,58,90,.12);
+  background: #fff;
+  color: #123a5a;
+  border-radius: 999px;
+  padding: 9px 13px;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: .86rem;
+}
+
+.vr-user-editor-tab.is-active {
+  color: #fff;
+  background: #123a5a;
+}
+
+.vr-user-editor-section {
+  display: none;
+  background: #fff;
+  border: 1px solid rgba(18,58,90,.10);
+  border-radius: 22px;
+  padding: 16px;
+  box-shadow: 0 12px 26px rgba(13,45,68,.07);
+}
+
+.vr-user-editor-section.is-active {
+  display: block;
+}
+
+.vr-user-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.vr-user-editor-field {
+  display: grid;
+  gap: 6px;
+}
+
+.vr-user-editor-field label {
+  font-size: .82rem;
+  font-weight: 800;
+  color: #123a5a;
+}
+
+.vr-user-editor-field input,
+.vr-user-editor-field select,
+.vr-user-editor-field textarea {
+  width: 100%;
+  min-height: 42px;
+  border-radius: 14px;
+  border: 1px solid rgba(18,58,90,.16);
+  background: #f9fcfd;
+  padding: 10px 12px;
+  color: #102b40;
+  outline: none;
+}
+
+.vr-user-editor-field textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+
+.vr-user-editor-field input:focus,
+.vr-user-editor-field select:focus,
+.vr-user-editor-field textarea:focus {
+  border-color: rgba(14,124,134,.55);
+  box-shadow: 0 0 0 3px rgba(14,124,134,.12);
+}
+
+.vr-user-editor-note {
+  border-radius: 18px;
+  background: #eef7fb;
+  border: 1px solid rgba(14,124,134,.18);
+  color: #315568;
+  padding: 12px 14px;
+  line-height: 1.4;
+  font-size: .9rem;
+}
+
+.vr-temp-password-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #fff8e7, #f1fbff);
+  border: 1px solid rgba(217, 169, 49, .32);
+}
+
+.vr-temp-password-value {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: 16px;
+  padding: 12px;
+  background: #fff;
+  border: 1px dashed rgba(18,58,90,.28);
+  font-weight: 900;
+  color: #123a5a;
+  font-size: 1.05rem;
+  letter-spacing: .04em;
+  word-break: break-all;
+}
+
+.vr-user-editor-actions {
+  padding: 14px 18px;
+  background: #fff;
+  border-top: 1px solid rgba(18,58,90,.10);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.vr-user-editor-btn {
+  border: none;
+  border-radius: 14px;
+  padding: 11px 15px;
+  cursor: pointer;
+  font-weight: 850;
+  background: #eef7fb;
+  color: #123a5a;
+}
+
+.vr-user-editor-btn.primary {
+  background: linear-gradient(135deg, #123a5a, #0e7c86);
+  color: #fff;
+}
+
+.vr-user-editor-btn.danger {
+  background: #fff1f1;
+  color: #9b1c1c;
+}
+
+.vr-user-editor-btn.success {
+  background: #eaf7f0;
+  color: #0a6b45;
+}
+
+.vr-user-editor-toast {
+  position: fixed;
+  right: 18px;
+  bottom: 92px;
+  z-index: 10040;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: #103a62;
+  color: #fff;
+  box-shadow: 0 16px 34px rgba(16,58,98,.22);
+  display: none;
+  max-width: min(420px, calc(100vw - 36px));
+}
+
+.vr-user-editor-toast.is-open {
+  display: block;
+}
+
+.vr-edit-user-btn {
+  border: 1px solid rgba(14,124,134,.25);
+  background: #f4fbfd;
+  color: #123a5a;
+  border-radius: 999px;
+  padding: 7px 11px;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: .78rem;
+  margin-left: 6px;
+}
+
+@media (max-width: 720px) {
+  .vr-user-editor-backdrop {
+    padding: 0;
+    align-items: stretch;
+  }
+
+  .vr-user-editor-modal {
+    border-radius: 0;
+    max-height: 100vh;
+    width: 100%;
+  }
+
+  .vr-user-editor-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .vr-user-editor-actions {
+    justify-content: stretch;
+  }
+
+  .vr-user-editor-btn {
+    flex: 1 1 100%;
+  }
+}
