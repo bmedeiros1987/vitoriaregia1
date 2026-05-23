@@ -2319,7 +2319,7 @@ app.use(morgan('tiny'));
 app.use(express.json({ limit: process.env.JSON_LIMIT || '80mb' }));
 app.use(express.urlencoded({ extended: true, limit: process.env.JSON_LIMIT || '80mb' }));
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'troque-esta-chave-em-producao',
+  secret: process.env.SESSION_SECRET || '',
   resave: false,
   saveUninitialized: false,
   proxy: RUNNING_BEHIND_PROXY,
@@ -3590,6 +3590,131 @@ app.post('/api/admin/system/upload-update', express.raw({ type: ['application/zi
     res.json({ ok: true, ...result });
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message || 'Falha ao atualizar sistema.' });
+  }
+});
+
+
+// Vitória Régia v4.4.2 - configurações de canais e diagnósticos
+const VR_CHANNELS_FILE = path.join(process.env.DATA_DIR || path.join(os.tmpdir(), 'vitoria-regia-data'), 'channel-settings.json');
+
+const VR_CHANNEL_DEFAULTS = {
+  telegramEnabled: true,
+  telegramBotUsername: "vitoriaregia_bot",
+  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
+  telegramParseMode: process.env.TELEGRAM_PARSE_MODE || 'HTML',
+  telegramDefaultChatId: process.env.TELEGRAM_DEFAULT_CHAT_ID || '',
+  telegramTestChatId: process.env.TELEGRAM_TEST_CHAT_ID || '',
+  emailEnabled: true,
+  smtpHost: process.env.SMTP_HOST || "smtp.mailersend.net",
+  smtpPort: process.env.SMTP_PORT || "587",
+  smtpSecure: process.env.SMTP_SECURE === 'true',
+  smtpUser: process.env.SMTP_USER || "MS_mRbJU2@crewcheck.online",
+  smtpPassword: process.env.SMTP_PASSWORD || '',
+  emailFrom: process.env.EMAIL_FROM || "Vit\u00f3ria R\u00e9gia <no-reply@crewcheck.online>",
+  emailTestTo: process.env.EMAIL_TEST_TO || '',
+  whatsappEnabled: true,
+  whatsappProvider: 'Periskope',
+  periskopeId: process.env.PERISKOPE_ID || "",
+  periskopeApiUrl: process.env.PERISKOPE_API_URL || '',
+  periskopeToken: process.env.PERISKOPE_TOKEN || '',
+  whatsappTestTo: process.env.WHATSAPP_TEST_TO || ''
+};
+
+function vrCanManageSettings(req) {
+  const user = req.session && req.session.user ? req.session.user : {};
+  const role = String(user.role || user.staffRole || user.originalRole || '').toLowerCase();
+  if (['owner','admin','administrador','proprietario','proprietário','sindico','síndico','subsindico','subsíndico'].some((key) => role.includes(key))) return true;
+  return process.env.NODE_ENV !== 'production' && process.env.ALLOW_PUBLIC_UPDATE_DEV === 'true';
+}
+
+function vrReadChannels() {
+  try {
+    if (!fs.existsSync(VR_CHANNELS_FILE)) return { ...VR_CHANNEL_DEFAULTS };
+    return { ...VR_CHANNEL_DEFAULTS, ...JSON.parse(fs.readFileSync(VR_CHANNELS_FILE, 'utf8')) };
+  } catch (_) {
+    return { ...VR_CHANNEL_DEFAULTS };
+  }
+}
+
+function vrWriteChannels(settings) {
+  const cleaned = { ...VR_CHANNEL_DEFAULTS, ...(settings || {}) };
+  fs.mkdirSync(path.dirname(VR_CHANNELS_FILE), { recursive: true });
+  fs.writeFileSync(VR_CHANNELS_FILE, JSON.stringify(cleaned, null, 2));
+  return cleaned;
+}
+
+app.get('/api/admin/channels/settings', (req, res) => {
+  if (!vrCanManageSettings(req)) return res.status(403).json({ ok: false, error: 'Acesso restrito ao síndico/administração.' });
+  res.json({ ok: true, settings: vrReadChannels() });
+});
+
+app.post('/api/admin/channels/settings', express.json({ limit: '1mb' }), (req, res) => {
+  if (!vrCanManageSettings(req)) return res.status(403).json({ ok: false, error: 'Acesso restrito ao síndico/administração.' });
+  res.json({ ok: true, settings: vrWriteChannels(req.body || {}), message: 'Configurações salvas.' });
+});
+
+app.post('/api/admin/channels/test/telegram', express.json({ limit: '1mb' }), async (req, res) => {
+  try {
+    if (!vrCanManageSettings(req)) return res.status(403).json({ ok: false, error: 'Acesso restrito.' });
+    const settings = { ...vrReadChannels(), ...(req.body || {}) };
+    const token = settings.telegramBotToken;
+    const chatId = settings.telegramTestChatId || settings.telegramDefaultChatId || req.body.chatId;
+    if (!token) return res.status(400).json({ ok: false, error: 'Token do Telegram não configurado.' });
+    if (!chatId) return res.status(400).json({ ok: false, error: 'Informe um Chat ID de teste. O usuário precisa abrir o bot e tocar em Iniciar.' });
+    const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: 'Teste do sistema Vitória Régia: Telegram funcionando.', parse_mode: settings.telegramParseMode || 'HTML' })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return res.status(400).json({ ok: false, error: data.description || 'Telegram recusou o envio.' });
+    res.json({ ok: true, message: 'Telegram enviado com sucesso.' });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.post('/api/admin/channels/test/email', express.json({ limit: '1mb' }), async (req, res) => {
+  try {
+    if (!vrCanManageSettings(req)) return res.status(403).json({ ok: false, error: 'Acesso restrito.' });
+    const settings = { ...vrReadChannels(), ...(req.body || {}) };
+    const to = settings.emailTestTo || (req.session && req.session.user && req.session.user.email);
+    if (!to) return res.status(400).json({ ok: false, error: 'Informe um e-mail de teste.' });
+    const transporter = nodemailer.createTransport({
+      host: settings.smtpHost,
+      port: Number(settings.smtpPort || 587),
+      secure: String(settings.smtpPort) === '465' || settings.smtpSecure === true,
+      auth: { user: settings.smtpUser, pass: settings.smtpPassword }
+    });
+    await transporter.sendMail({
+      from: settings.emailFrom || settings.smtpUser,
+      to,
+      subject: 'Teste do sistema Vitória Régia',
+      text: 'E-mail de teste enviado pelo sistema Vitória Régia.'
+    });
+    res.json({ ok: true, message: 'E-mail enviado com sucesso.' });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.post('/api/admin/channels/test/whatsapp', express.json({ limit: '1mb' }), async (req, res) => {
+  try {
+    if (!vrCanManageSettings(req)) return res.status(403).json({ ok: false, error: 'Acesso restrito.' });
+    const settings = { ...vrReadChannels(), ...(req.body || {}) };
+    if (!settings.periskopeId) return res.status(400).json({ ok: false, error: 'ID Periskope não configurado.' });
+    if (!settings.periskopeApiUrl || !settings.periskopeToken || !settings.whatsappTestTo) {
+      return res.json({ ok: true, message: 'Periskope ID salvo. Para envio real, informe URL da API, token e número de teste.' });
+    }
+    const response = await fetch(settings.periskopeApiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${settings.periskopeToken}` },
+      body: JSON.stringify({ instanceId: settings.periskopeId, to: settings.whatsappTestTo, message: 'Teste do sistema Vitória Régia: WhatsApp funcionando.' })
+    });
+    if (!response.ok) return res.status(400).json({ ok: false, error: 'API Periskope recusou o envio.' });
+    res.json({ ok: true, message: 'WhatsApp enviado com sucesso pela API configurada.' });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message });
   }
 });
 

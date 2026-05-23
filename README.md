@@ -191,7 +191,7 @@ Para iniciar o sistema sem modo demo, configure no Render:
 ```env
 BOOTSTRAP_ADMIN_ENABLED=true
 BOOTSTRAP_ADMIN_EMAIL=seuemail@gmail.com
-BOOTSTRAP_ADMIN_PASSWORD=crie_uma_senha_forte_temporaria
+BOOTSTRAP_ADMIN_PASSWORD=
 BOOTSTRAP_ADMIN_NAME=Usuário temporário de implantação
 BOOTSTRAP_DISABLE_AFTER_FIRST_SINDICO=true
 ```

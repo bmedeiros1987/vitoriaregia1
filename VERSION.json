@@ -1,19 +1,18 @@
 {
-  "version": "v4.4.1",
+  "version": "v4.4.4",
   "name": "Vitória Régia",
   "database": "mysql",
-  "build": "complete-clean",
-  "release": "atualizacao-ocr-menu",
+  "build": "complete-clean-no-secrets",
+  "release": "sem-segredos-configuracoes-premium",
   "releasedAt": "2026-05-23",
-  "label": "Vitória Régia v4.4.1",
-  "display": "v4.4.1 - Atualização pelo sistema, OCR com progresso e menu corrigido",
+  "label": "Vitória Régia v4.4.4",
+  "display": "v4.4.4 - Correções sem dados sensíveis",
   "notes": [
-    "Rodapé atualizado e cache/service worker renovado",
-    "Menu mobile corrigido com largura única, rolagem e fechamento",
-    "Central de Atualizações permite enviar o ZIP pelo próprio sistema",
-    "Backend pode enviar o ZIP ao GitHub usando GITHUB_UPDATE_TOKEN",
-    "Deploy automático opcional usando RENDER_DEPLOY_HOOK_URL",
-    "Leitura automática de etiqueta/nota mostra barra de progresso e mensagens claras",
-    "Correção de DATA_DIR para evitar erro no backend"
+    "Base v4.4.2 preservada com configurações premium e subabas",
+    "Removidos tokens, senhas e chaves do código e de exemplos",
+    "Canais Telegram, e-mail e WhatsApp/Periskope agora dependem das variáveis do Render",
+    "Atualização pelo sistema preservada sem GITHUB_UPDATE_TOKEN no repositório",
+    "GitHub pode receber este ZIP sem segredos embutidos",
+    "Adicionado .gitignore reforçado para bloquear arquivos .env e scripts com credenciais"
   ]
 }

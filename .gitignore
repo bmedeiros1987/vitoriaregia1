@@ -14,3 +14,13 @@ backend/data/
 .env
 backend/.env
 backend/certs/
+
+# Proteção contra vazamento de segredos
+*.env
+*.env.txt
+vitoriaregia1.env.txt
+*render_env*.txt
+vitoriaregia_render_env_COMPLETO*.txt
+atualizar_render*.sh
+*AUTO_preenchido*.sh
+*env_preenchido*.sh
