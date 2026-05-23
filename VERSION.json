@@ -1,20 +1,19 @@
 {
-  "version": "v4.4.0",
+  "version": "v4.4.1",
   "name": "Vitória Régia",
   "database": "mysql",
   "build": "complete-clean",
-  "release": "menu-financeiro-emergencia-clean",
+  "release": "atualizacao-ocr-menu",
   "releasedAt": "2026-05-23",
-  "label": "Vitória Régia v4.4.0",
-  "display": "v4.4.0 - Menu corrigido, financeiro morador e emergência clean",
+  "label": "Vitória Régia v4.4.1",
+  "display": "v4.4.1 - Atualização pelo sistema, OCR com progresso e menu corrigido",
   "notes": [
-    "Menu lateral mobile reorganizado, rolável e sem painel vazio",
-    "Página inicial mais sucinta para morador, síndico/admin e portaria",
-    "Botão Financeiro do morador abre a área correta",
-    "Morador não vê financeiro geral do prédio",
-    "Financeiro morador aparece como permissão separada",
-    "Emergência não mostra dados desnecessários do usuário",
-    "Emergência usa apenas botões de ação rápida, sem checkbox/radio",
-    "Scripts conflitantes v4.3.7/v4.3.8 removidos do carregamento"
+    "Rodapé atualizado e cache/service worker renovado",
+    "Menu mobile corrigido com largura única, rolagem e fechamento",
+    "Central de Atualizações permite enviar o ZIP pelo próprio sistema",
+    "Backend pode enviar o ZIP ao GitHub usando GITHUB_UPDATE_TOKEN",
+    "Deploy automático opcional usando RENDER_DEPLOY_HOOK_URL",
+    "Leitura automática de etiqueta/nota mostra barra de progresso e mensagens claras",
+    "Correção de DATA_DIR para evitar erro no backend"
   ]
 }

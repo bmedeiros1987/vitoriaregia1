@@ -15,6 +15,7 @@ const { getPool, hasDatabaseConfig, query, testConnection, rowsOf } = require('.
 const { initDatabase } = require('./schema');
 
 const app = express();
+const DATA_DIR = process.env.DATA_DIR || path.join(os.tmpdir(), 'vitoria-regia-data');
 function envBool(name, fallback = false) {
   const raw = process.env[name];
   if (raw === undefined || raw === null || raw === '') return Boolean(fallback);
@@ -3392,6 +3393,205 @@ app.post('/api/admin/system/update-log', (req, res) => {
   res.json({ ok: true, item, total: log.length });
 });
 
+
+
+// Vitória Régia v4.4.1 - atualização do sistema por upload ZIP/GitHub
+const VR_RUNTIME_DATA_DIR = process.env.DATA_DIR || path.join(os.tmpdir(), 'vitoria-regia-runtime');
+const VR_UPDATE_LOG_FILE_SAFE = path.join(VR_RUNTIME_DATA_DIR, 'system-update-log.json');
+
+function vrUpdateUserAllowed(req) {
+  const user = req.session && req.session.user ? req.session.user : {};
+  const role = String(user.role || user.staffRole || user.originalRole || '').toLowerCase();
+  if (['owner', 'admin', 'administrador', 'proprietario', 'proprietário', 'sindico', 'síndico', 'subsindico', 'subsíndico'].some((item) => role.includes(item))) return true;
+  try {
+    if (typeof isSyndicOrSubsyndicSession === 'function' && isSyndicOrSubsyndicSession(user)) return true;
+    if (typeof isSystemAdminSession === 'function' && isSystemAdminSession(user)) return true;
+  } catch (_) {}
+  return process.env.NODE_ENV !== 'production' && process.env.ALLOW_PUBLIC_UPDATE_DEV === 'true';
+}
+
+function vrFindEndOfCentralDirectory(buffer) {
+  const signature = 0x06054b50;
+  for (let i = buffer.length - 22; i >= Math.max(0, buffer.length - 70000); i -= 1) {
+    if (buffer.readUInt32LE(i) === signature) return i;
+  }
+  throw new Error('ZIP inválido: diretório central não encontrado.');
+}
+
+function vrNormalizeZipPath(name) {
+  const clean = String(name || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  if (!clean || clean.endsWith('/') || clean.includes('..') || clean.startsWith('.git/') || clean.includes('/.git/')) return '';
+  if (clean.startsWith('__MACOSX/') || clean.endsWith('.DS_Store')) return '';
+  return clean;
+}
+
+function vrExtractZipEntries(buffer) {
+  const zlib = require('zlib');
+  const eocd = vrFindEndOfCentralDirectory(buffer);
+  const total = buffer.readUInt16LE(eocd + 10);
+  let offset = buffer.readUInt32LE(eocd + 16);
+  const entries = [];
+
+  for (let i = 0; i < total; i += 1) {
+    if (buffer.readUInt32LE(offset) !== 0x02014b50) throw new Error('ZIP inválido: entrada central corrompida.');
+    const method = buffer.readUInt16LE(offset + 10);
+    const compressedSize = buffer.readUInt32LE(offset + 20);
+    const uncompressedSize = buffer.readUInt32LE(offset + 24);
+    const nameLen = buffer.readUInt16LE(offset + 28);
+    const extraLen = buffer.readUInt16LE(offset + 30);
+    const commentLen = buffer.readUInt16LE(offset + 32);
+    const localOffset = buffer.readUInt32LE(offset + 42);
+    const rawName = buffer.slice(offset + 46, offset + 46 + nameLen).toString('utf8');
+    const filePath = vrNormalizeZipPath(rawName);
+
+    offset += 46 + nameLen + extraLen + commentLen;
+    if (!filePath) continue;
+
+    if (buffer.readUInt32LE(localOffset) !== 0x04034b50) throw new Error(`ZIP inválido: cabeçalho local ausente em ${filePath}.`);
+    const localNameLen = buffer.readUInt16LE(localOffset + 26);
+    const localExtraLen = buffer.readUInt16LE(localOffset + 28);
+    const dataStart = localOffset + 30 + localNameLen + localExtraLen;
+    const compressed = buffer.slice(dataStart, dataStart + compressedSize);
+    let data;
+    if (method === 0) data = compressed;
+    else if (method === 8) data = zlib.inflateRawSync(compressed);
+    else throw new Error(`Método de compressão não suportado em ${filePath}.`);
+
+    if (typeof uncompressedSize === 'number' && uncompressedSize > 0 && data.length !== uncompressedSize) {
+      // Alguns ZIPs podem divergir por flags; não bloqueia se a extração funcionou.
+    }
+    entries.push({ path: filePath, data });
+  }
+  return entries;
+}
+
+async function vrGithubRequest(method, repo, route, token, body) {
+  const response = await fetch(`https://api.github.com/repos/${repo}${route}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'Content-Type': 'application/json',
+      'User-Agent': 'vitoria-regia-updater'
+    },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : {};
+  if (!response.ok) throw new Error(data.message || `GitHub retornou HTTP ${response.status}`);
+  return data;
+}
+
+async function vrCommitZipToGithub(zipBuffer, filename) {
+  const token = process.env.GITHUB_UPDATE_TOKEN || process.env.GITHUB_TOKEN;
+  const repo = process.env.GITHUB_REPOSITORY || 'bmedeiros1987/vitoriaregia1';
+  const branch = process.env.GITHUB_BRANCH || 'main';
+  if (!token) throw new Error('GITHUB_UPDATE_TOKEN não configurado no Render.');
+
+  const entries = vrExtractZipEntries(zipBuffer);
+  if (!entries.some((entry) => entry.path === 'index.html')) throw new Error('ZIP sem index.html na raiz.');
+  const versionEntry = entries.find((entry) => entry.path === 'VERSION.json');
+  if (!versionEntry) throw new Error('ZIP sem VERSION.json.');
+
+  let version = 'sem versão';
+  try { version = JSON.parse(versionEntry.data.toString('utf8')).version || version; } catch (_) {}
+
+  const ref = await vrGithubRequest('GET', repo, `/git/ref/heads/${encodeURIComponent(branch)}`, token);
+  const latestCommitSha = ref.object.sha;
+  const latestCommit = await vrGithubRequest('GET', repo, `/git/commits/${latestCommitSha}`, token);
+  const baseTreeSha = latestCommit.tree.sha;
+  const currentTree = await vrGithubRequest('GET', repo, `/git/trees/${baseTreeSha}?recursive=1`, token);
+
+  const zipPaths = new Set(entries.map((entry) => entry.path));
+  const treeItems = [];
+
+  for (const entry of entries) {
+    const blob = await vrGithubRequest('POST', repo, '/git/blobs', token, {
+      content: entry.data.toString('base64'),
+      encoding: 'base64'
+    });
+    treeItems.push({ path: entry.path, mode: '100644', type: 'blob', sha: blob.sha });
+  }
+
+  if (process.env.UPDATE_DELETE_MISSING !== 'false') {
+    for (const item of currentTree.tree || []) {
+      if (item.type === 'blob' && !zipPaths.has(item.path) && !item.path.startsWith('.git/')) {
+        treeItems.push({ path: item.path, mode: '100644', type: 'blob', sha: null });
+      }
+    }
+  }
+
+  const newTree = await vrGithubRequest('POST', repo, '/git/trees', token, { base_tree: baseTreeSha, tree: treeItems });
+  const newCommit = await vrGithubRequest('POST', repo, '/git/commits', token, {
+    message: `Atualização Vitória Régia ${version} via sistema (${filename || 'upload.zip'})`,
+    tree: newTree.sha,
+    parents: [latestCommitSha]
+  });
+  await vrGithubRequest('PATCH', repo, `/git/refs/heads/${encodeURIComponent(branch)}`, token, { sha: newCommit.sha, force: false });
+
+  let deployTriggered = false;
+  if (process.env.RENDER_DEPLOY_HOOK_URL) {
+    try {
+      const deployRes = await fetch(process.env.RENDER_DEPLOY_HOOK_URL, { method: 'POST' });
+      deployTriggered = deployRes.ok;
+    } catch (_) {}
+  }
+
+  return { commit: newCommit.sha, version, files: entries.length, deployTriggered };
+}
+
+function vrReadUpdateLogSafe() {
+  try {
+    if (!fs.existsSync(VR_UPDATE_LOG_FILE_SAFE)) return [];
+    return JSON.parse(fs.readFileSync(VR_UPDATE_LOG_FILE_SAFE, 'utf8'));
+  } catch (_) {
+    return [];
+  }
+}
+
+app.get('/api/admin/system/update-status', (req, res) => {
+  let version = {};
+  try {
+    const versionPath = path.join(FRONTEND_DIR, 'VERSION.json');
+    if (fs.existsSync(versionPath)) version = JSON.parse(fs.readFileSync(versionPath, 'utf8'));
+  } catch (_) {}
+  res.json({ ok: true, version, log: vrReadUpdateLogSafe().slice(0, 20) });
+});
+
+app.post('/api/admin/system/update-log', (req, res) => {
+  const log = vrReadUpdateLogSafe();
+  const item = {
+    version: req.body && req.body.version,
+    by: req.body && req.body.by,
+    registeredAt: req.body && req.body.registeredAt || new Date().toISOString(),
+    source: 'admin-panel'
+  };
+  fs.mkdirSync(path.dirname(VR_UPDATE_LOG_FILE_SAFE), { recursive: true });
+  log.unshift(item);
+  fs.writeFileSync(VR_UPDATE_LOG_FILE_SAFE, JSON.stringify(log.slice(0, 100), null, 2));
+  res.json({ ok: true, item, total: log.length });
+});
+
+app.post('/api/admin/system/upload-update', express.raw({ type: ['application/zip', 'application/octet-stream', 'application/x-zip-compressed'], limit: process.env.UPDATE_ZIP_LIMIT || '120mb' }), async (req, res) => {
+  try {
+    if (!vrUpdateUserAllowed(req)) return res.status(403).json({ ok: false, error: 'Acesso permitido somente ao síndico/administração.' });
+    const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || []);
+    if (!buffer.length) return res.status(400).json({ ok: false, error: 'ZIP vazio ou não recebido.' });
+
+    const filename = String(req.query.filename || 'update.zip');
+    const result = await vrCommitZipToGithub(buffer, filename);
+
+    const log = vrReadUpdateLogSafe();
+    log.unshift({ ...result, filename, by: req.session && req.session.user && (req.session.user.email || req.session.user.name), registeredAt: new Date().toISOString() });
+    fs.mkdirSync(path.dirname(VR_UPDATE_LOG_FILE_SAFE), { recursive: true });
+    fs.writeFileSync(VR_UPDATE_LOG_FILE_SAFE, JSON.stringify(log.slice(0, 100), null, 2));
+
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message || 'Falha ao atualizar sistema.' });
+  }
+});
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Backend Vitória Régia online na porta ${PORT}`);

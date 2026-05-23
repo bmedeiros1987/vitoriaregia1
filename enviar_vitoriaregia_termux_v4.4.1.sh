@@ -1,6 +1,6 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
-APP_VERSION="v4.4.0"
+APP_VERSION="v4.4.1"
 GITHUB_USER="bmedeiros1987"
 REPO_NAME="vitoriaregia1"
 REPO_URL="https://github.com/${GITHUB_USER}/${REPO_NAME}.git"
@@ -31,13 +31,15 @@ node --check backend/src/server.js >> "$LOG_FILE" 2>&1 || { echo "Erro de sintax
 git config user.name "Bruno Saraiva"; git config user.email "bmedeiros1987@gmail.com"
 git add .
 git commit -m "Correção Vitória Régia ${APP_VERSION}" >> "$LOG_FILE" 2>&1 || true
-read -s -p "Cole seu token NOVO do GitHub: " GITHUB_TOKEN; echo ""
+TOKEN_FILE="${DOWNLOAD_DIR}/.github_token_vitoriaregia"
+if [ -n "${GITHUB_TOKEN_TEMP:-}" ]; then GITHUB_TOKEN="$GITHUB_TOKEN_TEMP"; elif [ -f "$TOKEN_FILE" ]; then GITHUB_TOKEN="$(cat "$TOKEN_FILE" | tr -d '\r\n')"; else read -s -p "Cole seu token NOVO do GitHub: " GITHUB_TOKEN; echo ""; fi
 [ -n "$GITHUB_TOKEN" ] || { echo "Token vazio"; exit 1; }
 git remote set-url origin "https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/${GITHUB_USER}/${REPO_NAME}.git"
 git push origin main >> "$LOG_FILE" 2>&1
-git remote set-url origin "$REPO_URL"; unset GITHUB_TOKEN
+git remote set-url origin "$REPO_URL"; unset GITHUB_TOKEN; unset GITHUB_TOKEN_TEMP
+[ -f "$TOKEN_FILE" ] && rm -f "$TOKEN_FILE"
 find "$DOWNLOAD_DIR" -maxdepth 1 -type f -name "vitoriaregia_update_v*.zip" ! -name "vitoriaregia_update_${APP_VERSION}.zip" -delete || true
 find "$DOWNLOAD_DIR" -maxdepth 1 -type f -name "enviar_vitoriaregia_termux_v*.sh" ! -name "enviar_vitoriaregia_termux_${APP_VERSION}.sh" -delete || true
 find "$DOWNLOAD_DIR" -maxdepth 1 -type f -name "vitoriaregia_termux_upload_v*.zip" ! -name "vitoriaregia_termux_upload_${APP_VERSION}.zip" -delete || true
 cp -f "$ZIP_VERSIONED" "$ZIP_DEFAULT" 2>/dev/null || true
-echo "Envio concluído. Faça Manual Deploy no Render."
+echo "Envio concluído. Faça Manual Deploy no Render se não usar deploy hook."

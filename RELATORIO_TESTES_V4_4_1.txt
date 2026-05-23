@@ -1,0 +1,23 @@
+RELATÓRIO DE TESTES — Vitória Régia v4.4.1
+
+Correções aplicadas:
+- Rodapé atualizado para v4.4.1.
+- Service Worker atualizado para limpar caches antigos.
+- Menu mobile corrigido com coluna única, sem painel vazio.
+- Central de Atualizações com upload de ZIP pelo próprio sistema.
+- Backend com rota /api/admin/system/upload-update.
+- Atualização via GitHub API usando GITHUB_UPDATE_TOKEN.
+- Deploy automático opcional via RENDER_DEPLOY_HOOK_URL.
+- OCR/leitura de etiqueta com modal e barra de progresso.
+- Correção preventiva de DATA_DIR no backend.
+
+Variáveis recomendadas no Render:
+- GITHUB_UPDATE_TOKEN
+- GITHUB_REPOSITORY=bmedeiros1987/vitoriaregia1
+- GITHUB_BRANCH=main
+- RENDER_DEPLOY_HOOK_URL opcional
+
+Validações:
+- node --check backend/src/server.js
+- node --check app.js
+- node --check vr-fix-update-ocr-menu-v441.js
