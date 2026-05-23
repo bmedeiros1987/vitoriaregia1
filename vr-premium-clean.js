@@ -260,11 +260,11 @@
         <div><span class="eyebrow">Ajuda simples</span><h2>Manuais e suporte</h2><p>Guias objetivos, feitos para qualquer pessoa usar: criança, adulto ou idoso. Clique no manual do seu perfil.</p></div>
       </div>
       <div class="vr-help-grid">
-        <article class="vr-help-card"><span>📚</span><h3>Manual completo</h3><p>Guia detalhado com todas as abas, cadastros, financeiro, administração e emergência.</p><a class="btn btn--primary" href="docs/Manual_Completo_do_Sistema_v4.2.8.pdf" target="_blank">Abrir manual completo</a></article>
-        <article class="vr-help-card"><span>👨‍👩‍👧</span><h3>Moradores</h3><p>Aprenda a ver comunicados, reservas, encomendas, visitantes, financeiro e emergência.</p><a class="btn btn--primary" href="docs/Manual_dos_Moradores_v4.2.8.pdf" target="_blank">Abrir manual</a></article>
-        <article class="vr-help-card"><span>🛡️</span><h3>Portaria</h3><p>Passo a passo para registrar visitantes, encomendas, fotos e avisos.</p><a class="btn btn--primary" href="docs/Manual_da_Portaria_v4.2.8.pdf" target="_blank">Abrir manual</a></article>
-        <article class="vr-help-card"><span>👤</span><h3>Síndico/Administração</h3><p>Cadastros, permissões, financeiro, notificações e configurações.</p><a class="btn btn--primary" href="docs/Manual_do_Sindico_v4.2.8.pdf" target="_blank">Abrir manual</a></article>
-        <article class="vr-help-card"><span>📘</span><h3>Funcionalidades</h3><p>Visão geral do sistema e de todos os módulos disponíveis.</p><a class="btn btn--outline" href="docs/Funcionalidades_do_Sistema_v4.2.8.pdf" target="_blank">Ver funcionalidades</a></article>
+        <article class="vr-help-card"><span>📚</span><h3>Manual completo</h3><p>Guia detalhado com todas as abas, cadastros, financeiro, administração e emergência.</p><a class="btn btn--primary" href="docs/Manual_Completo_do_Sistema_v4.2.3.pdf" target="_blank">Abrir manual completo</a></article>
+        <article class="vr-help-card"><span>👨‍👩‍👧</span><h3>Moradores</h3><p>Aprenda a ver comunicados, reservas, encomendas, visitantes, financeiro e emergência.</p><a class="btn btn--primary" href="docs/Manual_dos_Moradores_v4.2.3.pdf" target="_blank">Abrir manual</a></article>
+        <article class="vr-help-card"><span>🛡️</span><h3>Portaria</h3><p>Passo a passo para registrar visitantes, encomendas, fotos e avisos.</p><a class="btn btn--primary" href="docs/Manual_da_Portaria_v4.2.3.pdf" target="_blank">Abrir manual</a></article>
+        <article class="vr-help-card"><span>👤</span><h3>Síndico/Administração</h3><p>Cadastros, permissões, financeiro, notificações e configurações.</p><a class="btn btn--primary" href="docs/Manual_do_Sindico_v4.2.3.pdf" target="_blank">Abrir manual</a></article>
+        <article class="vr-help-card"><span>📘</span><h3>Funcionalidades</h3><p>Visão geral do sistema e de todos os módulos disponíveis.</p><a class="btn btn--outline" href="docs/Funcionalidades_do_Sistema_v4.2.3.pdf" target="_blank">Ver funcionalidades</a></article>
       </div>
     `;
   }

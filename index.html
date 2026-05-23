@@ -14,15 +14,6 @@
   <link rel="stylesheet" href="vr-emergency-premium.css" />
   <link rel="stylesheet" href="vr-mobile-stability.css" />
   <link rel="stylesheet" href="vr-telegram-premium.css" />
-  <link rel="stylesheet" href="vr-help-videos-fix.css" />
-  <link rel="stylesheet" href="vr-telegram-full.css" />
-  <link rel="stylesheet" href="vr-telegram-cadastros.css">
-  <link rel="stylesheet" href="vr-clean-admin.css">
-  <link rel="stylesheet" href="vr-browser-notifications.css">
-  <link rel="stylesheet" href="vr-panic.css">
-  <link rel="stylesheet" href="vr-dashboard-actions.css">
-  <link rel="stylesheet" href="vr-ux-plus.css">
-  <link rel="stylesheet" href="vr-update-center.css">
 </head>
 <body>
   <section class="login-screen" data-login-screen>
@@ -122,11 +113,6 @@
           <input name="whatsapp" type="tel" required placeholder="(61) 99999-9999" />
         </label>
         <label>
-          <span>Telegram (opcional)</span>
-          <input name="telegram" placeholder="@usuario ou Chat ID" />
-        </label>
-        <p class="form-hint">O Telegram é opcional. Para receber mensagens automáticas, o usuário precisa iniciar conversa com o bot do condomínio.</p>
-        <label>
           <span>CPF/CNPJ do responsável</span>
           <input name="cpfCnpj" inputmode="numeric" placeholder="Somente números — usado para boleto Asaas" />
         </label>
@@ -194,7 +180,7 @@
         <a href="#comunicados" data-nav data-roles="morador,sindico,portaria"><span>📣</span> Comunicados</a>
         <a href="#app-android" data-nav data-roles="morador,sindico,portaria"><span>📱</span> Apps</a>
         <a href="#excelencia" data-nav data-roles="sindico"><span>🏆</span> Central premium</a>
-        <a href="#manual" data-nav data-roles="morador,sindico,portaria,subsindico,administrador,admin,proprietario,owner"><span>📘</span> Ajuda</a>
+        <a href="#manual" data-nav data-roles="morador,sindico,portaria"><span>📘</span> Ajuda</a>
         <a href="#configuracoes" data-nav data-roles="sindico"><span>⚙️</span> Configurações</a>
       </nav>
       <div class="sidebar-profile">
@@ -309,8 +295,6 @@
             <label><span>Nome</span><input name="name" required /></label>
             <label><span>E-mail</span><input name="email" type="email" required /></label>
             <label><span>WhatsApp</span><input name="whatsapp" type="tel" required /></label>
-            <label><span>Telegram</span><input name="telegram" placeholder="@usuario ou Chat ID" /></label>
-            <p class="form-hint">Use @usuario quando houver, ou Chat ID quando o morador já iniciou conversa com o bot.</p>
             <label><span>CPF/CNPJ do responsável</span><input name="cpfCnpj" inputmode="numeric" placeholder="Obrigatório para boleto Asaas" /></label>
             <label><span>Foto do morador (nuvem)</span><input name="profilePhoto" type="file" accept="image/*" /></label>
             <p class="form-hint">A foto será enviada ao storage externo; o MySQL salvará apenas metadados leves e o caminho seguro.</p>
@@ -350,8 +334,6 @@
             </div>
             <label><span>E-mail interno para recebimento</span><input name="email" type="email" placeholder="não será exibido ao morador" /></label>
             <label><span>WhatsApp interno para recebimento</span><input name="whatsapp" type="tel" placeholder="não será exibido ao morador" /></label>
-            <label><span>Telegram interno</span><input name="telegram" placeholder="@usuario ou Chat ID para avisos internos" /></label>
-            <p class="form-hint">Usado para alertas internos, emergências, visitantes e encomendas quando o Telegram estiver ativo.</p>
             <label class="checkline checkline--boxed"><input type="checkbox" name="active" checked /><span>Cadastro ativo no sistema</span></label>
             <label class="checkline checkline--boxed"><input type="checkbox" name="isAdmin" /><span>Conceder acesso de administrador do sistema</span></label>
             <label class="checkline checkline--boxed"><input type="checkbox" name="canManageSchedule" /><span>Autorizar este usuário a alterar/importar escala</span></label>
@@ -451,8 +433,6 @@
             <label><span>Nome</span><input name="name" required /></label>
             <label><span>E-mail</span><input name="email" type="email" required /></label>
             <label><span>WhatsApp</span><input name="whatsapp" type="tel" required /></label>
-            <label><span>Telegram</span><input name="telegram" placeholder="@usuario ou Chat ID" /></label>
-            <p class="form-hint">Opcional. Ajuda o condomínio a enviar avisos pelo Telegram quando esse canal estiver ativo.</p>
             <label><span>CPF/CNPJ do responsável</span><input name="cpfCnpj" inputmode="numeric" /></label>
             <label><span>Atualizar foto do morador (nuvem)</span><input name="profilePhoto" type="file" accept="image/*" /></label>
             <p class="form-hint">Opcional. Se enviada, a imagem fica na nuvem e o banco mantém somente os metadados.</p>
@@ -719,7 +699,6 @@ João Souza - CPF ***.000.***-**"></textarea></label>
             <p class="form-hint">A foto é usada apenas para conferência visual pela portaria. Não é feita identificação facial automática e a imagem não é salva em base64 no banco.</p>
             <label><span>Nome</span><input name="name" required placeholder="Nome da pessoa autorizada" /></label>
             <div class="form-row"><label><span>Documento</span><input name="document" placeholder="CPF/RG, se houver" /></label><label><span>Telefone</span><input name="phone" type="tel" /></label></div>
-            <label><span>Telegram do visitante/prestador, se houver</span><input name="telegram" placeholder="@usuario ou Chat ID" /></label>
             <div class="form-row"><label><span>Apartamento</span><select name="apartment" required data-recurring-visitor-apartment></select></label><label><span>Categoria</span><select name="visitorCategory"><option value="prestador">Prestador de serviço</option><option value="familiar">Familiar</option><option value="outro">Outro autorizado</option></select></label></div>
             <div class="form-row"><label><span>Tipo de serviço / vínculo</span><select name="serviceType"><option>Faxineira</option><option>Diarista</option><option>Eletricista</option><option>Pedreiro</option><option>Encanador</option><option>Pintor</option><option>Técnico de internet/TV</option><option>Cuidador</option><option>Babá</option><option>Prestador de serviço</option><option>Visita familiar</option><option>Familiar</option><option>Outro</option></select></label><label><span>Filtro da portaria</span><select data-recurring-unit-filter><option value="">Todas as unidades</option></select></label></div>
             <label><span>Outro tipo/descrição</span><input name="customService" placeholder="Ex.: manutenção de ar-condicionado, mãe do morador, irmão, etc." /></label>
@@ -940,7 +919,7 @@ João Souza - CPF ***.000.***-**"></textarea></label>
         </article>
       </section>
 
-      <section id="manual" class="section" data-section data-roles="morador,sindico,portaria,subsindico,administrador,admin,proprietario,owner">
+      <section id="manual" class="section" data-section data-roles="morador,sindico,portaria">
         <div class="section-head vr-help-premium-head">
           <div>
             <span class="eyebrow">Ajuda guiada</span>
@@ -996,11 +975,11 @@ João Souza - CPF ***.000.***-**"></textarea></label>
             <div><span class="eyebrow">Leitura simples</span><h3>Manuais por perfil</h3><p>Manuais ilustrativos, com linguagem acessível para crianças, idosos e usuários iniciantes.</p></div>
           </div>
           <div class="vr-help-grid">
-            <article class="vr-help-card"><span>📚</span><h3>Manual completo</h3><p>Guia detalhado com todas as abas, cadastros, financeiro, administração e emergência.</p><a class="btn btn--primary" href="docs/Manual_Completo_do_Sistema_v4.2.8.pdf" target="_blank">Abrir manual completo</a></article>
-            <article class="vr-help-card" data-roles="morador"><span>👨‍👩‍👧</span><h3>Moradores</h3><p>Comunicados, reservas, encomendas, visitantes, financeiro e emergência.</p><a class="btn btn--primary" href="docs/Manual_dos_Moradores_v4.2.8.pdf" target="_blank">Abrir manual</a></article>
-            <article class="vr-help-card" data-roles="portaria"><span>🛡️</span><h3>Portaria</h3><p>Visitantes, encomendas, fotos, avisos e ocorrências do turno.</p><a class="btn btn--primary" href="docs/Manual_da_Portaria_v4.2.8.pdf" target="_blank">Abrir manual</a></article>
-            <article class="vr-help-card" data-roles="sindico"><span>👤</span><h3>Síndico/Administração</h3><p>Cadastros, permissões, financeiro, notificações e configurações.</p><a class="btn btn--primary" href="docs/Manual_do_Sindico_v4.2.8.pdf" target="_blank">Abrir manual</a></article>
-            <article class="vr-help-card"><span>📘</span><h3>Funcionalidades</h3><p>Resumo geral de tudo que o sistema faz.</p><a class="btn btn--outline" href="docs/Funcionalidades_do_Sistema_v4.2.8.pdf" target="_blank">Ver funcionalidades</a></article>
+            <article class="vr-help-card"><span>📚</span><h3>Manual completo</h3><p>Guia detalhado com todas as abas, cadastros, financeiro, administração e emergência.</p><a class="btn btn--primary" href="docs/Manual_Completo_do_Sistema_v4.2.3.pdf" target="_blank">Abrir manual completo</a></article>
+            <article class="vr-help-card" data-roles="morador"><span>👨‍👩‍👧</span><h3>Moradores</h3><p>Comunicados, reservas, encomendas, visitantes, financeiro e emergência.</p><a class="btn btn--primary" href="docs/Manual_dos_Moradores_v4.2.3.pdf" target="_blank">Abrir manual</a></article>
+            <article class="vr-help-card" data-roles="portaria"><span>🛡️</span><h3>Portaria</h3><p>Visitantes, encomendas, fotos, avisos e ocorrências do turno.</p><a class="btn btn--primary" href="docs/Manual_da_Portaria_v4.2.3.pdf" target="_blank">Abrir manual</a></article>
+            <article class="vr-help-card" data-roles="sindico"><span>👤</span><h3>Síndico/Administração</h3><p>Cadastros, permissões, financeiro, notificações e configurações.</p><a class="btn btn--primary" href="docs/Manual_do_Sindico_v4.2.3.pdf" target="_blank">Abrir manual</a></article>
+            <article class="vr-help-card"><span>📘</span><h3>Funcionalidades</h3><p>Resumo geral de tudo que o sistema faz.</p><a class="btn btn--outline" href="docs/Funcionalidades_do_Sistema_v4.2.3.pdf" target="_blank">Ver funcionalidades</a></article>
           </div>
         </article>
 
@@ -1176,7 +1155,7 @@ João Souza - CPF ***.000.***-**"></textarea></label>
 
   <footer class="system-version-footer" data-system-version-footer>
     <span>Sistema Vitória Régia</span>
-    <strong>v4.2.8-mysql-telegram-integrado</strong>
+    <strong>v4.2.5-mysql-telegram-clean</strong>
     <small>Desenvolvido em parceria por Bruno Saraiva e ChatGPT — design, automação e evolução premium.</small>
   </footer>
 
@@ -1186,14 +1165,5 @@ João Souza - CPF ***.000.***-**"></textarea></label>
   <script src="vr-emergency-premium.js"></script>
   <script src="vr-mobile-stability.js"></script>
   <script src="vr-telegram-premium.js"></script>
-  <script src="vr-help-videos-fix.js"></script>
-  <script src="vr-telegram-cadastros.js"></script>
-  <script src="vr-telegram-full.js"></script>
-  <script src="vr-clean-admin.js"></script>
-  <script src="vr-browser-notifications.js"></script>
-  <script src="vr-panic.js"></script>
-  <script src="vr-dashboard-actions.js"></script>
-  <script src="vr-ux-plus.js"></script>
-  <script src="vr-update-center.js"></script>
 </body>
 </html>

@@ -1089,8 +1089,6 @@ function authSetup() {
       name: form.get('name').trim(),
       email: form.get('email').trim(),
       whatsapp: form.get('whatsapp').trim(),
-      telegram: String(form.get('telegram') || '').trim(),
-      telegramChatId: String(form.get('telegram') || '').trim(),
       password,
       passwordConfirm,
       cpfCnpj: (form.get('cpfCnpj') || '').replace(/\D/g, ''),
@@ -1502,7 +1500,6 @@ function renderResidents() {
             <button class="btn btn--outline btn--sm" data-toggle-rented="${resident.apartment}">${rented ? 'Marcar não alugada' : 'Marcar alugada'}</button>
             <button class="btn btn--success btn--sm" data-auto-resident-whatsapp="${resident.id}">Auto WhatsApp</button>
             <button class="btn btn--success btn--sm" data-auto-resident-email="${resident.id}">Auto e-mail</button>
-            <button class="btn btn--success btn--sm" data-auto-resident-telegram="${resident.id}">Auto Telegram</button>
             <button class="btn btn--outline btn--sm" data-reset-user-password="resident:${resident.id}">Gerar senha temporária</button>
             <a class="btn btn--outline btn--sm" href="${whatsAppLink(resident.whatsapp, `Olá, ${resident.name}. Mensagem do Condomínio Vitória Régia.`)}" target="_blank" rel="noopener">Manual WhatsApp</a>
             <a class="btn btn--outline btn--sm" href="mailto:${encodeURIComponent(resident.email)}?subject=${encodeURIComponent('Condomínio Vitória Régia')}">Manual e-mail</a>
@@ -1527,8 +1524,6 @@ function setupResidents() {
       name: data.get('name').trim(),
       email: data.get('email').trim(),
       whatsapp: data.get('whatsapp').trim(),
-      telegram: String(data.get('telegram') || '').trim(),
-      telegramChatId: String(data.get('telegram') || '').trim(),
       cpfCnpj: (data.get('cpfCnpj') || '').replace(/\D/g, ''),
       apartment: data.get('apartment'),
       residentType: data.get('residentType') || 'Morador',
@@ -1611,13 +1606,12 @@ function editResident(id) {
   const name = prompt('Nome do morador:', resident.name) ?? resident.name;
   const email = prompt('E-mail:', resident.email) ?? resident.email;
   const whatsapp = prompt('WhatsApp:', resident.whatsapp) ?? resident.whatsapp;
-  const telegram = prompt('Telegram (@usuario ou Chat ID):', resident.telegramChatId || resident.telegram || '') ?? (resident.telegramChatId || resident.telegram || '');
   const cpfCnpj = prompt('CPF/CNPJ do responsável:', resident.cpfCnpj || '') ?? resident.cpfCnpj;
   const residentType = prompt('Vínculo (Proprietário, Inquilino, Familiar, Responsável financeiro, Outro morador):', resident.residentType || 'Morador') ?? resident.residentType;
   const relationship = prompt('Grau de parentesco/relação (Filho(a), Esposo(a), Companheiro(a), Inquilino(a), etc.):', resident.relationship || '') ?? resident.relationship;
   const hasPet = confirm(`Este cadastro deve ficar marcado como possui pet?\n\nOK = possui pet | Cancelar = sem pet`);
   const notes = prompt('Observações:', resident.notes || '') ?? resident.notes;
-  updateResidentById(id, { name: name.trim(), email: email.trim(), whatsapp: whatsapp.trim(), telegram: String(telegram || '').trim(), telegramChatId: String(telegram || '').trim(), cpfCnpj: String(cpfCnpj || '').replace(/\D/g, ''), residentType, relationship, hasPet, notes });
+  updateResidentById(id, { name: name.trim(), email: email.trim(), whatsapp: whatsapp.trim(), cpfCnpj: String(cpfCnpj || '').replace(/\D/g, ''), residentType, relationship, hasPet, notes });
   renderAll();
 }
 function currentResidentRecord() {
@@ -1643,7 +1637,6 @@ function renderMyResident() {
       form.elements.name.value = resident.name || '';
       form.elements.email.value = resident.email || '';
       form.elements.whatsapp.value = resident.whatsapp || '';
-      if (form.elements.telegram) form.elements.telegram.value = resident.telegramChatId || resident.telegram || '';
       form.elements.cpfCnpj.value = resident.cpfCnpj || '';
       form.elements.residentType.value = resident.residentType || 'Morador';
       if (form.elements.relationship) form.elements.relationship.value = resident.relationship || 'Responsável';
@@ -1674,8 +1667,6 @@ function setupMyResident() {
       name: data.get('name').trim(),
       email: data.get('email').trim(),
       whatsapp: data.get('whatsapp').trim(),
-      telegram: String(data.get('telegram') || '').trim(),
-      telegramChatId: String(data.get('telegram') || '').trim(),
       cpfCnpj: (data.get('cpfCnpj') || '').replace(/\D/g, ''),
       residentType: data.get('residentType') || 'Morador',
       relationship: data.get('relationship') || '',
@@ -2370,8 +2361,6 @@ function setupRecurringVisitors() {
       name: String(data.get('name') || '').trim(),
       document: String(data.get('document') || '').trim(),
       phone: String(data.get('phone') || '').trim(),
-      telegram: String(data.get('telegram') || '').trim(),
-      telegramChatId: String(data.get('telegram') || '').trim(),
       apartment,
       serviceType: String(data.get('serviceType') || 'Prestador de serviço'),
       visitorCategory: String(data.get('visitorCategory') || 'prestador'),
@@ -2426,7 +2415,7 @@ function renderRecurringVisitors() {
             <div class="item-title">${escapeHTML(item.name)} • Unidade ${escapeHTML(item.apartment)} <span class="badge">${escapeHTML(category)}</span></div>
             <div class="item-sub">
               ${escapeHTML(service)} • Dias: ${escapeHTML(weekdayListLabel(item.weekdays))}<br>
-              ${escapeHTML(item.document || 'sem documento')} • ${escapeHTML(item.phone || 'sem telefone')} • Telegram: ${escapeHTML(item.telegramChatId || item.telegram || 'não informado')} • ${item.validUntil ? `válido até ${escapeHTML(item.validUntil)}` : 'sem validade definida'}
+              ${escapeHTML(item.document || 'sem documento')} • ${escapeHTML(item.phone || 'sem telefone')} • ${item.validUntil ? `válido até ${escapeHTML(item.validUntil)}` : 'sem validade definida'}
               ${item.photoMeta ? `<br>Foto: ${cloudFileAction(item.photoMeta, 'Baixar foto')}` : ''}
               ${item.notes ? `<br>${escapeHTML(item.notes)}` : ''}
             </div>
@@ -3408,8 +3397,6 @@ function setupStaff() {
       allowedTabs: normalizeAllowedTabs(data.getAll('allowedTabs')),
       email: data.get('email').trim(),
       whatsapp: data.get('whatsapp').trim(),
-      telegram: String(data.get('telegram') || '').trim(),
-      telegramChatId: String(data.get('telegram') || '').trim(),
       active: Boolean(data.get('active')),
       status: data.get('status') || 'disponivel',
       awayFrom: data.get('awayFrom') || '',
@@ -3435,7 +3422,7 @@ function renderStaff() {
       <div class="item-row">
         <div>
           <div class="item-title">${escapeHTML(item.name)} <span class="badge">${escapeHTML(roleLabel(item.role))}</span> ${staffIsAdministrator(item) ? '<span class="badge badge--approved">Administrador</span>' : ''} ${item.active === false ? '<span class="badge badge--danger">Inativo</span>' : '<span class="badge badge--approved">Ativo</span>'} <span class="status status--${staffStatusClass(item.status)}">${escapeHTML(staffStatusLabel(item.status))}</span></div>
-          <div class="item-sub">E-mail: ${escapeHTML(item.email || 'não informado')} • WhatsApp: ${escapeHTML(item.whatsapp || 'não informado')} • Telegram: ${escapeHTML(item.telegramChatId || item.telegram || 'não informado')}<br>Vínculo: ${escapeHTML(item.affiliation || 'terceiro')} ${item.apartment ? `• Unidade ${escapeHTML(item.apartment)}` : '• Sem unidade vinculada'}</div>
+          <div class="item-sub">E-mail: ${escapeHTML(item.email || 'não informado')} • WhatsApp: ${escapeHTML(item.whatsapp || 'não informado')}<br>Vínculo: ${escapeHTML(item.affiliation || 'terceiro')} ${item.apartment ? `• Unidade ${escapeHTML(item.apartment)}` : '• Sem unidade vinculada'}</div>
           ${renderStaffAllowedTabs(item)}
           ${(item.awayFrom || item.awayTo) ? `<div class="item-sub">Período informado: ${escapeHTML(item.awayFrom || '-')} até ${escapeHTML(item.awayTo || '-')}</div>` : ''}
           ${!staffAvailable(item) ? `<div class="item-sub"><strong>Bloqueado para mensagens automáticas enquanto estiver ${escapeHTML(staffStatusLabel(item.status).toLowerCase())}.</strong></div>` : ''}
@@ -3458,7 +3445,6 @@ function editStaff(id) {
   const role = prompt('Perfil (sindico, subsindico ou porteiro):', item.role) ?? item.role;
   const email = prompt('E-mail:', item.email || '') ?? item.email;
   const whatsapp = prompt('WhatsApp:', item.whatsapp || '') ?? item.whatsapp;
-  const telegram = prompt('Telegram (@usuario ou Chat ID):', item.telegramChatId || item.telegram || '') ?? (item.telegramChatId || item.telegram || '');
   const isAdminAnswer = prompt('Administrador do sistema? (sim/não):', staffIsAdministrator(item) ? 'sim' : 'não') ?? (staffIsAdministrator(item) ? 'sim' : 'não');
   const isAdmin = /^s/i.test(String(isAdminAnswer).trim()) || ['sindico', 'subsindico'].includes(roleKey(role));
   const tabsAnswer = prompt('Abas permitidas, separadas por vírgula. Deixe em branco para usar o padrão do perfil. Ex.: dashboard, moradores, encomendas, arquivos, manual', normalizeAllowedTabs(item.allowedTabs).join(', ')) ?? normalizeAllowedTabs(item.allowedTabs).join(', ');
@@ -3471,7 +3457,7 @@ function editStaff(id) {
   const activeAnswer = prompt('Cadastro ativo no sistema? (sim/não):', item.active === false ? 'não' : 'sim') ?? (item.active === false ? 'não' : 'sim');
   const canManageSchedule = /^s/i.test(String(canManageScheduleAnswer).trim());
   const active = !/^n/i.test(String(activeAnswer).trim());
-  saveStaff(getStaff().map((staff) => staff.id === id ? { ...staff, name: name.trim(), role: String(role || item.role).trim(), isAdmin, allowedTabs, email: String(email || '').trim(), whatsapp: String(whatsapp || '').trim(), telegram: String(telegram || '').trim(), telegramChatId: String(telegram || '').trim(), status: String(status || 'disponivel').trim(), awayFrom: String(awayFrom || '').trim(), awayTo: String(awayTo || '').trim(), notes: String(notes || '').trim(), canManageSchedule, active, updatedAt: nowISO() } : staff));
+  saveStaff(getStaff().map((staff) => staff.id === id ? { ...staff, name: name.trim(), role: String(role || item.role).trim(), isAdmin, allowedTabs, email: String(email || '').trim(), whatsapp: String(whatsapp || '').trim(), status: String(status || 'disponivel').trim(), awayFrom: String(awayFrom || '').trim(), awayTo: String(awayTo || '').trim(), notes: String(notes || '').trim(), canManageSchedule, active, updatedAt: nowISO() } : staff));
   renderAll();
 }
 function removeStaff(id) {
@@ -3726,7 +3712,7 @@ async function notifyAutomationStaff(item, responseType, code = '') {
   const responses = [];
   for (const person of staff) {
     try {
-      const response = await sendBackendNotification({ email: person.email, whatsapp: person.whatsapp, telegram: person.telegramChatId || person.telegram || person.chatId, subject: `Resposta da unidade ${item.apartment} — ${automationTypeLabel(item.type)}`, message, channels: ['whatsapp'] });
+      const response = await sendBackendNotification({ email: person.email, whatsapp: person.whatsapp, subject: `Resposta da unidade ${item.apartment} — ${automationTypeLabel(item.type)}`, message, channels: ['whatsapp'] });
       responses.push(`${person.name}: ${resultSummary(response)}`);
     } catch (error) {
       responses.push(`${person.name}: erro ${error.message}`);
@@ -3919,7 +3905,7 @@ function setupServices() {
     $('[data-service-request-message]').textContent = service.requiresApproval ? 'Solicitação enviada e aguardando aprovação do síndico.' : 'Solicitação registrada.';
     const staff = primaryStaff('sindico');
     if (staff && backendAvailable) {
-      await notifyResidentEntity({ email: staff.email, whatsapp: staff.whatsapp, telegram: staff.telegramChatId || staff.telegram || staff.chatId, name: staff.name }, 'Nova solicitação de serviço — Vitória Régia', `Nova solicitação de ${request.serviceName}\nUnidade: ${request.apartment}\nMorador: ${request.residentName}\nQuantidade: ${quantity}\nTotal: ${money.format(request.total)}\nObservações: ${request.notes || '-'}`, ['email']);
+      await notifyResidentEntity({ email: staff.email, whatsapp: staff.whatsapp, name: staff.name }, 'Nova solicitação de serviço — Vitória Régia', `Nova solicitação de ${request.serviceName}\nUnidade: ${request.apartment}\nMorador: ${request.residentName}\nQuantidade: ${quantity}\nTotal: ${money.format(request.total)}\nObservações: ${request.notes || '-'}`, ['email']);
     }
     renderAll();
   });
@@ -4513,8 +4499,6 @@ async function resetUserPassword(ref) {
       name: item.name || '',
       apartment: item.apartment || '',
       whatsapp: item.whatsapp || item.phone || '',
-      telegram: item.telegramChatId || item.telegram || item.chatId || '',
-      telegramChatId: item.telegramChatId || item.telegram || item.chatId || '',
       cpfCnpj: item.cpfCnpj || '',
     });
     const sent = result.emailSent ? 'A senha também foi enviada por e-mail.' : `Não foi possível enviar por e-mail: ${result.emailError || 'verifique as configurações de e-mail'}.`;

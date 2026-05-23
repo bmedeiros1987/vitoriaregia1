@@ -1,22 +1,20 @@
 {
-  "version": "v4.2.8-mysql-telegram-integrado",
+  "version": "v4.2.5-mysql-telegram-clean",
   "date": "2026-05-22",
   "database": "mysql",
   "base": "v4.2.0 mysql ajuda videos",
-  "description": "Telegram integrado ao sistema, emergência e manuais com QR Code Android/iOS.",
+  "description": "Versão completa compactada para upload pelo navegador do GitHub com menos de 100 arquivos.",
   "highlights": [
-    "campo Telegram nos cadastros principais",
-    "Telegram salvo como @usuario ou Chat ID",
-    "uso do Telegram nas notificações automáticas quando configurado",
-    "base MySQL preservada",
-    "pacote abaixo de 100 arquivos"
+    "menos de 100 arquivos no pacote",
+    "menu/configurações mais limpos e agrupados por assunto",
+    "Telegram Bot integrado ao backend",
+    "diagnóstico rápido de e-mail, Telegram e WhatsApp no topo",
+    "QR Code oficial para baixar Telegram na aba Apps",
+    "base MySQL preservada"
   ],
-  "name": "Vitória Régia Premium",
+  "name": "Vitória Régia Premium Clean - Telegram e configurações organizadas",
   "updatedAt": "2026-05-22",
-  "notes": "Inclui Telegram nos formulários e grava como telegramChatId para uso em notificações automáticas.",
-  "label": "Vitória Régia v4.2.7 - Telegram nos cadastros",
-  "display": "v4.2.7 - Telegram nos cadastros",
-  "release": "Adiciona campo Telegram aos cadastros de moradores, usuários internos e visitantes recorrentes.",
-  "filesLimit": "menos de 100 arquivos",
-  "releaseDate": "2026-05-22"
+  "notes": "Implementa envio por Telegram, reorganiza Configurações, coloca diagnóstico rápido no topo e adiciona QR Code para baixar Telegram na aba Apps/Ajuda.",
+  "label": "Vitória Régia v4.2.5 - Telegram e configurações limpas",
+  "display": "v4.2.5 - Telegram/configurações"
 }

@@ -1,5 +1,0 @@
-No backend/src/server.js, adicionar junto aos requires:
-const notificationRoutes = require('./notifications.routes');
-
-Depois de criar o app e configurar express.json(), adicionar:
-app.use('/api/notifications', notificationRoutes);

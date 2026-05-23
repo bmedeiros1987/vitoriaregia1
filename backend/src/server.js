@@ -13,8 +13,6 @@ const nodemailer = require('nodemailer');
 
 const { getPool, hasDatabaseConfig, query, testConnection, rowsOf } = require('./db');
 const { initDatabase } = require('./schema');
-const notificationRoutes = require('./notifications.routes');
-const panicRoutes = require('./routes/panic');
 
 const app = express();
 function envBool(name, fallback = false) {
@@ -731,8 +729,6 @@ function fallbackTargetFromAdminReset(body = {}, email = '') {
       role: body.role || 'Colaborador',
       active: true,
       allowedTabs: normalizeAllowedTabs(body.allowedTabs),
-      telegram: body.telegramChatId || body.telegram || body.chatId || '',
-      telegramChatId: body.telegramChatId || body.telegram || body.chatId || '',
     };
     return { role: staffRoleToAppRole(staff), staff, resident: null, active: true, allowedTabs: normalizeAllowedTabs(staff.allowedTabs), fallback: true };
   }
@@ -744,8 +740,6 @@ function fallbackTargetFromAdminReset(body = {}, email = '') {
       email,
       apartment,
       whatsapp: body.whatsapp || '',
-      telegram: body.telegramChatId || body.telegram || body.chatId || '',
-      telegramChatId: body.telegramChatId || body.telegram || body.chatId || '',
       cpfCnpj: body.cpfCnpj || '',
       status: 'approved',
     };
@@ -2318,7 +2312,6 @@ app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: true, credentials: true }));
 app.use(morgan('tiny'));
 app.use(express.json({ limit: process.env.JSON_LIMIT || '80mb' }));
-app.use('/api/panic', panicRoutes);
 app.use(express.urlencoded({ extended: true, limit: process.env.JSON_LIMIT || '80mb' }));
 app.use(session({
   secret: process.env.SESSION_SECRET || 'troque-esta-chave-em-producao',
@@ -2558,7 +2551,6 @@ app.post('/auth/signup', requireDatabaseReady, async (req, res) => {
     const name = String(data.name || '').trim();
     const email = normalizeEmail(data.email || '');
     const whatsapp = String(data.whatsapp || '').trim();
-    const telegram = String(data.telegramChatId || data.telegram || data.chatId || '').trim();
     const apartment = String(data.apartment || '').trim();
     const password = String(data.password || '');
     const confirm = String(data.passwordConfirm || data.confirmPassword || '');
@@ -2575,9 +2567,6 @@ app.post('/auth/signup', requireDatabaseReady, async (req, res) => {
       name,
       email,
       whatsapp,
-      telegram,
-      telegramChatId: telegram,
-      chatId: telegram,
       cpfCnpj: onlyDigits(data.cpfCnpj || ''),
       apartment,
       residentType: data.residentType || 'Morador',
@@ -2893,27 +2882,6 @@ app.get('/api/integrations/telegram/debug', (req, res) => {
   res.json({ ok: true, telegram: telegramDiagnostics(), database: { configured: hasDatabaseConfig(), ready: databaseReady } });
 });
 
-app.get('/api/integrations/telegram/setup', (req, res) => {
-  const cfg = effectiveNotificationConfig(store.notificationConfig || DEFAULT_NOTIFICATION_CONFIG).telegram || {};
-  const botUsername = (cfg.botUsername || '').replace(/^@/, '');
-  const botUrl = botUsername ? `https://t.me/${botUsername}` : '';
-  res.json({
-    ok: true,
-    enabled: Boolean(cfg.enabled),
-    botUsername: botUsername ? `@${botUsername}` : '',
-    botUrl,
-    androidUrl: 'https://play.google.com/store/apps/details?id=org.telegram.messenger',
-    iosUrl: 'https://apps.apple.com/app/telegram-messenger/id686449807',
-    appsUrl: 'https://telegram.org/apps?setln=pt-br',
-    instructions: [
-      'Baixe o Telegram pelo QR Code Android ou iPhone.',
-      'Abra o Telegram e pesquise o bot do condomínio.',
-      'Toque em Iniciar para liberar mensagens automáticas.',
-      'Informe à portaria ou síndico o Chat ID quando solicitado.'
-    ]
-  });
-});
-
 app.post('/api/integrations/notifications', async (req, res) => {
   try {
     const config = await saveNotificationConfig(req.body || {});
@@ -3194,11 +3162,8 @@ function scheduleMatchesCurrentShift(schedule = {}, date = new Date()) {
 function uniqueEmergencyRecipients(items = []) {
   const seen = new Set();
   return items.filter((item) => {
-    const telegram = normalizeTelegramChatId(item.telegramChatId || item.telegram || item.chatId || '');
-    const key = normalizeEmail(item.email || '') || telegram || String(item.whatsapp || item.id || item.name || '').trim().toLowerCase();
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
+    const key = normalizeEmail(item.email || '') || String(item.whatsapp || item.id || item.name || '').trim().toLowerCase();
+    if (!key || seen.has(key)) return false; seen.add(key); return true;
   });
 }
 function activePortersForEmergency(date = new Date()) {
@@ -3206,7 +3171,7 @@ function activePortersForEmergency(date = new Date()) {
   const schedules = Array.isArray(store.state?.staffSchedules) ? store.state.staffSchedules : [];
   const scheduled = schedules.filter((s) => scheduleMatchesCurrentShift(s, date)).map((s) => {
     const staffId = String(s.staffId || s.personId || '').trim();
-    return staff.find((p) => String(p.id || '').trim() === staffId) || (s.email ? staff.find((p) => normalizeEmail(p.email) === normalizeEmail(s.email)) : null) || { id: s.staffId || s.id, name: s.staffName || s.name || 'Porteiro escalado', role: s.staffRole || s.role || 'portaria', email: s.email || '', whatsapp: s.whatsapp || '', telegram: s.telegramChatId || s.telegram || s.chatId || '', telegramChatId: s.telegramChatId || s.telegram || s.chatId || '' };
+    return staff.find((p) => String(p.id || '').trim() === staffId) || (s.email ? staff.find((p) => normalizeEmail(p.email) === normalizeEmail(s.email)) : null) || { id: s.staffId || s.id, name: s.staffName || s.name || 'Porteiro escalado', role: s.staffRole || s.role || 'portaria', email: s.email || '', whatsapp: s.whatsapp || '' };
   }).filter(staffIsPorter);
   if (scheduled.length) return uniqueEmergencyRecipients(scheduled);
   return uniqueEmergencyRecipients(staff.filter(staffIsPorter));
@@ -3222,37 +3187,11 @@ function residentsForEmergency() {
 async function notifyEmergencyRecipients(recipients = [], event = {}, scope = 'initial') {
   const type = VR_EMERGENCY_TYPES[event.type] || VR_EMERGENCY_TYPES.other;
   const subject = scope === 'broadcast' ? `Alerta geral: ${type.label}` : `Emergência aguardando confirmação: ${type.label}`;
-  const elevator = event.type === 'elevator' && event.elevatorAssistance
-    ? `
-
-Assistência elevador: ${event.elevatorAssistance.elevatorCompany || '-'} | Tel.: ${event.elevatorAssistance.elevatorPhone || '-'} | WhatsApp: ${event.elevatorAssistance.elevatorWhatsapp || '-'}`
-    : '';
-  const message = `${subject}
-
-Usuário: ${event.userName || event.userEmail || '-'}
-Perfil: ${event.userRole || '-'}
-Unidade: ${event.apartment || '-'}
-Observação: ${event.notes || '-'}${elevator}
-Data: ${new Date(event.createdAt || Date.now()).toLocaleString('pt-BR')}
-
-Sistema Vitória Régia.`;
+  const message = `${subject}\n\nUsuário: ${event.userName || event.userEmail || '-'}\nPerfil: ${event.userRole || '-'}\nUnidade: ${event.apartment || '-'}\nObservação: ${event.notes || '-'}\nData: ${new Date(event.createdAt || Date.now()).toLocaleString('pt-BR')}\n\nSistema Vitória Régia.`;
   const results = [];
-  const appUrl = (APP_URL || '').replace(/\/$/, '');
-  const telegramButtons = appUrl ? [[{ text: scope === 'broadcast' ? 'Abrir sistema' : 'Ver emergência', url: `${appUrl}/#emergencias` }]] : undefined;
   for (const person of recipients.slice(0, 30)) {
-    const telegramChat = normalizeTelegramChatId(person.telegramChatId || person.telegram || person.chatId || '');
-    if (person.email) {
-      try { results.push({ recipient: person.email, channel: 'email', ...(await sendEmailNotification({ to: person.email, subject, message })) }); }
-      catch (error) { results.push({ recipient: person.email, channel: 'email', ok: false, error: error.message }); }
-    }
-    if (person.whatsapp) {
-      try { results.push({ recipient: person.whatsapp, channel: 'whatsapp', ...(await sendWhatsAppNotification({ to: person.whatsapp, message })) }); }
-      catch (error) { results.push({ recipient: person.whatsapp, channel: 'whatsapp', ok: false, error: error.message }); }
-    }
-    if (telegramChat) {
-      try { results.push({ recipient: telegramChat, channel: 'telegram', ...(await sendTelegramNotification({ chatId: telegramChat, subject, message, buttons: telegramButtons })) }); }
-      catch (error) { results.push({ recipient: telegramChat, channel: 'telegram', ok: false, error: error.message }); }
-    }
+    if (person.email) { try { results.push({ recipient: person.email, channel: 'email', ...(await sendEmailNotification({ to: person.email, subject, message })) }); } catch (error) { results.push({ recipient: person.email, channel: 'email', ok: false, error: error.message }); } }
+    if (person.whatsapp) { try { results.push({ recipient: person.whatsapp, channel: 'whatsapp', ...(await sendWhatsAppNotification({ to: person.whatsapp, message })) }); } catch (error) { results.push({ recipient: person.whatsapp, channel: 'whatsapp', ok: false, error: error.message }); } }
   }
   await logNotification({ channel: 'in-app', recipient: `${recipients.length} destinatários`, subject, message, status: 'queued', providerResponse: { scope, results } }).catch(() => {});
   return results;
@@ -3292,7 +3231,7 @@ app.post('/api/emergency/request', requireDatabaseReady, requireAuthenticatedUse
       type, typeLabel: typeInfo.label, critical: Boolean(typeInfo.critical), status: 'pending-review',
       userName: user.name || user.email || 'Usuário', userEmail: user.email || '', userRole: user.role || user.staffRole || '',
       apartment: user.apartment || '', notes: String(req.body?.notes || '').trim(), createdAt: new Date().toISOString(),
-      createdBy: user.email || user.name || 'sistema', initialRecipients: initialRecipients.map((p) => ({ id: p.id, name: p.name, role: p.role, email: p.email, whatsapp: p.whatsapp, telegram: p.telegramChatId || p.telegram || p.chatId || '', telegramChatId: p.telegramChatId || p.telegram || p.chatId || '' })),
+      createdBy: user.email || user.name || 'sistema', initialRecipients: initialRecipients.map((p) => ({ id: p.id, name: p.name, role: p.role, email: p.email, whatsapp: p.whatsapp })),
       elevatorAssistance: type === 'elevator' ? emergencySettings() : null,
     };
     const state = { ...DEFAULT_STATE, ...(store.state || {}) };
@@ -3318,7 +3257,7 @@ app.post('/api/emergency/events/:id/confirm', requireDatabaseReady, requirePorta
     if (idx < 0) return res.status(404).json({ ok: false, error: 'Emergência não encontrada.' });
     const event = { ...list[idx], status: 'broadcasted', confirmedAt: new Date().toISOString(), confirmedBy: req.session.user?.email || req.session.user?.name || '', confirmNote: String(req.body?.note || '').trim() };
     const residents = emergencySettings().notifyResidentsAfterConfirm === false ? [] : residentsForEmergency();
-    event.broadcastRecipients = residents.map((p) => ({ id: p.id, name: p.name, email: p.email, whatsapp: p.whatsapp, telegram: p.telegramChatId || p.telegram || p.chatId || '', telegramChatId: p.telegramChatId || p.telegram || p.chatId || '', apartment: p.apartment }));
+    event.broadcastRecipients = residents.map((p) => ({ id: p.id, name: p.name, email: p.email, whatsapp: p.whatsapp, apartment: p.apartment }));
     list[idx] = event; state.emergencyEvents = list; store.state = state; await saveStore(store);
     await recordActivityLog({ action: 'Alerta geral confirmado', entityType: 'emergency', entityId: event.id, apartment: event.apartment, summary: `${event.typeLabel || event.type} confirmado para moradores`, details: event }, req.session.user || {}).catch(() => {});
     notifyEmergencyRecipients(residents, event, 'broadcast').catch((error) => console.error('Falha ao notificar moradores:', error.message));
