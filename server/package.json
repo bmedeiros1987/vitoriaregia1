@@ -1,0 +1,23 @@
+{
+  "name": "vitoria-regia-pro-server",
+  "version": "6.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "build": "echo backend-ok",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "bcryptjs": "latest",
+    "cors": "latest",
+    "dotenv": "latest",
+    "express": "latest",
+    "jsonwebtoken": "latest",
+    "nodemailer": "latest",
+    "pg": "latest"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

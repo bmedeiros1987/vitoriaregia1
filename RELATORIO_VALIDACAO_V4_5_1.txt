@@ -1,3 +1,0 @@
-OK node --check app.js
-OK node --check backend/src/server.js
-OK node --check vr-ajustes-finais-v451.js
