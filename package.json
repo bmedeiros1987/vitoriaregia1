@@ -1,8 +1,8 @@
 {
   "name": "vitoria-regia-pro",
-  "version": "6.5.0",
+  "version": "6.9.0",
   "private": true,
-  "description": "Sistema Vitória Régia Pro - gestão condominial premium com PostgreSQL, PWA, Termux, GitHub e Render.",
+  "description": "Sistema Vitória Régia Pro v6.9 - gestão condominial premium com PostgreSQL, PWA, SSL automático, SendGrid, GitHub e Render, preparado para publicação pelo PC.",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "npm --prefix client run dev",

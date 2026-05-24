@@ -15,6 +15,22 @@ services:
       - key: NPM_CONFIG_UPDATE_NOTIFIER
         value: false
       - key: APP_VERSION
-        value: Vitória Régia Pro v6.5
+        value: Vitória Régia Pro v6.9
+      - key: MAIL_PROVIDER
+        value: sendgrid
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: SENDGRID_FROM_EMAIL
+        sync: false
+      - key: SENDGRID_FROM_NAME
+        value: Condomínio Vitória Régia
+      - key: SENDGRID_REPLY_TO
+        sync: false
+      - key: SENDGRID_TO_DEFAULT
+        sync: false
+      - key: SENDGRID_DATA_RESIDENCY
+        value: global
       - key: DATABASE_SSL
-        value: true
+        value: auto
+      - key: DATABASE_SSL_MODE
+        value: auto

@@ -5,22 +5,116 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { Pool } from 'pg';
 import nodemailer from 'nodemailer';
+import sgMail from '@sendgrid/mail';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v6.0';
+const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v6.9';
 const JWT_SECRET = process.env.JWT_SECRET || 'troque-este-segredo-em-producao';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/vitoriaregia';
-const useSSL = String(process.env.DATABASE_SSL || '').toLowerCase() === 'true' || /render\.com|neon\.tech|supabase\.co|railway\.app|amazonaws\.com/i.test(DATABASE_URL);
-const pool = new Pool({ connectionString: DATABASE_URL, ssl: useSSL ? { rejectUnauthorized: false } : undefined });
+const DB_SSL_MODE = String(process.env.DATABASE_SSL_MODE || process.env.DATABASE_SSL || 'auto').trim().toLowerCase();
+let pool;
+
+function maskDatabaseUrl(value = '') {
+  try {
+    const u = new URL(value);
+    if (u.password) u.password = '***';
+    return u.toString();
+  } catch {
+    return value.replace(/:\/\/([^:\/\s]+):([^@\s]+)@/, '://$1:***@');
+  }
+}
+
+function removeSslQueryParams(value = '') {
+  try {
+    const u = new URL(value);
+    ['sslmode', 'sslcert', 'sslkey', 'sslrootcert'].forEach((key) => u.searchParams.delete(key));
+    return u.toString();
+  } catch {
+    return value
+      .replace(/[?&](sslmode|sslcert|sslkey|sslrootcert)=[^&]*/gi, '')
+      .replace(/\?&/, '?')
+      .replace(/[?&]$/, '');
+  }
+}
+
+function urlSslMode(value = '') {
+  try {
+    return new URL(value).searchParams.get('sslmode')?.toLowerCase() || '';
+  } catch {
+    const m = value.match(/[?&]sslmode=([^&]+)/i);
+    return m ? decodeURIComponent(m[1]).toLowerCase() : '';
+  }
+}
+
+function looksLikeExternalCloudDb(value = '') {
+  try {
+    const host = new URL(value).hostname;
+    return /render\.com|neon\.tech|supabase\.co|railway\.app|amazonaws\.com|azure\.com|googleusercontent\.com|aivencloud\.com/i.test(host);
+  } catch {
+    return /render\.com|neon\.tech|supabase\.co|railway\.app|amazonaws\.com|azure\.com|googleusercontent\.com|aivencloud\.com/i.test(value);
+  }
+}
+
+function preferredSslAttempts() {
+  const sslMode = urlSslMode(DATABASE_URL);
+  const noSslFirst = [false, true];
+  const sslFirst = [true, false];
+
+  if (['0', 'false', 'no', 'off', 'disable', 'disabled'].includes(DB_SSL_MODE)) return noSslFirst;
+  if (['1', 'true', 'yes', 'on', 'require', 'required'].includes(DB_SSL_MODE)) return sslFirst;
+  if (['prefer', 'preferred'].includes(DB_SSL_MODE)) return sslFirst;
+  if (sslMode === 'disable') return noSslFirst;
+  if (['require', 'prefer', 'verify-ca', 'verify-full', 'no-verify'].includes(sslMode)) return sslFirst;
+  if (looksLikeExternalCloudDb(DATABASE_URL)) return sslFirst;
+  return noSslFirst;
+}
+
+function poolConfig(sslEnabled) {
+  // Removemos sslmode da URL para evitar conflito com a configuração explícita do node-postgres.
+  return {
+    connectionString: removeSslQueryParams(DATABASE_URL),
+    ssl: sslEnabled ? { rejectUnauthorized: false } : false,
+    max: Number(process.env.PG_POOL_MAX || 10),
+    idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT || 30000),
+    connectionTimeoutMillis: Number(process.env.PG_CONNECT_TIMEOUT || 15000)
+  };
+}
+
+function isRetryableSslError(error) {
+  const message = String(error?.message || error || '');
+  return /ssl|tls|certificate|self[- ]signed|handshake|no pg_hba\.conf entry|encryption/i.test(message);
+}
+
+async function createConnectedPool() {
+  const attempts = [...new Set(preferredSslAttempts())];
+  let lastError;
+
+  for (const sslEnabled of attempts) {
+    const candidate = new Pool(poolConfig(sslEnabled));
+    try {
+      await candidate.query('SELECT 1');
+      console.log(`Banco conectado ${sslEnabled ? 'com SSL/TLS' : 'sem SSL/TLS'}: ${maskDatabaseUrl(DATABASE_URL)}`);
+      return candidate;
+    } catch (error) {
+      lastError = error;
+      await candidate.end().catch(() => null);
+      console.warn(`Tentativa de banco ${sslEnabled ? 'com SSL/TLS' : 'sem SSL/TLS'} falhou: ${error.message}`);
+      if (!isRetryableSslError(error)) break;
+    }
+  }
+
+  throw lastError;
+}
 
 app.use(cors({ origin: process.env.CORS_ORIGIN || true, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 
 async function q(sql, params = []) {
+  if (!pool) throw new Error('Banco ainda não inicializado.');
   return pool.query(sql, params);
 }
 
@@ -162,7 +256,13 @@ CREATE TABLE IF NOT EXISTS audit(
     WEATHER_CITY: 'João Pessoa',
     EMERGENCY_CONFIRM: 'true',
     ONLY_LOGIN_DASHBOARD: 'true',
-    FOOTER_MODE: 'minimal'
+    FOOTER_MODE: 'minimal',
+    MAIL_PROVIDER: 'sendgrid',
+    SENDGRID_FROM_EMAIL: '',
+    SENDGRID_FROM_NAME: 'Condomínio Vitória Régia',
+    SENDGRID_REPLY_TO: '',
+    SENDGRID_TO_DEFAULT: '',
+    SENDGRID_DATA_RESIDENCY: 'global'
   };
   for (const [key, value] of Object.entries(defaultSettings)) {
     await q('INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING', [key, value]);
@@ -194,7 +294,8 @@ async function getSettingsObject() {
 
 async function getSetting(key, fallback = '') {
   const r = await q('SELECT value FROM settings WHERE key=$1', [key]);
-  return r.rowCount ? r.rows[0].value : (process.env[key] || fallback);
+  const fromDb = r.rowCount ? String(r.rows[0].value || '').trim() : '';
+  return fromDb || process.env[key] || fallback;
 }
 
 function requireFields(body, fields) {
@@ -276,7 +377,7 @@ app.post('/api/finance', auth, async (req, res, next) => { try { requireFields(r
 app.post('/api/finance/:id/pay', auth, async (req, res, next) => { try { const r = await q("UPDATE finance SET status='pago' WHERE id=$1 RETURNING *", [req.params.id]); await audit(req.user.email, 'baixou financeiro', req.params.id); res.json(r.rows[0] || {}); } catch (e) { next(e); } });
 
 app.get('/api/notices', auth, async (_req, res, next) => { try { res.json((await q('SELECT * FROM notices ORDER BY id DESC')).rows); } catch (e) { next(e); } });
-app.post('/api/notices', auth, async (req, res, next) => { try { requireFields(req.body, ['title', 'body']); const { title, body, channel, priority } = req.body; const r = await q('INSERT INTO notices(title,body,channel,priority) VALUES($1,$2,$3,$4) RETURNING *', [title, body, channel || 'app', priority || 'normal']); await audit(req.user.email, 'criou comunicado', title); res.json(r.rows[0]); } catch (e) { next(e); } });
+app.post('/api/notices', auth, async (req, res, next) => { try { requireFields(req.body, ['title', 'body']); const { title, body, channel, priority } = req.body; const r = await q('INSERT INTO notices(title,body,channel,priority) VALUES($1,$2,$3,$4) RETURNING *', [title, body, channel || 'app', priority || 'normal']); await audit(req.user.email, 'criou comunicado', title); const ch = String(channel || 'app').toLowerCase(); if (['email','sendgrid','todos','all'].includes(ch)) { const to = await getSetting('SENDGRID_TO_DEFAULT') || await getSetting('MAIL_TO_DEFAULT'); if (to) await sendEmailSmart({ to, subject: title, body }, 'auto').catch((err) => console.warn('Falha ao enviar comunicado por e-mail:', err.message)); } res.json(r.rows[0]); } catch (e) { next(e); } });
 
 app.get('/api/incidents', auth, async (_req, res, next) => { try { res.json((await q('SELECT * FROM incidents ORDER BY id DESC')).rows); } catch (e) { next(e); } });
 app.post('/api/incidents', auth, async (req, res, next) => { try { requireFields(req.body, ['title']); const { title, description, unit, severity } = req.body; const r = await q('INSERT INTO incidents(title,description,unit,severity) VALUES($1,$2,$3,$4) RETURNING *', [title, description, unit, severity || 'normal']); await audit(req.user.email, 'registrou ocorrência', title); res.json(r.rows[0]); } catch (e) { next(e); } });
@@ -298,18 +399,126 @@ app.post('/api/settings', auth, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+function htmlFromText(text = '') {
+  const escaped = String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br>');
+  return `<div style="font-family:Arial,sans-serif;line-height:1.55;color:#172033">${escaped}</div>`;
+}
+
+function splitAddress(value = '') {
+  const raw = String(value || '').trim();
+  const m = raw.match(/^(.+?)\s*<([^>]+)>$/);
+  if (m) return { name: m[1].replace(/^['"]|['"]$/g, '').trim(), email: m[2].trim() };
+  return { name: '', email: raw };
+}
+
+function recipients(value = '') {
+  if (Array.isArray(value)) return value.map(String).map(v => v.trim()).filter(Boolean);
+  return String(value || '').split(/[;,]/).map(v => v.trim()).filter(Boolean);
+}
+
+function sendGridErrorMessage(error) {
+  const body = error?.response?.body;
+  const sgMsg = Array.isArray(body?.errors) ? body.errors.map(e => e.message).filter(Boolean).join('; ') : '';
+  return sgMsg || error?.message || 'Falha ao enviar pelo SendGrid';
+}
+
+async function sendEmailViaSendGrid({ to, subject, body, html }) {
+  const apiKey = await getSetting('SENDGRID_API_KEY');
+  if (!apiKey) {
+    const err = new Error('Configure SENDGRID_API_KEY nas Environment Variables do Render.');
+    err.status = 400;
+    throw err;
+  }
+  if (String(await getSetting('SENDGRID_DATA_RESIDENCY', 'global')).toLowerCase() === 'eu' && typeof sgMail.setDataResidency === 'function') {
+    sgMail.setDataResidency('eu');
+  }
+  sgMail.setApiKey(apiKey);
+  const mailFrom = splitAddress(await getSetting('SENDGRID_FROM_EMAIL') || await getSetting('MAIL_FROM') || await getSetting('SMTP_USER'));
+  if (!mailFrom.email) {
+    const err = new Error('Configure SENDGRID_FROM_EMAIL com o remetente verificado no SendGrid.');
+    err.status = 400;
+    throw err;
+  }
+  const fromName = await getSetting('SENDGRID_FROM_NAME', mailFrom.name || 'Condomínio Vitória Régia');
+  const reply = splitAddress(await getSetting('SENDGRID_REPLY_TO') || mailFrom.email);
+  const msg = {
+    to: recipients(to),
+    from: { email: mailFrom.email, name: fromName || mailFrom.name || 'Condomínio Vitória Régia' },
+    subject,
+    text: String(body || ''),
+    html: html || htmlFromText(body),
+    categories: ['vitoria-regia']
+  };
+  if (reply.email) msg.replyTo = { email: reply.email, name: reply.name || fromName };
+  try {
+    const [response] = await sgMail.send(msg);
+    return { ok: true, provider: 'sendgrid', statusCode: response?.statusCode || 202 };
+  } catch (error) {
+    const err = new Error(sendGridErrorMessage(error));
+    err.status = error?.code || 400;
+    throw err;
+  }
+}
+
+async function sendEmailViaSmtp({ to, subject, body, html }) {
+  const host = await getSetting('SMTP_HOST');
+  const user = await getSetting('SMTP_USER');
+  const pass = await getSetting('SMTP_PASS');
+  const port = Number(await getSetting('SMTP_PORT', '587'));
+  if (!host || !user || !pass) {
+    const err = new Error('Configure SMTP_HOST, SMTP_USER e SMTP_PASS em Configurações.');
+    err.status = 400;
+    throw err;
+  }
+  const transporter = nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass } });
+  await transporter.sendMail({ from: await getSetting('MAIL_FROM', user), to: recipients(to).join(','), subject, text: body, html: html || htmlFromText(body) });
+  return { ok: true, provider: 'smtp' };
+}
+
+async function sendEmailSmart(payload, preferredProvider = '') {
+  const provider = String(preferredProvider || await getSetting('MAIL_PROVIDER', 'sendgrid')).toLowerCase();
+  if (provider === 'smtp') return sendEmailViaSmtp(payload);
+  if (provider === 'auto') {
+    if (await getSetting('SENDGRID_API_KEY')) return sendEmailViaSendGrid(payload);
+    return sendEmailViaSmtp(payload);
+  }
+  return sendEmailViaSendGrid(payload);
+}
+
+app.get('/api/integrations/sendgrid/status', auth, async (_req, res, next) => {
+  try {
+    res.json({
+      configured: Boolean(await getSetting('SENDGRID_API_KEY')),
+      from: await getSetting('SENDGRID_FROM_EMAIL'),
+      defaultTo: await getSetting('SENDGRID_TO_DEFAULT'),
+      provider: await getSetting('MAIL_PROVIDER', 'sendgrid'),
+      dataResidency: await getSetting('SENDGRID_DATA_RESIDENCY', 'global')
+    });
+  } catch (e) { next(e); }
+});
+
 app.post('/api/notify/email', auth, async (req, res, next) => {
   try {
     requireFields(req.body, ['to', 'subject', 'body']);
-    const host = await getSetting('SMTP_HOST');
-    const user = await getSetting('SMTP_USER');
-    const pass = await getSetting('SMTP_PASS');
-    const port = Number(await getSetting('SMTP_PORT', '587'));
-    if (!host || !user || !pass) return res.status(400).json({ error: 'Configure SMTP_HOST, SMTP_USER e SMTP_PASS em Configurações.' });
-    const transporter = nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass } });
-    await transporter.sendMail({ from: await getSetting('MAIL_FROM', user), to: req.body.to, subject: req.body.subject, text: req.body.body });
-    await audit(req.user.email, 'enviou e-mail', req.body.to);
-    res.json({ ok: true });
+    const result = await sendEmailSmart(req.body, req.body.provider);
+    await audit(req.user.email, `enviou e-mail via ${result.provider}`, req.body.to);
+    res.json(result);
+  } catch (e) { next(e); }
+});
+
+app.post('/api/notify/sendgrid/test', auth, async (req, res, next) => {
+  try {
+    const to = req.body.to || await getSetting('SENDGRID_TO_DEFAULT') || await getSetting('SENDGRID_FROM_EMAIL');
+    const subject = req.body.subject || 'Teste SendGrid - Vitória Régia';
+    const body = req.body.body || 'Integração SendGrid ativa no Sistema Vitória Régia Pro.';
+    requireFields({ to, subject, body }, ['to', 'subject', 'body']);
+    const result = await sendEmailViaSendGrid({ to, subject, body });
+    await audit(req.user.email, 'testou SendGrid', to);
+    res.json(result);
   } catch (e) { next(e); }
 });
 
@@ -344,6 +553,10 @@ app.post('/api/emergency', auth, async (req, res, next) => {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ chat_id: chat, text: `🚨 ${msg}` })
       }).catch(() => null);
+    }
+    const emergencyEmail = settings.SENDGRID_TO_DEFAULT || settings.EMERGENCY_EMAIL || process.env.EMERGENCY_EMAIL;
+    if (emergencyEmail) {
+      await sendEmailSmart({ to: emergencyEmail, subject: '🚨 Emergência acionada - Vitória Régia', body: msg }, 'auto').catch((err) => console.warn('Falha ao enviar emergência por e-mail:', err.message));
     }
     res.json({ ok: true, message: 'Emergência registrada e encaminhada aos canais configurados.' });
   } catch (e) { next(e); }
@@ -388,6 +601,7 @@ app.use((err, _req, res, _next) => {
   res.status(status).json({ error: err.message || 'Erro interno' });
 });
 
-init()
+createConnectedPool()
+  .then((connectedPool) => { pool = connectedPool; return init(); })
   .then(() => app.listen(process.env.PORT || 3000, () => console.log(`${APP_VERSION} online na porta ${process.env.PORT || 3000}`)))
   .catch((err) => { console.error('Falha ao iniciar:', err); process.exit(1); });

@@ -1,68 +1,54 @@
-# Sistema Vitória Régia Pro v6.0
+# Sistema Vitória Régia Pro v6.9
 
-Sistema premium para gestão do Condomínio Vitória Régia, com painel moderno, atalhos rápidos, botão de emergência, configurações visuais e integração com PostgreSQL.
+Sistema premium para gestão condominial com dashboard, atalhos rápidos, botão de emergência, moradores, visitantes, portaria, encomendas, reservas, financeiro, comunicados, ocorrências, manutenção, auditoria, configurações de tema/menu, Telegram, SMTP, PostgreSQL e PWA.
 
-## Principais recursos
+## Estrutura
 
-- Login protegido com JWT.
-- Dashboard premium com atalhos estilo aplicativo.
-- Menu lateral, superior ou flutuante.
-- Tema claro/escuro, cor personalizada e densidade visual.
-- Botão de emergência com registro de ocorrência e envio ao Telegram, quando configurado.
-- Moradores, visitantes, portaria, encomendas, reservas, financeiro, comunicados, ocorrências e manutenção.
-- Integração SMTP para e-mail e Telegram Bot.
-- Auditoria das principais ações.
-- Exportação de backup em JSON.
-- PWA para usar como app no celular.
-- Scripts para Termux e publicação no GitHub.
-
-## Login padrão
-
-- Usuário: `admin@vitoriaregia.local`
-- Senha: `123456`
-
-Altere `ADMIN_EMAIL`, `ADMIN_PASSWORD` e `JWT_SECRET` no arquivo `server/.env` antes de produção.
-
-## Usando banco anterior
-
-O sistema foi feito para preservar o banco existente. Ele cria novas tabelas e colunas com `CREATE TABLE IF NOT EXISTS` e `ALTER TABLE ADD COLUMN IF NOT EXISTS`, sem apagar os dados antigos.
-
-Configure no `server/.env`:
-
-```env
-DATABASE_URL=postgres://usuario:senha@host:5432/database?sslmode=require
-DATABASE_SSL=true
-```
-
-Para banco local no Termux, o instalador cria um PostgreSQL local automaticamente caso você não informe uma `DATABASE_URL` externa.
-
-## Rodar localmente
-
-```bash
-cp .env.example server/.env
-npm install
-npm run build
-npm start
-```
-
-Acesse: `http://localhost:3000`
+- `client/`: interface React/Vite.
+- `server/`: API Node/Express/PostgreSQL.
+- `render.yaml`: configuração sugerida para Render.
+- `.env.example`: modelo seguro, sem senhas reais.
 
 ## Render
 
-Build command:
+Use na raiz do repositório:
 
-```bash
-npm install && npm run build
+```text
+Build Command: npm install --no-audit --no-fund && npm run build
+Start Command: npm start
+Root Directory: vazio
 ```
 
-Start command:
+Variáveis recomendadas:
 
-```bash
-npm start
+```text
+NODE_VERSION=20.19.0
+NODE_ENV=production
+DATABASE_URL=sua_url_real_no_render
+DATABASE_SSL=auto
+DATABASE_SSL_MODE=auto
+JWT_SECRET=uma_senha_grande_e_forte
+NPM_CONFIG_AUDIT=false
+NPM_CONFIG_FUND=false
+NPM_CONFIG_UPDATE_NOTIFIER=false
 ```
 
-Defina as variáveis de ambiente no Render conforme `.env.example`.
+A `DATABASE_URL` deve ficar no Render ou no `.env` local. Nunca envie `.env` para o GitHub.
 
-## Segurança de publicação
 
-Nunca envie `.env`, `server/.env`, `node_modules`, `client/dist`, logs, certificados ou chaves para o GitHub. Use as variáveis de ambiente no Render e rode o script `scripts/limpar_commit_seguro_vitoriaregia.sh` antes de publicar caso o app do GitHub mostre arquivos sensíveis no commit.
+## SendGrid
+
+Backend integrado com `@sendgrid/mail`.
+
+Variáveis esperadas em produção:
+
+```text
+MAIL_PROVIDER=sendgrid
+SENDGRID_API_KEY=sua_nova_chave
+SENDGRID_FROM_EMAIL=remetente_verificado
+SENDGRID_FROM_NAME=Condomínio Vitória Régia
+SENDGRID_TO_DEFAULT=email_padrao_para_testes_e_emergencia
+SENDGRID_DATA_RESIDENCY=global
+```
+
+A chave real deve ficar somente nas variáveis de ambiente do Render.
