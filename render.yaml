@@ -3,12 +3,18 @@ services:
     name: vitoria-regia-pro
     env: node
     plan: free
-    buildCommand: npm install && npm run build
+    buildCommand: npm install --no-audit --no-fund && npm run build
     startCommand: npm start
     envVars:
       - key: NODE_VERSION
-        value: 20
+        value: 20.19.0
+      - key: NPM_CONFIG_AUDIT
+        value: false
+      - key: NPM_CONFIG_FUND
+        value: false
+      - key: NPM_CONFIG_UPDATE_NOTIFIER
+        value: false
       - key: APP_VERSION
-        value: Vitória Régia Pro v6.0
+        value: Vitória Régia Pro v6.5
       - key: DATABASE_SSL
         value: true

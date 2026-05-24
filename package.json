@@ -1,21 +1,21 @@
 {
   "name": "vitoria-regia-pro",
-  "version": "6.0.0",
+  "version": "6.5.0",
   "private": true,
-  "description": "Sistema Vitória Régia Pro - gestão condominial premium com PostgreSQL, PWA, Termux e GitHub.",
+  "description": "Sistema Vitória Régia Pro - gestão condominial premium com PostgreSQL, PWA, Termux, GitHub e Render.",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "npm --prefix client run dev",
     "server": "npm --prefix server run dev",
     "build": "npm --prefix client run build && npm --prefix server run build",
     "start": "npm --prefix server start",
-    "postinstall": "npm --prefix client install && npm --prefix server install",
-    "install:all": "npm install"
+    "postinstall": "npm --prefix client install --no-audit --no-fund && npm --prefix server install --omit=dev --no-audit --no-fund",
+    "install:all": "npm install --no-audit --no-fund"
   },
   "dependencies": {
-    "concurrently": "latest"
+    "concurrently": "^8.2.2"
   },
   "engines": {
-    "node": ">=20"
+    "node": "20.19.0"
   }
 }

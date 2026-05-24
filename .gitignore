@@ -2,6 +2,12 @@
 node_modules/
 **/node_modules/
 
+
+# Locks gerados localmente
+package-lock.json
+client/package-lock.json
+server/package-lock.json
+
 # Builds, caches e artefatos gerados
 client/dist/
 dist/
