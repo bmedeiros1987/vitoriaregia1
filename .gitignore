@@ -1,8 +1,42 @@
-node_modules
-client/node_modules
-server/node_modules
-client/dist
-server/.env
+# Dependências
+node_modules/
+**/node_modules/
+
+# Builds, caches e artefatos gerados
+client/dist/
+dist/
+build/
+.vite/
+.cache/
+coverage/
+
+# Ambientes e segredos
 .env
+.env.*
+*.env
+*.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
+# Logs e arquivos temporários
 *.log
 .DS_Store
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Certificados/chaves locais
+*.pem
+*.key
+*.crt
+certs/
+**/certs/
+
+# Arquivos auxiliares que podem conter segredos
+*render_env*.txt
+*vitoriaregia*.env.txt
+*env_preenchido*.sh
+*AUTO_preenchido*.sh
+atualizar_render*.sh

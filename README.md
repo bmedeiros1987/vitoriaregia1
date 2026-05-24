@@ -62,3 +62,7 @@ npm start
 ```
 
 Defina as variáveis de ambiente no Render conforme `.env.example`.
+
+## Segurança de publicação
+
+Nunca envie `.env`, `server/.env`, `node_modules`, `client/dist`, logs, certificados ou chaves para o GitHub. Use as variáveis de ambiente no Render e rode o script `scripts/limpar_commit_seguro_vitoriaregia.sh` antes de publicar caso o app do GitHub mostre arquivos sensíveis no commit.
