@@ -1,18 +1,21 @@
 {
-  "version": "v4.5.6",
+  "version": "v4.5.7",
   "name": "Vitória Régia",
   "database": "mysql",
-  "build": "footer-release-notification-no-secrets",
-  "release": "rodape-notificacao-versao",
+  "build": "padrao-imagem-premium-no-secrets",
+  "release": "layout-exatamente-referencia",
   "releasedAt": "2026-05-23",
-  "label": "Vitória Régia v4.5.6",
-  "display": "v4.5.6 - rodapé e notificação de atualização sem dados sensíveis",
+  "label": "Vitória Régia v4.5.7",
+  "display": "v4.5.7",
   "notes": [
-    "Rodapé agora força a versão correta em todas as telas.",
-    "Notificação de atualização mostra claramente o que mudou.",
-    "Aviso de versão aparece no Início após login.",
-    "Registro da última versão fica salvo no navegador para evitar oscilação.",
-    "Mantidas as configurações mobile completas e o clima somente no Início.",
-    "Sem tokens, senhas ou dados sensíveis."
+    "Layout do Início inspirado diretamente na imagem enviada",
+    "Menu lateral premium com Configurações incluído",
+    "Topbar com sino, calendário e perfil",
+    "Card principal com saudação, clima, localização, métricas e alerta",
+    "Acesso rápido com oito cards no padrão da referência",
+    "Configurações refeitas no mesmo padrão visual",
+    "Rodapé mostra apenas v4.5.7 e Desenvolvido por Bruno Saraiva",
+    "Removido texto de sufixo como clima-notificacao-sem-segredos",
+    "Sem tokens, senhas ou dados sensíveis"
   ]
 }
