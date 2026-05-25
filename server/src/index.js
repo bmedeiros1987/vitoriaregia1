@@ -4,33 +4,47 @@ import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { Pool } from 'pg';
+import AdmZip from 'adm-zip';
+import multer from 'multer';
+import fs from 'node:fs/promises';
 import nodemailer from 'nodemailer';
 import sgMail from '@sendgrid/mail';
 import webpush from 'web-push';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createHash, verify as cryptoVerify } from 'node:crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v9.1';
+const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v9.4';
 const JWT_SECRET = process.env.JWT_SECRET || 'troque-este-segredo-em-producao';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/vitoriaregia';
 const DB_SSL_MODE = String(process.env.DATABASE_SSL_MODE || process.env.DATABASE_SSL || 'auto').trim().toLowerCase();
+const UPDATE_PUBLIC_KEY = process.env.UPDATE_PUBLIC_KEY || `-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA6Ui7QnjAh3WEmD25Bqj6
+FTX8BFJSrben3wZ1R/MpL/6NtG1xRc8bhKDq+1HwoDPfvrvmngEAZ6Gb6nljOGvO
+o9l1IPXwgUJjUksHyhz3U9nRO0v/A0ET7RuLdONcccmEz5JFM0I7SfBMs0fiLdLI
+xP4CBEDu+3Zq607xlVOMTEvk4H9lfQ5UjhrvDLU3P3VQHXpWYb9OsGK7BtuqfyyC
+Kt6QhjAsQR2nEBsI/0moFBhauklbzKrdB4ji+NR5Z3ulFbpFujArAgcQrjdfa0uR
+RVAivIuGC5L9ra8ofila26ZLod3Gu28WSK4yijSe3icRPcCbyT/SwuINcziJmpBj
+FQIDAQAB
+-----END PUBLIC KEY-----
+`;
+const uploadUpdateZip = multer({ storage: multer.memoryStorage(), limits: { fileSize: Number(process.env.UPDATE_UPLOAD_LIMIT_MB || 30) * 1024 * 1024 } });
 let pool;
 
 const ALL_PERMISSIONS = [
   'dashboard.view','residents.view','residents.manage','users.manage','employees.manage','shifts.manage','messages.view','messages.manage',
   'packages.view','packages.manage','visitors.view','visitors.manage','invoices.view','invoices.manage','finance.view','finance.manage',
   'reservations.view','reservations.manage','notices.view','notices.manage','incidents.view','incidents.manage','maintenance.view','maintenance.manage',
-  'emergency.use','emergency.approve','settings.manage','platform.manage','bank.manage','audit.view','apps.view','boletos.manage'
+  'emergency.use','emergency.approve','settings.manage','platform.manage','bank.manage','system.update','audit.view','apps.view','boletos.manage'
 ];
 
 function rolePermissions(role='morador') {
   const all = Object.fromEntries(ALL_PERMISSIONS.map(p => [p, true]));
   if (role === 'master' || role === 'admin') return all;
-  if (role === 'sindico') return { ...all, 'platform.manage': false, 'bank.manage': false };
+  if (role === 'sindico') return { ...all, 'platform.manage': false, 'bank.manage': false, 'system.update': false };
   if (role === 'portaria') return {
     'dashboard.view': true, 'residents.view': true, 'packages.view': true, 'packages.manage': true,
     'visitors.view': true, 'visitors.manage': true, 'reservations.view': true, 'messages.view': true, 'messages.manage': true,
@@ -383,6 +397,27 @@ CREATE TABLE IF NOT EXISTS push_subscriptions(
   payload JSONB,
   created_at TIMESTAMP DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS system_updates(
+  id SERIAL PRIMARY KEY,
+  update_code TEXT UNIQUE NOT NULL,
+  version TEXT,
+  title TEXT,
+  notes TEXT,
+  from_version TEXT,
+  to_version TEXT,
+  status TEXT DEFAULT 'disponivel',
+  validation_token_hash TEXT,
+  payload_sha256 TEXT,
+  manifest JSONB DEFAULT '{}'::jsonb,
+  package_data BYTEA,
+  announced_at TIMESTAMP,
+  validated_at TIMESTAMP,
+  applied_at TIMESTAMP,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  applied_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  error TEXT,
+  created_at TIMESTAMP DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS audit(
   id SERIAL PRIMARY KEY,
   actor TEXT,
@@ -392,16 +427,69 @@ CREATE TABLE IF NOT EXISTS audit(
 );
 `);
 
+  // Migração segura para bancos já existentes.
+  // Observação: CREATE TABLE IF NOT EXISTS não altera tabelas antigas. Por isso,
+  // adicionamos explicitamente todas as colunas usadas pelas versões Pro recentes.
   const columns = [
-    ['users','user_type TEXT DEFAULT \'morador\''], ['users','is_outsourced BOOLEAN DEFAULT false'], ['users','unit TEXT'], ['users','employee_id INTEGER'], ['users','force_password_change BOOLEAN DEFAULT false'],
-    ['residents','whatsapp_phone TEXT'], ['residents','telegram_chat_id TEXT'], ['residents','notification_preferences JSONB DEFAULT \'{"app":true,"email":true,"telegram":false,"whatsapp":false,"browser":true}\'::jsonb'],
-    ['packages','pickup_code TEXT'], ['packages','delivery_preference TEXT DEFAULT \'nao_informado\''], ['packages','notification_channels JSONB DEFAULT \'{}\'::jsonb'], ['packages','resident_response_at TIMESTAMP'],
-    ['visitors','phone TEXT'], ['visitors','recurring BOOLEAN DEFAULT false'], ['visitors','weekdays JSONB DEFAULT \'[]\'::jsonb'], ['visitors','valid_from DATE'], ['visitors','valid_until DATE'], ['visitors','announce_required BOOLEAN DEFAULT true'], ['visitors','announcement_channel TEXT DEFAULT \'interfone\''], ['visitors','notification_channels JSONB DEFAULT \'{}\'::jsonb'], ['visitors','photo_data TEXT'], ['visitors','reservation_id INTEGER'], ['visitors','notes TEXT'],
-    ['reservations','area_id INTEGER'], ['reservations','start_time TEXT DEFAULT \'19:00\''], ['reservations','end_time TEXT DEFAULT \'23:00\''], ['reservations','fee_amount NUMERIC(12,2) DEFAULT 0'], ['reservations','boleto_id INTEGER'], ['reservations','document_text TEXT'], ['reservations','terms_accepted BOOLEAN DEFAULT false'], ['reservations','cancel_reason TEXT'], ['reservations','created_by INTEGER'], ['reservations','approved_by INTEGER'], ['reservations','approved_at TIMESTAMP'], ['reservations','canceled_at TIMESTAMP'],
-    ['finance','unit TEXT'], ['finance','resident_id INTEGER'], ['finance','category TEXT DEFAULT \'geral\''], ['finance','boleto_id INTEGER'],
-    ['emergency_types','notify_all BOOLEAN DEFAULT false'], ['notifications','channels JSONB DEFAULT \'{}\'::jsonb'], ['notifications','action_url TEXT'], ['notifications','payload JSONB DEFAULT \'{}\'::jsonb']
+    // users: migração completa para bancos criados por versões antigas
+    ['users','name TEXT'], ['users','email TEXT'], ['users','password_hash TEXT'], ['users','role TEXT DEFAULT \'morador\''],
+    ['users','user_type TEXT DEFAULT \'morador\''], ['users','is_outsourced BOOLEAN DEFAULT false'], ['users','unit TEXT'],
+    ['users','permissions JSONB DEFAULT \'{}\'::jsonb'], ['users','resident_id INTEGER'], ['users','employee_id INTEGER'],
+    ['users','phone TEXT'], ['users','whatsapp_phone TEXT'], ['users','telegram_chat_id TEXT'],
+    ['users','notification_preferences JSONB DEFAULT \'{"app":true,"email":true,"telegram":false,"whatsapp":false,"browser":true}\'::jsonb'],
+    ['users','active BOOLEAN DEFAULT true'], ['users','force_password_change BOOLEAN DEFAULT false'], ['users','last_login TIMESTAMP'], ['users','created_at TIMESTAMP DEFAULT now()'],
+
+    // residents
+    ['residents','name TEXT'], ['residents','unit TEXT'], ['residents','phone TEXT'], ['residents','whatsapp_phone TEXT'], ['residents','email TEXT'],
+    ['residents','document TEXT'], ['residents','vehicle TEXT'], ['residents','notes TEXT'], ['residents','access_profile TEXT DEFAULT \'morador\''],
+    ['residents','access_permissions JSONB DEFAULT \'{}\'::jsonb'], ['residents','telegram_chat_id TEXT'],
+    ['residents','notification_preferences JSONB DEFAULT \'{"app":true,"email":true,"telegram":false,"whatsapp":false,"browser":true}\'::jsonb'], ['residents','created_at TIMESTAMP DEFAULT now()'],
+
+    // employees / shifts / messages
+    ['employees','name TEXT'], ['employees','role TEXT DEFAULT \'portaria\''], ['employees','phone TEXT'], ['employees','email TEXT'], ['employees','active BOOLEAN DEFAULT true'], ['employees','notes TEXT'], ['employees','created_at TIMESTAMP DEFAULT now()'],
+    ['shifts','employee_id INTEGER'], ['shifts','role TEXT DEFAULT \'portaria\''], ['shifts','starts_at TIMESTAMP'], ['shifts','ends_at TIMESTAMP'], ['shifts','status TEXT DEFAULT \'programada\''], ['shifts','notes TEXT'], ['shifts','created_at TIMESTAMP DEFAULT now()'],
+    ['messages','resident_id INTEGER'], ['messages','user_id INTEGER'], ['messages','unit TEXT'], ['messages','subject TEXT'], ['messages','body TEXT'], ['messages','assigned_employee_id INTEGER'], ['messages','status TEXT DEFAULT \'nova\''], ['messages','response TEXT'], ['messages','responded_by TEXT'], ['messages','created_at TIMESTAMP DEFAULT now()'], ['messages','responded_at TIMESTAMP'],
+
+    // packages / visitors
+    ['packages','tracking TEXT'], ['packages','recipient TEXT'], ['packages','unit TEXT'], ['packages','resident_id INTEGER'], ['packages','status TEXT DEFAULT \'pendente\''], ['packages','label TEXT'], ['packages','photo_url TEXT'], ['packages','notes TEXT'], ['packages','extracted_text TEXT'], ['packages','pickup_code TEXT'], ['packages','delivery_preference TEXT DEFAULT \'nao_informado\''], ['packages','notification_channels JSONB DEFAULT \'{}\'::jsonb'], ['packages','notification_status TEXT DEFAULT \'pendente\''], ['packages','created_at TIMESTAMP DEFAULT now()'], ['packages','delivered_at TIMESTAMP'], ['packages','resident_response_at TIMESTAMP'],
+    ['visitors','name TEXT'], ['visitors','document TEXT'], ['visitors','unit TEXT'], ['visitors','authorized_by TEXT'], ['visitors','status TEXT DEFAULT \'autorizado\''], ['visitors','plate TEXT'], ['visitors','phone TEXT'], ['visitors','recurring BOOLEAN DEFAULT false'], ['visitors','weekdays JSONB DEFAULT \'[]\'::jsonb'], ['visitors','valid_from DATE'], ['visitors','valid_until DATE'], ['visitors','announce_required BOOLEAN DEFAULT true'], ['visitors','announcement_channel TEXT DEFAULT \'interfone\''], ['visitors','notification_channels JSONB DEFAULT \'{}\'::jsonb'], ['visitors','photo_data TEXT'], ['visitors','reservation_id INTEGER'], ['visitors','notes TEXT'], ['visitors','created_at TIMESTAMP DEFAULT now()'],
+
+    // reservations / common areas / boletos / finance
+    ['common_areas','name TEXT'], ['common_areas','fee_amount NUMERIC(12,2) DEFAULT 0'], ['common_areas','rules_document TEXT'], ['common_areas','active BOOLEAN DEFAULT true'], ['common_areas','requires_approval BOOLEAN DEFAULT true'], ['common_areas','created_at TIMESTAMP DEFAULT now()'],
+    ['reservations','area TEXT'], ['reservations','area_id INTEGER'], ['reservations','unit TEXT'], ['reservations','resident TEXT'], ['reservations','resident_id INTEGER'], ['reservations','reserved_for DATE'], ['reservations','start_time TEXT DEFAULT \'19:00\''], ['reservations','end_time TEXT DEFAULT \'23:00\''], ['reservations','shift TEXT'], ['reservations','status TEXT DEFAULT \'pre_agendada\''], ['reservations','fee_amount NUMERIC(12,2) DEFAULT 0'], ['reservations','boleto_id INTEGER'], ['reservations','document_text TEXT'], ['reservations','terms_accepted BOOLEAN DEFAULT false'], ['reservations','cancel_reason TEXT'], ['reservations','created_by INTEGER'], ['reservations','approved_by INTEGER'], ['reservations','created_at TIMESTAMP DEFAULT now()'], ['reservations','approved_at TIMESTAMP'], ['reservations','canceled_at TIMESTAMP'],
+    ['reservation_visitors','reservation_id INTEGER'], ['reservation_visitors','name TEXT'], ['reservation_visitors','document TEXT'], ['reservation_visitors','phone TEXT'], ['reservation_visitors','plate TEXT'], ['reservation_visitors','photo_data TEXT'], ['reservation_visitors','created_at TIMESTAMP DEFAULT now()'],
+    ['boletos','unit TEXT'], ['boletos','resident_id INTEGER'], ['boletos','title TEXT'], ['boletos','amount NUMERIC(12,2) DEFAULT 0'], ['boletos','due_date DATE'], ['boletos','status TEXT DEFAULT \'pendente\''], ['boletos','bank_name TEXT'], ['boletos','barcode TEXT'], ['boletos','digitable_line TEXT'], ['boletos','pdf_url TEXT'], ['boletos','payment_link TEXT'], ['boletos','provider TEXT DEFAULT \'manual\''], ['boletos','external_id TEXT'], ['boletos','source_type TEXT'], ['boletos','source_id INTEGER'], ['boletos','created_at TIMESTAMP DEFAULT now()'], ['boletos','paid_at TIMESTAMP'],
+    ['finance','title TEXT'], ['finance','amount NUMERIC(12,2)'], ['finance','type TEXT'], ['finance','status TEXT DEFAULT \'pendente\''], ['finance','due_date DATE'], ['finance','unit TEXT'], ['finance','resident_id INTEGER'], ['finance','category TEXT DEFAULT \'geral\''], ['finance','boleto_id INTEGER'], ['finance','created_at TIMESTAMP DEFAULT now()'],
+
+    // notices / invoices / notifications / incidents / emergency
+    ['notices','title TEXT'], ['notices','body TEXT'], ['notices','channel TEXT DEFAULT \'app\''], ['notices','priority TEXT DEFAULT \'normal\''], ['notices','target_role TEXT DEFAULT \'todos\''], ['notices','created_at TIMESTAMP DEFAULT now()'],
+    ['invoices','supplier TEXT'], ['invoices','document_number TEXT'], ['invoices','access_key TEXT'], ['invoices','amount NUMERIC(12,2) DEFAULT 0'], ['invoices','issue_date DATE'], ['invoices','due_date DATE'], ['invoices','unit TEXT'], ['invoices','resident_id INTEGER'], ['invoices','category TEXT DEFAULT \'nota fiscal\''], ['invoices','status TEXT DEFAULT \'registrada\''], ['invoices','extracted_text TEXT'], ['invoices','file_name TEXT'], ['invoices','created_at TIMESTAMP DEFAULT now()'],
+    ['notifications','user_id INTEGER'], ['notifications','resident_id INTEGER'], ['notifications','title TEXT'], ['notifications','body TEXT'], ['notifications','channel TEXT DEFAULT \'app\''], ['notifications','channels JSONB DEFAULT \'{}\'::jsonb'], ['notifications','status TEXT DEFAULT \'nova\''], ['notifications','action_url TEXT'], ['notifications','payload JSONB DEFAULT \'{}\'::jsonb'], ['notifications','read_at TIMESTAMP'], ['notifications','created_at TIMESTAMP DEFAULT now()'],
+    ['incidents','title TEXT'], ['incidents','description TEXT'], ['incidents','unit TEXT'], ['incidents','severity TEXT DEFAULT \'normal\''], ['incidents','status TEXT DEFAULT \'aberta\''], ['incidents','created_at TIMESTAMP DEFAULT now()'], ['incidents','closed_at TIMESTAMP'],
+    ['emergency_requests','type_code TEXT'], ['emergency_requests','type_label TEXT'], ['emergency_requests','unit TEXT'], ['emergency_requests','message TEXT'], ['emergency_requests','requested_by INTEGER'], ['emergency_requests','requested_role TEXT'], ['emergency_requests','status TEXT DEFAULT \'pendente\''], ['emergency_requests','notify_all BOOLEAN DEFAULT false'], ['emergency_requests','approved_by INTEGER'], ['emergency_requests','decision_note TEXT'], ['emergency_requests','created_at TIMESTAMP DEFAULT now()'], ['emergency_requests','decided_at TIMESTAMP'],
+    ['maintenance','title TEXT'], ['maintenance','supplier TEXT'], ['maintenance','scheduled_for DATE'], ['maintenance','status TEXT DEFAULT \'planejada\''], ['maintenance','cost NUMERIC(12,2) DEFAULT 0'], ['maintenance','notes TEXT'], ['maintenance','created_at TIMESTAMP DEFAULT now()'],
+
+    // settings / workflows / updates / audit
+    ['settings','value TEXT'], ['settings','updated_at TIMESTAMP DEFAULT now()'],
+    ['emergency_types','label TEXT'], ['emergency_types','phone TEXT'], ['emergency_types','supplier TEXT'], ['emergency_types','instructions TEXT'], ['emergency_types','notify_all BOOLEAN DEFAULT false'], ['emergency_types','active BOOLEAN DEFAULT true'], ['emergency_types','sort_order INTEGER DEFAULT 0'], ['emergency_types','updated_at TIMESTAMP DEFAULT now()'],
+    ['registration_requests','name TEXT'], ['registration_requests','email TEXT'], ['registration_requests','phone TEXT'], ['registration_requests','whatsapp_phone TEXT'], ['registration_requests','telegram_chat_id TEXT'], ['registration_requests','preferred_channels JSONB DEFAULT \'{"email":true,"whatsapp":false,"telegram":false}\'::jsonb'], ['registration_requests','unit TEXT'], ['registration_requests','document TEXT'], ['registration_requests','role TEXT DEFAULT \'morador\''], ['registration_requests','status TEXT DEFAULT \'pendente\''], ['registration_requests','notes TEXT'], ['registration_requests','created_at TIMESTAMP DEFAULT now()'], ['registration_requests','approved_by INTEGER'], ['registration_requests','approved_at TIMESTAMP'],
+    ['password_resets','user_id INTEGER'], ['password_resets','token TEXT'], ['password_resets','temp_password TEXT'], ['password_resets','used BOOLEAN DEFAULT false'], ['password_resets','expires_at TIMESTAMP'], ['password_resets','created_at TIMESTAMP DEFAULT now()'],
+    ['push_subscriptions','user_id INTEGER'], ['push_subscriptions','endpoint TEXT'], ['push_subscriptions','payload JSONB'], ['push_subscriptions','created_at TIMESTAMP DEFAULT now()'],
+    ['system_updates','update_code TEXT'], ['system_updates','version TEXT'], ['system_updates','title TEXT'], ['system_updates','notes TEXT'], ['system_updates','from_version TEXT'], ['system_updates','to_version TEXT'], ['system_updates','status TEXT DEFAULT \'disponivel\''], ['system_updates','validation_token_hash TEXT'], ['system_updates','payload_sha256 TEXT'], ['system_updates','manifest JSONB DEFAULT \'{}\'::jsonb'], ['system_updates','package_data BYTEA'], ['system_updates','announced_at TIMESTAMP'], ['system_updates','validated_at TIMESTAMP'], ['system_updates','applied_at TIMESTAMP'], ['system_updates','created_by INTEGER'], ['system_updates','applied_by INTEGER'], ['system_updates','error TEXT'], ['system_updates','created_at TIMESTAMP DEFAULT now()'],
+    ['audit','actor TEXT'], ['audit','action TEXT'], ['audit','entity TEXT'], ['audit','created_at TIMESTAMP DEFAULT now()']
   ];
   for (const [table, col] of columns) await addColumn(table, col);
+
+  // Normalização pós-migração: evita erro em bancos já existentes de versões antigas.
+  await q("UPDATE users SET role=COALESCE(NULLIF(role,''),'morador'), user_type=COALESCE(NULLIF(user_type,''),COALESCE(NULLIF(role,''),'morador')), permissions=COALESCE(permissions,'{}'::jsonb), active=COALESCE(active,true), notification_preferences=COALESCE(notification_preferences,'{\"app\":true,\"email\":true,\"telegram\":false,\"whatsapp\":false,\"browser\":true}'::jsonb) WHERE true").catch(e => console.warn('Normalização de usuários ignorada:', e.message));
+  await q("UPDATE residents SET notification_preferences=COALESCE(notification_preferences,'{\"app\":true,\"email\":true,\"telegram\":false,\"whatsapp\":false,\"browser\":true}'::jsonb), access_permissions=COALESCE(access_permissions,'{}'::jsonb) WHERE true").catch(e => console.warn('Normalização de moradores ignorada:', e.message));
+  await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email) WHERE email IS NOT NULL").catch(e => console.warn('Índice único de usuários ignorado:', e.message));
+  await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_settings_key_unique ON settings(key) WHERE key IS NOT NULL").catch(e => console.warn('Índice de configurações ignorado:', e.message));
+  await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_emergency_types_code_unique ON emergency_types(code) WHERE code IS NOT NULL").catch(e => console.warn('Índice de emergências ignorado:', e.message));
+  await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_common_areas_name_unique ON common_areas(name) WHERE name IS NOT NULL").catch(e => console.warn('Índice de áreas comuns ignorado:', e.message));
+  await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_system_updates_code_unique ON system_updates(update_code) WHERE update_code IS NOT NULL").catch(e => console.warn('Índice de atualizações ignorado:', e.message));
+  await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_push_subscriptions_endpoint_unique ON push_subscriptions(endpoint) WHERE endpoint IS NOT NULL").catch(e => console.warn('Índice de push ignorado:', e.message));
+
   await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_reservation_slot ON reservations(area, reserved_for, start_time, end_time) WHERE status <> 'cancelada'").catch(e => console.warn('Índice de reservas ignorado:', e.message));
 
   const defaultSettings = {
@@ -417,7 +505,8 @@ CREATE TABLE IF NOT EXISTS audit(
     ENABLE_EMAIL: 'true', ENABLE_TELEGRAM: 'false', ENABLE_WHATSAPP: 'false', ENABLE_BROWSER_PUSH: 'true',
     ENABLE_APP_PORTARIA: 'true', ENABLE_APP_SINDICO: 'true', ENABLE_APP_MORADOR: 'true',
     REGISTRATION_REQUIRE_EMAIL: 'true', REGISTRATION_REQUIRE_WHATSAPP: 'false', REGISTRATION_REQUIRE_TELEGRAM: 'false',
-    BANK_PROVIDER: 'manual', BANK_API_BASE_URL: '', BANK_CLIENT_ID: '', BANK_ACCOUNT: '', BANK_AGENCY: '', BANK_WALLET: '', BANK_CONTRACT: '', BANK_PIX_KEY: '', BOLETO_AUTO_GENERATE: 'false'
+    BANK_PROVIDER: 'manual', BANK_API_BASE_URL: '', BANK_CLIENT_ID: '', BANK_ACCOUNT: '', BANK_AGENCY: '', BANK_WALLET: '', BANK_CONTRACT: '', BANK_PIX_KEY: '', BOLETO_AUTO_GENERATE: 'false',
+    ENABLE_SYSTEM_UPDATES: 'true', UPDATE_CHANNEL: 'stable', UPDATE_FEED_URL: '', UPDATE_APPLY_MODE: 'github', UPDATE_GITHUB_REPO: process.env.UPDATE_GITHUB_REPO || 'bmedeiros1987/vitoriaregia1', UPDATE_GITHUB_BRANCH: process.env.UPDATE_GITHUB_BRANCH || 'main'
   };
   for (const [key, value] of Object.entries(defaultSettings)) await q('INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING', [key, value]);
 
@@ -455,7 +544,7 @@ function sanitizeUser(row) {
   return { id: row.id, name: row.name, email: row.email, role, user_type: row.user_type || role, is_outsourced: row.is_outsourced === true, unit: row.unit || '', phone: row.phone || '', whatsapp_phone: row.whatsapp_phone || row.phone || '', telegram_chat_id: row.telegram_chat_id || '', notification_preferences: parseJson(row.notification_preferences, {}), active: row.active !== false, resident_id: row.resident_id || null, employee_id: row.employee_id || null, permissions: normalizePermissions(row.permissions, role), force_password_change: row.force_password_change === true, last_login: row.last_login || null, created_at: row.created_at || null };
 }
 function auth(req, res, next) { try { const token=(req.headers.authorization||'').replace(/^Bearer\s+/i,''); const payload=jwt.verify(token, JWT_SECRET); payload.permissions=normalizePermissions(payload.permissions, payload.role); req.user=payload; next(); } catch { res.status(401).json({ error: 'Não autorizado' }); } }
-function hasPermission(user, permission) { if (!permission) return true; if (user?.role === 'master' || user?.role === 'admin') return true; if (user?.role === 'sindico' && !['platform.manage','bank.manage'].includes(permission)) return true; return Boolean(user?.permissions?.[permission]); }
+function hasPermission(user, permission) { if (!permission) return true; if (user?.role === 'master' || user?.role === 'admin') return true; if (user?.role === 'sindico') return !['platform.manage','bank.manage','system.update'].includes(permission); return Boolean(user?.permissions?.[permission]); }
 function can(permission) { return (req,res,next) => hasPermission(req.user, permission) ? next() : res.status(403).json({ error: 'Acesso não permitido para este usuário.' }); }
 async function getSettingsObject() { const rows=(await q('SELECT key,value FROM settings ORDER BY key')).rows; return rows.reduce((acc,r)=>({ ...acc, [r.key]: r.value }), {}); }
 async function getSetting(key, fallback='') { const r=await q('SELECT value FROM settings WHERE key=$1',[key]); const dbValue=r.rowCount ? String(r.rows[0].value ?? '') : ''; return dbValue !== '' ? dbValue : (process.env[key] || fallback); }
@@ -477,7 +566,7 @@ async function filterChannelsByPlan(channels={}) {
   out.browser = Boolean(out.browser) && await featureEnabled('browser');
   return out;
 }
-const PLATFORM_SETTING_KEYS = new Set(['ENABLE_EMAIL','ENABLE_TELEGRAM','ENABLE_WHATSAPP','ENABLE_BROWSER_PUSH','ENABLE_APP_PORTARIA','ENABLE_APP_SINDICO','ENABLE_APP_MORADOR','REGISTRATION_REQUIRE_EMAIL','REGISTRATION_REQUIRE_WHATSAPP','REGISTRATION_REQUIRE_TELEGRAM','BANK_PROVIDER','BANK_API_BASE_URL','BANK_CLIENT_ID','BANK_ACCOUNT','BANK_AGENCY','BANK_WALLET','BANK_CONTRACT','BANK_PIX_KEY','BOLETO_AUTO_GENERATE','BOLETO_PROVIDER']);
+const PLATFORM_SETTING_KEYS = new Set(['ENABLE_EMAIL','ENABLE_TELEGRAM','ENABLE_WHATSAPP','ENABLE_BROWSER_PUSH','ENABLE_APP_PORTARIA','ENABLE_APP_SINDICO','ENABLE_APP_MORADOR','REGISTRATION_REQUIRE_EMAIL','REGISTRATION_REQUIRE_WHATSAPP','REGISTRATION_REQUIRE_TELEGRAM','BANK_PROVIDER','BANK_API_BASE_URL','BANK_CLIENT_ID','BANK_ACCOUNT','BANK_AGENCY','BANK_WALLET','BANK_CONTRACT','BANK_PIX_KEY','BOLETO_AUTO_GENERATE','BOLETO_PROVIDER','ENABLE_SYSTEM_UPDATES','UPDATE_CHANNEL','UPDATE_FEED_URL','UPDATE_APPLY_MODE','UPDATE_GITHUB_REPO','UPDATE_GITHUB_BRANCH']);
 function containsProtectedSettings(body={}) { return Object.keys(body || {}).some(k => PLATFORM_SETTING_KEYS.has(k)); }
 async function publicSettingsObject() {
   const s = await getSettingsObject();
@@ -590,6 +679,118 @@ async function createBoleto({ unit, resident_id, title, amount, due_date, source
   }
   const r = await q('INSERT INTO boletos(unit,resident_id,title,amount,due_date,source_type,source_id,provider,bank_name,digitable_line,barcode,pdf_url,payment_link,external_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *', [unit || '', resident_id || null, title, amount || 0, due_date || null, source_type || '', source_id || null, providerToUse || 'manual', bank_name || await getSetting('BANK_PROVIDER','manual'), line, barcode, pdf_url, link, external_id]);
   return r.rows[0];
+}
+
+function sha256Hex(data) { return createHash('sha256').update(data).digest('hex'); }
+function safeUpdatePath(name='') {
+  const clean = String(name || '').replace(/\\/g,'/').replace(/^\/+/, '');
+  if (!clean || clean.includes('\0') || clean.split('/').includes('..') || clean.startsWith('../')) throw new Error(`Caminho inválido no pacote: ${name}`);
+  const isEnv = /(^|\/)\.env($|\.)/i.test(clean);
+  const allowedEnvExample = /(^|\/)\.env\.example$/i.test(clean);
+  if (isEnv && !allowedEnvExample) throw new Error(`Arquivo de ambiente proibido em atualização: ${clean}`);
+  if (/(^|\/)(node_modules|\.git|dist|build|certs|server\/public)(\/|$)|\.(pem|key|crt|p12|pfx|jks|keystore|sqlite|sqlite3|db|log)$/i.test(clean)) throw new Error(`Arquivo proibido em atualização: ${clean}`);
+  return clean;
+}
+function canonicalUpdateManifest(m={}) {
+  return JSON.stringify({
+    system: m.system || 'vitoria-regia-pro',
+    update_code: m.update_code || '',
+    version: m.version || m.to_version || '',
+    from_version: m.from_version || '',
+    to_version: m.to_version || m.version || '',
+    created_at: m.created_at || '',
+    payload_file: m.payload_file || 'payload.zip',
+    payload_sha256: m.payload_sha256 || '',
+    validation_token_hash: m.validation_token_hash || '',
+    min_version: m.min_version || '',
+    channel: m.channel || 'stable'
+  });
+}
+function verifyManifestSignature(manifest) {
+  const required = ['1','true','sim','yes','on'].includes(String(process.env.UPDATE_REQUIRE_SIGNATURE || 'true').toLowerCase());
+  if (!manifest.signature) { if (required) throw new Error('Pacote sem assinatura digital.'); return true; }
+  const ok = cryptoVerify('RSA-SHA256', Buffer.from(canonicalUpdateManifest(manifest)), UPDATE_PUBLIC_KEY, Buffer.from(String(manifest.signature), 'base64'));
+  if (!ok) throw new Error('Assinatura digital inválida.');
+  return true;
+}
+function validateUpdatePackage(buffer, validationCode='') {
+  const zip = new AdmZip(buffer);
+  const manifestEntry = zip.getEntry('vr-update.json') || zip.getEntry('vitoria-regia-update.json') || zip.getEntry('manifest.json');
+  if (!manifestEntry) throw new Error('Pacote sem vr-update.json.');
+  const manifest = JSON.parse(manifestEntry.getData().toString('utf8'));
+  if (manifest.system !== 'vitoria-regia-pro') throw new Error('Pacote não pertence ao Sistema Vitória Régia Pro.');
+  if (!manifest.update_code || !manifest.payload_sha256) throw new Error('Manifesto de atualização incompleto.');
+  const payloadEntry = zip.getEntry(manifest.payload_file || 'payload.zip');
+  if (!payloadEntry) throw new Error('Pacote sem payload.zip.');
+  const payloadBuffer = payloadEntry.getData();
+  const payloadHash = sha256Hex(payloadBuffer);
+  if (payloadHash !== String(manifest.payload_sha256).toLowerCase()) throw new Error('Hash do payload não confere. O ZIP pode estar corrompido.');
+  const token = String(validationCode || manifest.validation_token || '').trim();
+  if (!token) throw new Error('Código/token de validação não informado no pacote.');
+  const expectedTokenHash = sha256Hex(Buffer.from(`${token}:${manifest.update_code}:${payloadHash}`));
+  if (manifest.validation_token_hash && expectedTokenHash !== String(manifest.validation_token_hash).toLowerCase()) throw new Error('Código/token de validação inválido para este pacote.');
+  verifyManifestSignature(manifest);
+  const payloadZip = new AdmZip(payloadBuffer);
+  const files = payloadZip.getEntries().filter(e => !e.isDirectory).map(e => safeUpdatePath(e.entryName));
+  if (!files.length) throw new Error('Payload sem arquivos de atualização.');
+  return { manifest, payloadBuffer, payloadHash, files };
+}
+async function notifyUpdateAvailable(manifest, actor='sistema') {
+  const title = `Atualização disponível: ${manifest.version || manifest.to_version || manifest.update_code}`;
+  const body = `${manifest.title || 'Nova atualização do Vitória Régia'} — código ${manifest.update_code}. Acesse Atualizações para validar e aplicar.`;
+  const masters = (await q("SELECT id,email FROM users WHERE role IN ('master','admin') AND active=true")).rows;
+  for (const user of masters) await createNotification({ user_id:user.id, title, body, channel:'app', channels:{ app:true,browser:true,email:false }, action_url:'/#/atualizacoes', payload:{ update_code:manifest.update_code } }).catch(()=>null);
+  await audit(actor, 'notificou atualização', manifest.update_code).catch(()=>null);
+  return masters.length;
+}
+function updateRowValues(manifest, payloadHash, packageBuffer=null, userId=null, status='validado') {
+  return [manifest.update_code, manifest.version || manifest.to_version || '', manifest.title || 'Atualização Vitória Régia', manifest.notes || '', manifest.from_version || '', manifest.to_version || manifest.version || '', status, manifest.validation_token_hash || '', payloadHash || manifest.payload_sha256 || '', JSON.stringify(manifest), packageBuffer, userId];
+}
+async function githubApi(repo, endpoint, options={}) {
+  const token = process.env.UPDATE_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
+  if (!token) throw new Error('Configure UPDATE_GITHUB_TOKEN no Render para aplicar atualizações automaticamente pelo GitHub.');
+  const response = await fetch(`https://api.github.com/repos/${repo}${endpoint}`, { ...options, headers:{ 'Accept':'application/vnd.github+json', 'Authorization':`Bearer ${token}`, 'X-GitHub-Api-Version':'2022-11-28', ...(options.headers || {}) } });
+  const text = await response.text();
+  let data = {}; try { data = text ? JSON.parse(text) : {}; } catch { data = { raw:text }; }
+  if (!response.ok) throw new Error(data.message || text || `Erro GitHub ${response.status}`);
+  return data;
+}
+async function applyUpdateViaGithub(payloadBuffer, manifest) {
+  const repo = process.env.UPDATE_GITHUB_REPO || await getSetting('UPDATE_GITHUB_REPO','bmedeiros1987/vitoriaregia1');
+  const branch = process.env.UPDATE_GITHUB_BRANCH || await getSetting('UPDATE_GITHUB_BRANCH','main');
+  const ref = await githubApi(repo, `/git/ref/heads/${encodeURIComponent(branch)}`);
+  const headSha = ref.object.sha;
+  const baseCommit = await githubApi(repo, `/git/commits/${headSha}`);
+  const payloadZip = new AdmZip(payloadBuffer);
+  const tree = [];
+  for (const entry of payloadZip.getEntries()) {
+    if (entry.isDirectory) continue;
+    const filePath = safeUpdatePath(entry.entryName);
+    const blob = await githubApi(repo, '/git/blobs', { method:'POST', body: JSON.stringify({ content: entry.getData().toString('base64'), encoding:'base64' }) });
+    tree.push({ path:filePath, mode:'100644', type:'blob', sha:blob.sha });
+  }
+  for (const del of Array.isArray(manifest.deletes) ? manifest.deletes : []) tree.push({ path:safeUpdatePath(del), mode:'100644', type:'blob', sha:null });
+  const newTree = await githubApi(repo, '/git/trees', { method:'POST', body: JSON.stringify({ base_tree: baseCommit.tree.sha, tree }) });
+  const newCommit = await githubApi(repo, '/git/commits', { method:'POST', body: JSON.stringify({ message:`Atualização Vitória Régia ${manifest.version || manifest.update_code}`, tree:newTree.sha, parents:[headSha] }) });
+  await githubApi(repo, `/git/refs/heads/${encodeURIComponent(branch)}`, { method:'PATCH', body: JSON.stringify({ sha:newCommit.sha, force:false }) });
+  if (process.env.RENDER_DEPLOY_HOOK_URL) await fetch(process.env.RENDER_DEPLOY_HOOK_URL, { method:'POST' }).catch(()=>null);
+  return { repo, branch, commit:newCommit.sha, files:tree.length, deployHook:Boolean(process.env.RENDER_DEPLOY_HOOK_URL) };
+}
+async function applyUpdateLocally(payloadBuffer) {
+  if (process.env.ALLOW_RUNTIME_UPDATE !== 'true') throw new Error('Aplicação local bloqueada. Para VPS/PC, defina ALLOW_RUNTIME_UPDATE=true. No Render, use modo GitHub.');
+  const target = path.resolve(process.env.UPDATE_TARGET_DIR || path.join(__dirname, '../../'));
+  const payloadZip = new AdmZip(payloadBuffer);
+  let written = 0;
+  for (const entry of payloadZip.getEntries()) {
+    if (entry.isDirectory) continue;
+    const filePath = safeUpdatePath(entry.entryName);
+    const dest = path.resolve(target, filePath);
+    if (!dest.startsWith(target)) throw new Error('Caminho fora do sistema bloqueado.');
+    await fs.mkdir(path.dirname(dest), { recursive:true });
+    await fs.writeFile(dest, entry.getData());
+    written++;
+  }
+  return { target, files:written };
 }
 
 app.get('/api/health', (_req,res)=>res.json({ ok:true, version:APP_VERSION }));
@@ -718,13 +919,98 @@ app.post('/api/settings', auth, can('settings.manage'), async (req,res,next)=>{ 
 app.get('/api/platform-settings', auth, masterOnly, async (_req,res,next)=>{ try { res.json(await getSettingsObject()); } catch(e){ next(e); } });
 app.post('/api/platform-settings', auth, masterOnly, async (req,res,next)=>{ try { for (const [key,value] of Object.entries(req.body||{})) await q('INSERT INTO settings(key,value,updated_at) VALUES($1,$2,now()) ON CONFLICT(key) DO UPDATE SET value=$2,updated_at=now()',[key,String(value ?? '')]); await audit(req.user.email,'alterou liberações master',Object.keys(req.body||{}).join(',')); res.json({ ok:true }); } catch(e){ next(e); } });
 app.post('/api/bank/test', auth, masterOnly, async (_req,res,next)=>{ try { const provider=await getSetting('BANK_PROVIDER','manual'); const ready = provider === 'manual' || Boolean(await getSetting('BANK_CLIENT_ID','') || process.env.BANK_CLIENT_SECRET || process.env.BANK_API_TOKEN); res.json({ ok:ready, provider, mode: provider === 'manual' ? 'vinculação manual' : 'conector preparado', message: provider === 'manual' ? 'Boletos serão vinculados manualmente.' : 'Banco configurado. A emissão real depende das credenciais/API do banco no Render.' }); } catch(e){ next(e); } });
+
+app.get('/api/system-updates/config', auth, masterOnly, async (_req,res,next)=>{ try {
+  res.json({
+    currentVersion: APP_VERSION,
+    mode: await getSetting('UPDATE_APPLY_MODE', process.env.UPDATE_APPLY_MODE || 'github'),
+    githubRepo: await getSetting('UPDATE_GITHUB_REPO', process.env.UPDATE_GITHUB_REPO || 'bmedeiros1987/vitoriaregia1'),
+    githubBranch: await getSetting('UPDATE_GITHUB_BRANCH', process.env.UPDATE_GITHUB_BRANCH || 'main'),
+    githubTokenConfigured: Boolean(process.env.UPDATE_GITHUB_TOKEN || process.env.GITHUB_TOKEN),
+    renderDeployHookConfigured: Boolean(process.env.RENDER_DEPLOY_HOOK_URL),
+    feedUrl: await getSetting('UPDATE_FEED_URL', process.env.UPDATE_FEED_URL || ''),
+    signatureRequired: ['1','true','sim','yes','on'].includes(String(process.env.UPDATE_REQUIRE_SIGNATURE || 'true').toLowerCase())
+  });
+} catch(e){ next(e); } });
+app.get('/api/system-updates', auth, masterOnly, async (_req,res,next)=>{ try { res.json((await q("SELECT id,update_code,version,title,notes,from_version,to_version,status,validation_token_hash,payload_sha256,manifest,announced_at,validated_at,applied_at,error,created_at FROM system_updates ORDER BY id DESC LIMIT 100")).rows); } catch(e){ next(e); } });
+app.post('/api/system-updates/upload', auth, masterOnly, uploadUpdateZip.single('update_zip'), async (req,res,next)=>{ try {
+  if (!boolValue(await getSetting('ENABLE_SYSTEM_UPDATES','true'), true)) return res.status(403).json({ error:'Central de atualizações bloqueada pelo Master.' });
+  let packageBuffer = req.file?.buffer || null;
+  if (!packageBuffer && req.body?.zip_base64) {
+    const raw = String(req.body.zip_base64).includes(',') ? String(req.body.zip_base64).split(',').pop() : String(req.body.zip_base64);
+    packageBuffer = Buffer.from(raw, 'base64');
+  }
+  if (!packageBuffer) return res.status(400).json({ error:'Envie o arquivo ZIP da atualização.' });
+  const validation = validateUpdatePackage(packageBuffer, req.body?.validation_code || '');
+  validation.manifest.source_filename = req.file?.originalname || req.body?.fileName || validation.manifest.source_filename || '';
+  validation.manifest.file_count = validation.files.length;
+  validation.manifest.payload_size = validation.payloadBuffer.length;
+  await q(`INSERT INTO system_updates(update_code,version,title,notes,from_version,to_version,status,validation_token_hash,payload_sha256,manifest,package_data,created_by,validated_at)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,now())
+           ON CONFLICT(update_code) DO UPDATE SET version=$2,title=$3,notes=$4,from_version=$5,to_version=$6,status=$7,validation_token_hash=$8,payload_sha256=$9,manifest=$10,package_data=$11,created_by=$12,validated_at=now(),error=NULL`, updateRowValues(validation.manifest, validation.payloadHash, packageBuffer, req.user.id, 'validado'));
+  await notifyUpdateAvailable(validation.manifest, req.user.email).catch(()=>null);
+  res.json({ ok:true, message:'Atualização validada com assinatura, token e hash.', update:validation.manifest, files:validation.files });
+} catch(e){ next(e); } });
+app.post('/api/system-updates/:id/notify', auth, masterOnly, async (req,res,next)=>{ try {
+  const row = (await q('SELECT * FROM system_updates WHERE id=$1',[req.params.id])).rows[0];
+  if (!row) return res.status(404).json({ error:'Atualização não encontrada.' });
+  const manifest = parseJson(row.manifest, { update_code:row.update_code, version:row.version, title:row.title, notes:row.notes });
+  const notified = await notifyUpdateAvailable(manifest, req.user.email);
+  res.json({ ok:true, notified, message:'Aviso de atualização reenviado.' });
+} catch(e){ next(e); } });
+app.post('/api/system-updates/:id/apply', auth, masterOnly, async (req,res,next)=>{ try {
+  const row = (await q('SELECT * FROM system_updates WHERE id=$1',[req.params.id])).rows[0];
+  if (!row) return res.status(404).json({ error:'Atualização não encontrada.' });
+  if (!row.package_data) return res.status(400).json({ error:'Esta atualização foi apenas anunciada. Envie o ZIP validado antes de aplicar.' });
+  const validation = validateUpdatePackage(row.package_data, req.body?.validation_code || parseJson(row.manifest, {}).validation_token || '');
+  const mode = String(req.body?.mode || await getSetting('UPDATE_APPLY_MODE', process.env.UPDATE_APPLY_MODE || 'github')).toLowerCase();
+  let result;
+  if (mode === 'github') result = await applyUpdateViaGithub(validation.payloadBuffer, validation.manifest);
+  else if (mode === 'local') result = await applyUpdateLocally(validation.payloadBuffer);
+  else result = { manual:true, message:'Atualização validada. Modo manual selecionado; publique o payload pelo GitHub.' };
+  await q("UPDATE system_updates SET status=$1, applied_by=$2, applied_at=now(), error=NULL WHERE id=$3", [mode === 'manual' ? 'validado' : 'aplicado', req.user.id, req.params.id]);
+  await notifyUpdateAvailable({ ...validation.manifest, title:`Atualização ${validation.manifest.version || validation.manifest.update_code} aplicada` }, req.user.email).catch(()=>null);
+  await audit(req.user.email, 'aplicou atualização', validation.manifest.update_code);
+  res.json({ ok:true, mode, result, message: mode === 'github' ? 'Atualização enviada ao GitHub. O Render fará novo deploy pelo repositório/deploy hook.' : 'Atualização processada.' });
+} catch(e){ await q('UPDATE system_updates SET status=$1,error=$2 WHERE id=$3',['erro',e.message,req.params.id]).catch(()=>null); next(e); } });
+app.post('/api/system-updates/check-feed', auth, masterOnly, async (req,res,next)=>{ try {
+  const feedUrl = req.body?.feed_url || await getSetting('UPDATE_FEED_URL','');
+  if (!feedUrl) return res.json({ ok:false, message:'Configure UPDATE_FEED_URL para consulta automática.' });
+  const response = await fetch(feedUrl, { signal: AbortSignal.timeout(7000) });
+  if (!response.ok) throw new Error('Feed de atualização indisponível.');
+  const feed = await response.json();
+  const updates = Array.isArray(feed.updates) ? feed.updates : [feed.latest || feed].filter(Boolean);
+  let count = 0;
+  for (const m of updates) {
+    if (!m.update_code) continue;
+    await q(`INSERT INTO system_updates(update_code,version,title,notes,from_version,to_version,status,payload_sha256,manifest,announced_at)
+             VALUES($1,$2,$3,$4,$5,$6,'disponivel',$7,$8,now())
+             ON CONFLICT(update_code) DO UPDATE SET version=$2,title=$3,notes=$4,status='disponivel',manifest=$8,announced_at=now()`, [m.update_code, m.version || m.to_version || '', m.title || 'Atualização disponível', m.notes || '', m.from_version || '', m.to_version || m.version || '', m.payload_sha256 || '', JSON.stringify(m)]);
+    await notifyUpdateAvailable(m, req.user.email).catch(()=>null);
+    count++;
+  }
+  res.json({ ok:true, found:count });
+} catch(e){ next(e); } });
+app.post('/api/system-updates/announce', async (req,res,next)=>{ try {
+  const expected = process.env.UPDATE_ANNOUNCE_TOKEN || await getSetting('UPDATE_ANNOUNCE_TOKEN','');
+  const got = req.headers['x-update-token'] || req.query.token || req.body?.token;
+  if (!expected || got !== expected) return res.status(401).json({ error:'Token de anúncio inválido.' });
+  const m = req.body || {};
+  if (!m.update_code) return res.status(400).json({ error:'Informe update_code.' });
+  await q(`INSERT INTO system_updates(update_code,version,title,notes,from_version,to_version,status,payload_sha256,manifest,announced_at)
+           VALUES($1,$2,$3,$4,$5,$6,'disponivel',$7,$8,now())
+           ON CONFLICT(update_code) DO UPDATE SET version=$2,title=$3,notes=$4,status='disponivel',manifest=$8,announced_at=now()`, [m.update_code, m.version || m.to_version || '', m.title || 'Nova atualização disponível', m.notes || '', m.from_version || '', m.to_version || m.version || '', m.payload_sha256 || '', JSON.stringify(m)]);
+  const notified = await notifyUpdateAvailable(m, 'canal externo');
+  res.json({ ok:true, notified });
+} catch(e){ next(e); } });
+
 async function getWeatherSafe() { try { const lat=Number(await getSetting('WEATHER_LAT','-7.1195')); const lon=Number(await getSetting('WEATHER_LON','-34.8450')); const city=await getSetting('WEATHER_CITY','João Pessoa'); const url=`https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m`; const r=await fetch(url, { signal: AbortSignal.timeout(4500) }); const data=await r.json(); return { city, temperature:data?.current?.temperature_2m, humidity:data?.current?.relative_humidity_2m, wind:data?.current?.wind_speed_10m, code:data?.current?.weather_code, updated_at:data?.current?.time, source:'servidor' }; } catch { return { city: await getSetting('WEATHER_CITY','João Pessoa'), temperature:null, source:'indisponível' }; } }
 app.get('/api/weather', auth, async (_req,res,next)=>{ try { res.json(await getWeatherSafe()); } catch(e){ next(e); } });
 app.post('/api/notify/email', auth, can('notices.manage'), async (req,res,next)=>{ try { requireFields(req.body,['to','subject','body']); const result=await sendEmailSmart({ to:req.body.to, subject:req.body.subject, text:`${req.body.body}\n\n${await getSetting('EMAIL_SIGNATURE','Condomínio Vitória Régia')}` }); res.json(result); } catch(e){ next(e); } });
 app.post('/api/notify/telegram', auth, can('notices.manage'), async (req,res,next)=>{ try { requireFields(req.body,['message']); res.json(await sendTelegramMessage(req.body.chat_id || '', req.body.message)); } catch(e){ next(e); } });
 app.post('/api/notify/whatsapp', auth, can('notices.manage'), async (req,res,next)=>{ try { requireFields(req.body,['phone','message']); res.json(await sendWhatsAppText(req.body.phone, req.body.message)); } catch(e){ next(e); } });
 app.get('/api/audit', auth, can('audit.view'), async (_req,res,next)=>{ try { res.json((await q('SELECT * FROM audit ORDER BY id DESC LIMIT 150')).rows); } catch(e){ next(e); } });
-app.get('/api/export', auth, can('audit.view'), async (_req,res,next)=>{ try { const tables=['residents','users','employees','shifts','messages','packages','visitors','common_areas','reservations','reservation_visitors','finance','boletos','notices','invoices','incidents','emergency_requests','maintenance','settings','emergency_types']; const out={}; for (const t of tables) out[t]=(await q(`SELECT * FROM ${t} ORDER BY 1 DESC LIMIT 1000`)).rows; res.json(out); } catch(e){ next(e); } });
+app.get('/api/export', auth, can('audit.view'), async (_req,res,next)=>{ try { const tables=['residents','users','employees','shifts','messages','packages','visitors','common_areas','reservations','reservation_visitors','finance','boletos','notices','invoices','incidents','emergency_requests','maintenance','settings','emergency_types','system_updates']; const out={}; for (const t of tables) out[t]=(await q(`SELECT * FROM ${t} ORDER BY 1 DESC LIMIT 1000`)).rows; res.json(out); } catch(e){ next(e); } });
 app.post('/api/seed-demo', auth, can('settings.manage'), async (req,res,next)=>{ try { await q("INSERT INTO residents(name,unit,phone,whatsapp_phone,email,document,vehicle,notes) VALUES('Maria Oliveira','101','83999990000','5583999990000','morador@example.com','000.000.000-00','ABC1D23','Cadastro demo') ON CONFLICT DO NOTHING"); await q("INSERT INTO employees(name,role,phone,email) VALUES('Carlos Portaria','portaria','83988880000','portaria@example.com') ON CONFLICT DO NOTHING"); await q("INSERT INTO notices(title,body,priority,target_role) VALUES('Assembleia geral','Reunião no salão às 19h.','alta','todos')"); await audit(req.user.email,'carregou demonstração','seed-demo'); res.json({ ok:true }); } catch(e){ next(e); } });
 
 const staticDir = path.join(__dirname, '../public');

@@ -1,12 +1,13 @@
 {
   "name": "vitoria-regia-pro-server",
-  "version": "9.3.0",
+  "version": "9.4.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "node --watch src/index.js",
     "build": "node --check src/index.js",
-    "start": "node src/index.js"
+    "start": "node src/preflight-migration.js && node src/index.js",
+    "migrate": "node src/preflight-migration.js"
   },
   "dependencies": {
     "@sendgrid/mail": "8.1.6",
@@ -23,5 +24,6 @@
   },
   "engines": {
     "node": "20.19.0"
-  }
+  },
+  "description": "Vitória Régia Pro Server v9.4 com migração preflight antes da inicialização"
 }
