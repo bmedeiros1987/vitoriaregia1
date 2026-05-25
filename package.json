@@ -1,8 +1,8 @@
 {
   "name": "vitoria-regia-pro",
-  "version": "9.4.0",
+  "version": "9.5.0",
   "private": true,
-  "description": "Sistema Vitória Régia Pro v9.4 com migração preflight de banco legado, central de atualizações, usuário Master, apps e boletos",
+  "description": "Sistema Vitória Régia Pro v9.5 com hotfix mobile, emergência flutuante e telas Morador/Emergência corrigidas",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "npm --prefix client run dev",

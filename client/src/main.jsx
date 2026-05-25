@@ -11,7 +11,7 @@ import {
 import './styles.css';
 
 const API = import.meta.env.VITE_API_URL || '';
-const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v9.4';
+const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v9.5';
 const demoMode = new URLSearchParams(location.search).get('demo') === '1';
 
 const defaultSettings = {
@@ -61,6 +61,7 @@ function enabledChannels(settings = {}) {
 }
 function appEnabled(settings = {}, key) { return asBool(settings[key], true); }
 function channelLabel(k) { return ({ app:'Sistema', browser:'Navegador', email:'E-mail', telegram:'Telegram', whatsapp:'WhatsApp' }[k] || k); }
+function tabFromHash() { return String(location.hash || '').replace(/^#\/?/, '').replace(/^\/+/, '').split('?')[0].split('/')[0]; }
 
 
 async function downloadIcs(id) {
@@ -128,7 +129,7 @@ function App() {
   const [loginMode, setLoginMode] = useState('login');
   const [err, setErr] = useState('');
   const [toast, setToast] = useState('');
-  const [active, setActive] = useState(() => location.hash?.replace('#', '').split('?')[0] || (appParam === 'portaria' ? 'portaria' : appParam === 'morador' ? 'morador' : 'dashboard'));
+  const [active, setActive] = useState(() => tabFromHash() || (appParam === 'portaria' ? 'portaria' : appParam === 'morador' ? 'morador' : 'dashboard'));
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuClosed, setMenuClosed] = useState(false);
   const [query, setQuery] = useState('');
@@ -152,6 +153,7 @@ function App() {
 
   useEffect(() => { if (session) loadAll(); else request('/api/public-config').then(s => setData(d => ({ ...d, settings: { ...d.settings, ...s } }))).catch(() => null); }, [session]);
   useEffect(() => { if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => null); }, []);
+  useEffect(() => { const syncHash = () => { const tab = tabFromHash(); if (tab) setActive(tab); }; window.addEventListener('hashchange', syncHash); return () => window.removeEventListener('hashchange', syncHash); }, []);
   useEffect(() => { if (session) { const t = setInterval(() => safe('/api/notifications', []).then(showBrowserNotifications), 45000); return () => clearInterval(t); } }, [session]);
 
   async function safe(path, fallback) { try { return await request(path); } catch { return fallback; } }
@@ -203,11 +205,12 @@ function App() {
   return <div className={`appShell menu-${menuMode} ${menuClosed ? 'menu-closed' : ''} ${menuOpen ? 'mobile-open' : ''}`}>
     <button className="mobileMenu" onClick={() => setMenuOpen(true)}><Menu /></button>
     <aside>
-      <div className="brand"><div className="brandMark">VR</div><div><b>{settings.CONDO_NAME || 'Vitória Régia'}</b><small>{VERSION}</small></div><button className="insideClose" onClick={() => { setMenuOpen(false); setMenuClosed(!menuClosed); }}><X /></button></div>
-      <nav>{menuItems.map(([key, label, Icon]) => <button key={key} className={active === key ? 'active' : ''} onClick={() => { setActive(key); location.hash = key; setMenuOpen(false); }}><Icon /><span>{label}</span></button>)}</nav>
+      <div className="brand"><div className="brandMark towerMark"><Building2 /></div><div><b>{settings.CONDO_NAME || 'Vitória Régia'}</b><small>{VERSION}</small></div><button className="insideClose" onClick={() => { setMenuOpen(false); setMenuClosed(!menuClosed); }}><X /></button></div>
+      <nav>{menuItems.map(([key, label, Icon]) => <button key={key} className={active === key ? 'active' : ''} onClick={() => { setActive(key); location.hash = '/' + key; setMenuOpen(false); }}><Icon /><span>{label}</span></button>)}</nav>
       <div className="sideBottom"><button onClick={() => setMenuClosed(!menuClosed)}><PanelLeft /><span>{menuClosed ? 'Abrir menu' : 'Recolher'}</span></button><button onClick={logout}><LogOut /><span>Sair</span></button></div>
     </aside>
     <div className="overlay" onClick={() => setMenuOpen(false)} />
+    {can('emergency.use') && <button className={`floatingEmergency ${active === 'emergencia' ? 'is-open' : ''}`} onClick={() => { setActive('emergencia'); location.hash = '/emergencia'; setMenuOpen(false); }}><Siren /><span>Emergência</span></button>}
     <main className="content">
       <header className="topbar"><div><small>Olá, {session.name || session.email}</small><h1>{titleFor(active)}</h1></div><div className="topActions"><button onClick={loadAll}><RefreshCcw />Atualizar</button><button onClick={enableBrowserNotifications}><Bell />Navegador</button></div></header>
       {toast && <div className="toast">{toast}</div>}
@@ -228,7 +231,6 @@ function App() {
       {active === 'configuracoes' && <SettingsPage {...contentProps} configTab={configTab} setConfigTab={setConfigTab} />}
       {active === 'atualizacoes' && <UpdatesPage {...contentProps} />}
       {active === 'apps' && <AppsPage {...contentProps} />}
-      {active === 'atualizacoes' && <UpdatesPage {...contentProps} />}
       <footer><span>{settings.CONDO_NAME}</span><span>{VERSION}</span></footer>
     </main>
   </div>;
@@ -248,13 +250,13 @@ function DashboardPage({ data, setActive, session }) {
   return <Panel title="Resumo operacional" subtitle="Indicadores alinhados, atalhos rápidos e clima atualizado pelo servidor." icon={<Home />}>
     <div className="hero"><div><span className="eyebrow">{session.role}</span><h2>Vitória Régia pronto para operação</h2><p>Controle integrado de portaria, moradores, reservas, escalas, notificações e financeiro.</p></div><WeatherCard weather={data.weather || data.dashboard?.weather} /></div>
     <div className="metricStrip aligned"><Metric icon={<Users />} label="Moradores" value={m.residents || 0} /><Metric icon={<Package />} label="Encomendas" value={m.pendingPackages || 0} sub="pendentes" /><Metric icon={<CalendarDays />} label="Reservas" value={m.reservationsPending || 0} sub="pré-agendadas" /><Metric icon={<MessageCircle />} label="Mensagens" value={m.messagesNew || 0} sub="novas" /><Metric icon={<Siren />} label="Emergências" value={m.emergencyPending || 0} sub="aprovação" /><Metric icon={<BadgeDollarSign />} label="Boletos" value={m.boletosPending || 0} sub="em aberto" /></div>
-    <div className="cards shortcutCards">{shortcuts.map(([key, label, Icon]) => <article key={key} onClick={() => setActive(key)}><Icon /><h3>{label}</h3><p>Abrir módulo</p></article>)}</div>
+    <div className="cards shortcutCards">{shortcuts.map(([key, label, Icon]) => <article key={key} onClick={() => { setActive(key); location.hash = '/' + key; }}><Icon /><h3>{label}</h3><p>Abrir módulo</p></article>)}</div>
   </Panel>;
 }
 function WeatherCard({ weather }) { return <div className="weather"><CloudSun /><div><b>{weather?.temperature ?? '--'}°C</b><small>{weather?.city || 'Clima'}</small><small>Vento {weather?.wind ?? '--'} km/h · Umidade {weather?.humidity ?? '--'}%</small></div></div>; }
 
 function PortariaPage(props) { return <div className="stack"><PackagesPage {...props} compact /><VisitorsPage {...props} compact /><ReservationsPage {...props} compact /></div>; }
-function MoradorPage({ data, forms, setForm, action, session }) { return <div className="stack"><MessagesPage data={data} forms={forms} setForm={setForm} action={action} session={session} /><PackagesPage data={data} forms={forms} setForm={setForm} action={action} session={session} compact /><ReservationsPage data={data} forms={forms} setForm={setForm} action={action} session={session} compact /><FinancePage data={data} forms={forms} setForm={setForm} action={action} session={session} compact /></div>; }
+function MoradorPage(props) { return <div className="stack moradorStack"><MessagesPage {...props} compact /><PackagesPage {...props} compact /><ReservationsPage {...props} compact /><FinancePage {...props} compact /></div>; }
 
 function PackagesPage({ data, forms, setForm, action, runOcr, ocrBusy, fileToDataUrl, compact, settings }) {
   return <Panel title="Encomendas" subtitle="OCR, vínculo automático ao morador, código de retirada e notificação por todos os canais." icon={<Package />} compact={compact}>
@@ -365,6 +367,30 @@ function FinancePage({ data, forms, setForm, action, compact }) {
 function BoletosPage({ data, forms, setForm, action, settings }) { const bankProvider = settings.BANK_PROVIDER || settings.BOLETO_PROVIDER || 'manual'; return <Panel title="Boletos" subtitle="Vincule boleto de qualquer banco ou gere cobrança pelo banco configurado pelo Master." icon={<BadgeDollarSign />}><div className="noticeBox"><b>Banco ativo:</b> {bankProvider === 'manual' ? 'vinculação manual' : bankProvider}<small>{bankProvider === 'manual' ? 'Cole linha digitável, link ou PDF do boleto.' : 'A cobrança usa o conector configurado em Configurações → Banco.'}</small></div><form className="formGrid" onSubmit={e => { e.preventDefault(); action('/api/boletos', { ...forms.boleto, provider: bankProvider === 'manual' ? 'manual' : 'auto' }, 'Boleto vinculado/gerado'); }}><input placeholder="Título" value={forms.boleto.title} onChange={e => setForm('boleto', { title: e.target.value })} /><input type="number" placeholder="Valor" value={forms.boleto.amount} onChange={e => setForm('boleto', { amount: e.target.value })} /><input placeholder="Unidade" value={forms.boleto.unit} onChange={e => setForm('boleto', { unit: e.target.value })} /><input type="date" value={forms.boleto.due_date} onChange={e => setForm('boleto', { due_date: e.target.value })} /><input placeholder="Banco" value={forms.boleto.bank_name} onChange={e => setForm('boleto', { bank_name: e.target.value })} />{bankProvider === 'manual' && <><input placeholder="Linha digitável" value={forms.boleto.digitable_line} onChange={e => setForm('boleto', { digitable_line: e.target.value })} /><input placeholder="Link/PDF do boleto" value={forms.boleto.payment_link} onChange={e => setForm('boleto', { payment_link: e.target.value })} /></>}<button><Plus />{bankProvider === 'manual' ? 'Vincular boleto' : 'Gerar boleto'}</button></form><Table rows={data.boletos} render={b => <><td><b>{b.title}</b><small>Unidade {b.unit} · {b.bank_name || b.provider}</small></td><td>{money(b.amount)}<small>{date(b.due_date)}</small></td><td><Status ok={b.status === 'pago'}>{b.status}</Status></td><td><Code>{b.digitable_line || b.payment_link || b.external_id || '-'}</Code></td></>} /></Panel>; }
 
 function InvoicesPage({ data, forms, setForm, action, runOcr, ocrBusy }) { return <Panel title="Notas fiscais" subtitle="OCR para foto de nota fiscal, com conferência antes do cadastro." icon={<FileText />}><form className="formGrid" onSubmit={e => { e.preventDefault(); action('/api/invoices', forms.invoice, 'Nota fiscal cadastrada'); }}><input placeholder="Fornecedor" value={forms.invoice.supplier} onChange={e => setForm('invoice', { supplier: e.target.value })} /><input placeholder="Número" value={forms.invoice.document_number} onChange={e => setForm('invoice', { document_number: e.target.value })} /><input placeholder="Chave de acesso" value={forms.invoice.access_key} onChange={e => setForm('invoice', { access_key: e.target.value })} /><input type="number" placeholder="Valor" value={forms.invoice.amount} onChange={e => setForm('invoice', { amount: e.target.value })} /><input type="date" value={forms.invoice.issue_date} onChange={e => setForm('invoice', { issue_date: e.target.value })} /><input type="date" value={forms.invoice.due_date} onChange={e => setForm('invoice', { due_date: e.target.value })} /><label className="fileButton"><ScanLine />{ocrBusy === 'invoice' ? 'Lendo nota...' : 'OCR nota fiscal'}<input type="file" accept="image/*" capture="environment" onChange={e => runOcr(e.target.files?.[0], 'invoice')} /></label><button><Plus />Cadastrar nota</button></form><Table rows={data.invoices} render={i => <><td><b>{i.supplier}</b><small>NF {i.document_number}</small></td><td>{money(i.amount)}</td><td>{date(i.due_date)}</td></>} /></Panel>; }
+
+function EmergencyPage({ data, forms, setForm, action, can, settings }) {
+  const fallbackTypes = [
+    { code:'elevador', label:'Preso no elevador', supplier:settings.ELEVATOR_OPERATOR_NAME || 'Operadora do elevador', phone:settings.ELEVATOR_EMERGENCY_PHONE || '', instructions:'Mantenha a calma. A solicitação irá para a portaria/síndico e o telefone da operadora aparece aqui.', notify_all:false },
+    { code:'incendio', label:'Fogo / fumaça', supplier:'Corpo de Bombeiros', phone:'193', instructions:'Acione a emergência e deixe o local com segurança.', notify_all:true },
+    { code:'invasao', label:'Invasão do prédio', supplier:'Polícia Militar', phone:'190', instructions:'Evite confronto e procure local seguro.', notify_all:true },
+    { code:'saude', label:'Emergência médica', supplier:'SAMU', phone:'192', instructions:'Informe unidade, nome e ponto de referência.', notify_all:false }
+  ];
+  const types = (data.emergencyTypes && data.emergencyTypes.length ? data.emergencyTypes : fallbackTypes).filter(t => t.active !== false);
+  const selected = types.find(t => t.code === forms.emergency.type) || types[0] || fallbackTypes[0];
+  useEffect(() => { if (!forms.emergency.type && selected?.code) setForm('emergency', { type: selected.code }); }, [selected?.code]);
+  const submitEmergency = async (e) => { e.preventDefault(); await action('/api/emergency', { ...forms.emergency, type: selected.code }, 'Solicitação enviada para aprovação da portaria/síndico'); };
+  return <Panel title="Emergência" subtitle="Solicitação passa primeiro pela portaria e/ou síndico. Somente fogo/fumaça ou invasão notificam todos os moradores." icon={<Siren />}>
+    <div className="noticeBox emergencyNotice"><b>Tipo selecionado: {selected.label}</b><small>{selected.instructions || 'Escolha o tipo de emergência e informe a unidade/local.'}</small>{selected.phone && <a className="buttonlike emergencyPhone" href={`tel:${selected.phone}`}><Phone />{selected.supplier || 'Contato'} · {selected.phone}</a>}</div>
+    <div className="emergencyGrid">{types.map(t => <button type="button" key={t.code} className={forms.emergency.type === t.code ? 'emergency active' : 'emergency'} onClick={() => setForm('emergency', { type: t.code })}><Siren /><b>{t.label}</b><small>{t.supplier || 'Equipe do condomínio'} {t.phone ? '· ' + t.phone : ''}</small><span>{t.notify_all ? 'Pode notificar todos após aprovação' : 'Notifica somente equipe após aprovação'}</span></button>)}</div>
+    <form className="formGrid emergencyForm" onSubmit={submitEmergency}>
+      <input placeholder="Unidade/local" value={forms.emergency.unit} onChange={e => setForm('emergency', { unit: e.target.value })} />
+      <textarea placeholder="Descreva rapidamente o que está acontecendo" value={forms.emergency.message} onChange={e => setForm('emergency', { message: e.target.value })} />
+      <button className="danger"><Siren />Enviar solicitação</button>
+    </form>
+    {can('emergency.approve') && <section className="wide"><h3><ShieldCheck />Aprovações pendentes</h3><Table rows={data.emergencyRequests} render={r => <><td><b>{r.type_label}</b><small>Unidade/local {r.unit || '-'} · {r.message || ''}</small></td><td><Status ok={r.status === 'aprovada'}>{r.status}</Status><small>{r.notify_all ? 'aviso geral permitido' : 'sem aviso geral'}</small></td><td className="actions"><button onClick={() => action(`/api/emergency-requests/${r.id}/approve`, { note:'Aprovado pelo painel' }, 'Emergência aprovada')}>Aprovar</button><button onClick={() => action(`/api/emergency-requests/${r.id}/reject`, { note:'Rejeitado pelo painel' }, 'Emergência rejeitada')}>Rejeitar</button></td></>} /></section>}
+  </Panel>;
+}
+
 function NoticesPage({ data, forms, setForm, action }) { return <Panel title="Comunicados" icon={<Megaphone />}><form className="formGrid" onSubmit={e => { e.preventDefault(); action('/api/notices', forms.notice, 'Comunicado publicado'); }}><input placeholder="Título" value={forms.notice.title} onChange={e => setForm('notice', { title: e.target.value })} /><select value={forms.notice.priority} onChange={e => setForm('notice', { priority: e.target.value })}><option value="normal">Normal</option><option value="alta">Alta</option><option value="critica">Crítica</option></select><select value={forms.notice.target_role} onChange={e => setForm('notice', { target_role: e.target.value })}><option value="todos">Todos</option><option value="morador">Moradores</option><option value="portaria">Portaria</option></select><textarea placeholder="Mensagem" value={forms.notice.body} onChange={e => setForm('notice', { body: e.target.value })} /><button><Send />Publicar</button></form><Table rows={data.notices} render={n => <><td><b>{n.title}</b><small>{n.body}</small></td><td><Status ok={n.priority !== 'critica'}>{n.priority}</Status></td><td>{date(n.created_at)}</td></>} /></Panel>; }
 
 function SettingsPage({ data, forms, setForm, action, configTab, setConfigTab, enableBrowserNotifications, session }) {

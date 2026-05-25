@@ -1,6 +1,6 @@
 {
   "name": "vitoria-regia-pro-client",
-  "version": "9.4.0",
+  "version": "9.5.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -19,5 +19,6 @@
   "devDependencies": {},
   "engines": {
     "node": "20.19.0"
-  }
+  },
+  "description": "Sistema Vitória Régia Pro v9.5 com hotfix mobile, emergência flutuante e telas Morador/Emergência corrigidas"
 }

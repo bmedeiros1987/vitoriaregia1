@@ -17,7 +17,7 @@ import { randomBytes, createHash, verify as cryptoVerify } from 'node:crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v9.4';
+const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v9.5';
 const JWT_SECRET = process.env.JWT_SECRET || 'troque-este-segredo-em-producao';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/vitoriaregia';
 const DB_SSL_MODE = String(process.env.DATABASE_SSL_MODE || process.env.DATABASE_SSL || 'auto').trim().toLowerCase();
@@ -77,7 +77,52 @@ async function createConnectedPool() { const attempts=[...new Set(preferredSslAt
 app.use(cors({ origin: process.env.CORS_ORIGIN || true, credentials: true }));
 app.use(express.json({ limit: '35mb' }));
 async function q(sql, params=[]) { if (!pool) throw new Error('Banco ainda não inicializado.'); return pool.query(sql, params); }
-async function addColumn(table, columnSql) { await q(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${columnSql}`).catch(e => console.warn('Migração ignorada:', table, columnSql, e.message)); }
+function quoteIdent(name) { return '"' + String(name).replace(/"/g, '""') + '"'; }
+async function addColumn(table, columnSql) { await q(`ALTER TABLE ${quoteIdent(table)} ADD COLUMN IF NOT EXISTS ${columnSql}`).catch(e => console.warn('Migração ignorada:', table, columnSql, e.message)); }
+async function addColumnStrict(table, columnSql) { await q(`ALTER TABLE ${quoteIdent(table)} ADD COLUMN IF NOT EXISTS ${columnSql}`); }
+async function hasColumn(table, column) {
+  const r = await q(`SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1 AND column_name = $2 LIMIT 1`, [table, column]);
+  return r.rowCount > 0;
+}
+async function ensureCriticalLegacySchema() {
+  // Esta função roda antes de qualquer INSERT/SELECT que use colunas novas.
+  // Bancos criados por versões antigas já possuem a tabela users, mas sem permissions.
+  // CREATE TABLE IF NOT EXISTS não altera tabelas existentes, por isso o ALTER precisa ser explícito e obrigatório.
+  const critical = [
+    ['users','name TEXT'],
+    ['users','email TEXT'],
+    ['users','password_hash TEXT'],
+    ['users','role TEXT DEFAULT \'morador\''],
+    ['users','user_type TEXT DEFAULT \'morador\''],
+    ['users','is_outsourced BOOLEAN DEFAULT false'],
+    ['users','unit TEXT'],
+    ['users','permissions JSONB DEFAULT \'{}\'::jsonb'],
+    ['users','resident_id INTEGER'],
+    ['users','employee_id INTEGER'],
+    ['users','phone TEXT'],
+    ['users','whatsapp_phone TEXT'],
+    ['users','telegram_chat_id TEXT'],
+    ['users','notification_preferences JSONB DEFAULT \'{"app":true,"email":true,"telegram":false,"whatsapp":false,"browser":true}\'::jsonb'],
+    ['users','active BOOLEAN DEFAULT true'],
+    ['users','force_password_change BOOLEAN DEFAULT false'],
+    ['users','last_login TIMESTAMP'],
+    ['users','created_at TIMESTAMP DEFAULT now()'],
+    ['residents','access_permissions JSONB DEFAULT \'{}\'::jsonb'],
+    ['residents','notification_preferences JSONB DEFAULT \'{"app":true,"email":true,"telegram":false,"whatsapp":false,"browser":true}\'::jsonb'],
+    ['residents','whatsapp_phone TEXT'],
+    ['residents','telegram_chat_id TEXT']
+  ];
+  for (const [table, col] of critical) await addColumnStrict(table, col);
+  await q(`UPDATE users SET permissions = '{}'::jsonb WHERE permissions IS NULL`);
+  await q(`UPDATE users SET role = COALESCE(NULLIF(role,''), 'morador') WHERE role IS NULL OR role = ''`);
+  await q(`UPDATE users SET user_type = COALESCE(NULLIF(user_type,''), role, 'morador') WHERE user_type IS NULL OR user_type = ''`);
+  await q(`UPDATE users SET active = true WHERE active IS NULL`);
+  await q(`UPDATE users SET notification_preferences = '{"app":true,"email":true,"telegram":false,"whatsapp":false,"browser":true}'::jsonb WHERE notification_preferences IS NULL`);
+  await q(`ALTER TABLE users ALTER COLUMN permissions SET DEFAULT '{}'::jsonb`);
+  await q(`ALTER TABLE users ALTER COLUMN notification_preferences SET DEFAULT '{"app":true,"email":true,"telegram":false,"whatsapp":false,"browser":true}'::jsonb`).catch(()=>null);
+  if (!(await hasColumn('users', 'permissions'))) throw new Error('Migração crítica falhou: coluna users.permissions não foi criada. Verifique permissões do usuário do banco.');
+  console.log('Migração crítica OK: users.permissions e colunas essenciais conferidas.');
+}
 async function audit(actor, action, entity='') { await q('INSERT INTO audit(actor,action,entity) VALUES($1,$2,$3)', [actor || 'sistema', action, entity]).catch(()=>null); }
 function randomCode(len=6) { return randomBytes(12).toString('hex').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0, len); }
 function onlyDigits(v='') { return String(v||'').replace(/\D/g,''); }
@@ -426,6 +471,8 @@ CREATE TABLE IF NOT EXISTS audit(
   created_at TIMESTAMP DEFAULT now()
 );
 `);
+
+  await ensureCriticalLegacySchema();
 
   // Migração segura para bancos já existentes.
   // Observação: CREATE TABLE IF NOT EXISTS não altera tabelas antigas. Por isso,
