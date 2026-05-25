@@ -17,7 +17,7 @@ import { randomBytes, createHash, verify as cryptoVerify } from 'node:crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v10.2';
+const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v10.5';
 const JWT_SECRET = process.env.JWT_SECRET || 'troque-este-segredo-em-producao';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/vitoriaregia';
 const DB_SSL_MODE = String(process.env.DATABASE_SSL_MODE || process.env.DATABASE_SSL || 'auto').trim().toLowerCase();
@@ -589,6 +589,16 @@ CREATE TABLE IF NOT EXISTS audit(
   };
   for (const [key, value] of Object.entries(defaultSettings)) await q('INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING', [key, value]);
 
+  // Sincroniza variáveis do Render para canais de comunicação sem gravar segredo no GitHub.
+  const envSyncKeys = ['ENABLE_TELEGRAM','TELEGRAM_ENABLED','TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID','TELEGRAM_BOT_USERNAME','TELEGRAM_START_URL','TELEGRAM_WEBHOOK_SECRET','TELEGRAM_API_BASE_URL','TELEGRAM_PARSE_MODE','ENABLE_EMAIL','SENDGRID_FROM_EMAIL','SENDGRID_FROM_NAME','SENDGRID_REPLY_TO','SENDGRID_TO_DEFAULT','EMAIL_PROVIDER','ENABLE_WHATSAPP','WHATSAPP_API_VERSION','WHATSAPP_PHONE_NUMBER_ID','WHATSAPP_BUSINESS_ACCOUNT_ID','WHATSAPP_ACCESS_TOKEN'];
+  for (const key of envSyncKeys) {
+    if (process.env[key] !== undefined && String(process.env[key]).trim() !== '') {
+      await q('INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value', [key, String(process.env[key])]).catch(()=>null);
+    }
+  }
+  if (process.env.TELEGRAM_ENABLED !== undefined) await q('INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value', ['ENABLE_TELEGRAM', String(process.env.TELEGRAM_ENABLED)]).catch(()=>null);
+  if (process.env.ENABLE_TELEGRAM !== undefined) await q('INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value', ['TELEGRAM_ENABLED', String(process.env.ENABLE_TELEGRAM)]).catch(()=>null);
+
   const defaults = [
     ['elevador','Preso no elevador',process.env.ELEVATOR_EMERGENCY_PHONE || '',process.env.ELEVATOR_OPERATOR_NAME || 'Operadora do elevador','Mantenha a calma, acione o alarme interno e ligue para a operadora cadastrada pelo síndico.',false,1],
     ['incendio','Fogo / fumaça','193','Corpo de Bombeiros','Acione 193, deixe o local com segurança e aguarde orientação da portaria.',true,2],
@@ -720,29 +730,38 @@ async function lookupResidentsForUnit({ unit='', recipient='' }={}) {
 
 function escapeHtml(v='') { return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }
 function textToHtml(v='') { return `<div style="font-family:Arial,Helvetica,sans-serif;line-height:1.55;color:#111827">${escapeHtml(v).replace(/\n/g,'<br>')}</div>`; }
-async function professionalEmailHtml({ subject='', text='', html='' }={}) {
+function emailButton(url='', label='Acessar sistema') {
+  if (!url) return '';
+  return `<div style="margin-top:24px"><a href="${escapeHtml(url)}" style="display:inline-block;background:linear-gradient(135deg,#00345d,#0f766e);color:#ffffff;text-decoration:none;font-weight:700;border-radius:14px;padding:13px 20px;box-shadow:0 12px 26px rgba(0,52,93,.22)">${escapeHtml(label)}</a></div>`;
+}
+async function professionalEmailHtml({ subject='', text='', html='', actionUrl='', actionLabel='Acessar sistema' }={}) {
   const base = (await getSetting('PUBLIC_APP_URL', process.env.PUBLIC_APP_URL || process.env.RENDER_EXTERNAL_URL || '')).replace(/\/$/, '');
   const logo = base ? `${base}/logo-vitoria-regia.svg` : '';
   const crew = base ? `${base}/crewcheck-logo.svg` : '';
+  const building = base ? `${base}/building-vitoria-regia.jpg` : '';
   const content = html || textToHtml(text);
-  return `<div style="margin:0;padding:26px;background:#eef5f2;font-family:Arial,Helvetica,sans-serif;color:#13231f">
-    <div style="max-width:660px;margin:auto;background:#ffffff;border-radius:22px;overflow:hidden;border:1px solid #dbe7e3;box-shadow:0 16px 42px rgba(15,30,25,.10)">
-      <div style="padding:26px 28px;background:linear-gradient(135deg,#0f5f55,#35b5a2);color:white">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>
-          ${logo?`<td width="82" valign="middle"><img src="${logo}" alt="Vitória Régia" style="display:block;width:62px;height:62px;border-radius:16px;background:white;padding:8px;margin-right:18px"/></td>`:''}
-          <td valign="middle"><h1 style="margin:0 0 8px 0;font-size:20px;line-height:1.25">Condomínio Vitória Régia</h1><p style="margin:0;font-size:14px;line-height:1.45;opacity:.92">${escapeHtml(subject)}</p></td>
-        </tr></table>
+  const accent = await getSetting('THEME_ACCENT', '#0f766e');
+  return `<div style="margin:0;padding:28px;background:#eef4f3;font-family:Arial,Helvetica,sans-serif;color:#13231f">
+    <div style="max-width:720px;margin:0 auto;background:#ffffff;border-radius:26px;overflow:hidden;border:1px solid #dce9e6;box-shadow:0 22px 58px rgba(0,31,55,.16)">
+      <div style="padding:0;background:#002b4b;color:white">
+        <div style="${building?`background:linear-gradient(135deg,rgba(0,31,55,.90),rgba(15,118,110,.78)),url('${building}') center/cover no-repeat;`:"background:linear-gradient(135deg,#002b4b,#0f766e);"}padding:30px 32px 34px 32px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>
+            ${logo?`<td width="92" valign="middle" style="padding-right:22px"><img src="${logo}" alt="Vitória Régia" style="display:block;width:74px;height:74px;border-radius:18px;background:rgba(255,255,255,.96);padding:10px;border:1px solid rgba(255,255,255,.55)"/></td>`:''}
+            <td valign="middle"><div style="font-size:12px;letter-spacing:.16em;text-transform:uppercase;opacity:.82;margin-bottom:7px">Condomínio Vitória Régia</div><h1 style="margin:0;font-size:23px;line-height:1.25;font-weight:800;color:#ffffff">${escapeHtml(subject || 'Atualização do sistema')}</h1><p style="margin:10px 0 0 0;font-size:14px;line-height:1.5;opacity:.94">Comunicação oficial do sistema Vitória Régia.</p></td>
+          </tr></table>
+        </div>
       </div>
-      <div style="padding:30px 30px 32px 30px;font-size:15px;line-height:1.65;color:#13231f">${content}</div>
-      <div style="padding:18px 26px;background:#f7faf9;font-size:12px;color:#64746f;border-top:1px solid #e5eeeb">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="line-height:1.45">Desenvolvido por CrewCheck - todos os direitos reservados.</td>${crew?`<td align="right"><img src="${crew}" alt="CrewCheck" style="display:block;height:26px;margin-left:16px"/></td>`:''}</tr></table>
+      <div style="padding:34px 34px 12px 34px;font-size:15.5px;line-height:1.72;color:#16302c">${content}${emailButton(actionUrl, actionLabel)}</div>
+      <div style="margin:12px 34px 28px 34px;padding:16px 18px;border-radius:18px;background:#f4f8f7;border:1px solid #e4eeeb;color:#50635f;font-size:13px;line-height:1.55">Esta mensagem foi enviada automaticamente pelo sistema. Em caso de dúvida, consulte a administração do condomínio.</div>
+      <div style="padding:20px 30px;background:#f8fbfa;font-size:12px;color:#657773;border-top:1px solid #e5eeeb">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="line-height:1.45"><strong style="color:#12322e">Vitória Régia</strong><br/>Desenvolvido por CrewCheck · Todos os direitos reservados.</td>${crew?`<td align="right"><img src="${crew}" alt="CrewCheck" style="display:block;height:30px;margin-left:16px"/></td>`:''}</tr></table>
       </div>
     </div>
   </div>`;
 }
 function maskEmailList(value='') { return splitList(value).map(email => email.replace(/(^.).*(@.*$)/, '$1***$2')); }
 
-async function sendEmailSmart({ to, subject, text, html }) {
+async function sendEmailSmart({ to, subject, text, html, actionUrl='', actionLabel='Acessar sistema' }) {
   if (!(await featureEnabled('email'))) return { ok:false, skipped:true, reason:'Canal de e-mail não liberado por Bruno.' };
   const destination = splitList(to); if (!destination.length) { const err = new Error('Informe ao menos um destinatário de e-mail.'); err.status=400; throw err; }
   const provider = String(await getSetting('EMAIL_PROVIDER', process.env.SENDGRID_API_KEY ? 'sendgrid' : 'smtp')).toLowerCase();
@@ -750,7 +769,7 @@ async function sendEmailSmart({ to, subject, text, html }) {
   const fromEmail = await getSetting('SENDGRID_FROM_EMAIL', process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM || '');
   const fromName = await getSetting('SENDGRID_FROM_NAME', process.env.SENDGRID_FROM_NAME || 'Vitória Régia');
   const replyTo = await getSetting('SENDGRID_REPLY_TO', process.env.SENDGRID_REPLY_TO || '');
-  const bodyText=String(text||'').trim(); const bodyHtml=await professionalEmailHtml({ subject, text:bodyText, html });
+  const bodyText=String(text||'').trim(); const bodyHtml=await professionalEmailHtml({ subject, text:bodyText, html, actionUrl, actionLabel });
   if ((provider === 'sendgrid' || provider === 'auto') && sendgridKey) {
     if (!fromEmail) { const err = new Error('Configure SENDGRID_FROM_EMAIL no Render com remetente verificado.'); err.status=400; throw err; }
     sgMail.setApiKey(sendgridKey);
@@ -809,7 +828,7 @@ async function telegramApi(method, body={}) {
   const url = `${base}/bot${token}/sendMessage?chat_id=${chat}&text=${text}`;
   const r2 = await fetch(url);
   const data2 = await r2.json().catch(()=>({}));
-  return { ok:r2.ok && data2.ok !== false, data:data2, description:data2.description || '', transport:'get_fallback' };
+  return { ok:r2.ok && data2.ok !== false, data:data2, description:data2.description || '', transport:'get_fallback', ajuda: (r2.ok && data2.ok !== false) ? '' : 'Verifique se TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID e ENABLE_TELEGRAM estão corretos no Render. Se houver webhook antigo com conflito, reconfigure o webhook pelo painel.' };
 }
 async function sendTelegramMessage(chatId, text, options={}) {
   if (!(await featureEnabled('telegram'))) return { ok:false, skipped:true, reason:'Telegram não liberado em Configurações.' };
@@ -843,7 +862,7 @@ async function notifyResident(resident, { title, body, channels={}, action_url='
   const prefs = await filterChannelsByPlan({ app:true, browser:true, email:true, telegram:false, whatsapp:false, ...parseJson(resident?.notification_preferences, {}) , ...channels });
   await createNotification({ resident_id: resident?.id || null, title, body, channel:'app', channels:prefs, action_url, payload }).catch(()=>null);
   const jobs=[];
-  if (prefs.email && resident?.email) jobs.push(sendEmailSmart({ to: resident.email, subject:title, text:body }).catch(e=>({ ok:false, error:e.message })));
+  if (prefs.email && resident?.email) jobs.push(sendEmailSmart({ to: resident.email, subject:title, text:body, actionUrl, actionLabel:'Abrir no sistema' }).catch(e=>({ ok:false, error:e.message })));
   if (prefs.browser && resident?.id) jobs.push(sendBrowserPushToResident(resident.id, title, body, action_url || '/', payload).catch(e=>({ ok:false, error:e.message })));
   if (prefs.telegram && resident?.telegram_chat_id) jobs.push(sendTelegramMessage(resident.telegram_chat_id, body, payload?.telegram_reply_markup ? { reply_markup: payload.telegram_reply_markup } : {}).catch(e=>({ ok:false, error:e.message })));
   if (prefs.whatsapp && (resident?.whatsapp_phone || resident?.phone)) jobs.push(sendWhatsAppText(resident.whatsapp_phone || resident.phone, body).catch(e=>({ ok:false, error:e.message })));
@@ -854,7 +873,7 @@ async function notifyStaff({ title, body, action_url='', channels={} }) {
   const staff = (await q("SELECT * FROM users WHERE role IN ('master','sindico','admin','portaria') AND active=true")).rows;
   for (const user of staff) await createNotification({ user_id:user.id, title, body, channel:'app', channels:{ app:true, browser:true, ...channels }, action_url }).catch(()=>null);
   const emails = staff.map(u=>u.email).filter(Boolean);
-  if (emails.length && await featureEnabled('email')) await sendEmailSmart({ to: emails.join(','), subject:title, text:body }).catch(()=>null);
+  if (emails.length && await featureEnabled('email')) await sendEmailSmart({ to: emails.join(','), subject:title, text:body, actionUrl, actionLabel:'Abrir no sistema' }).catch(()=>null);
 }
 async function notifyAllResidents({ title, body, channels={}, action_url='', payload={} }) { const residents=(await q('SELECT * FROM residents WHERE email IS NOT NULL OR phone IS NOT NULL')).rows; for (const r of residents) await notifyResident(r, { title, body, channels:{ app:true, browser:true, ...channels }, action_url, payload }).catch(()=>null); }
 
@@ -863,7 +882,7 @@ async function sendTemporaryPasswordToUser(user, temp, title='Senha temporária 
   const body = `Sua senha temporária é: ${temp}\nAcesse o sistema e altere sua senha.`;
   await createNotification({ user_id:user.id, title:'Senha temporária gerada', body:'Uma senha temporária foi enviada pelos seus canais cadastrados.', channel:'app', channels:prefs }).catch(()=>null);
   const jobs=[];
-  if (prefs.email && user.email) jobs.push(sendEmailSmart({ to:user.email, subject:title, text:body }).catch(e=>({ ok:false, error:e.message })));
+  if (prefs.email && user.email) jobs.push(sendEmailSmart({ to:user.email, subject:title, text:body, actionUrl:'/#/perfil', actionLabel:'Abrir meu perfil' }).catch(e=>({ ok:false, error:e.message })));
   if (prefs.telegram && user.telegram_chat_id) jobs.push(sendTelegramMessage(user.telegram_chat_id, body).catch(e=>({ ok:false, error:e.message })));
   if (prefs.whatsapp && (user.whatsapp_phone || user.phone)) jobs.push(sendWhatsAppText(user.whatsapp_phone || user.phone, body).catch(e=>({ ok:false, error:e.message })));
   return Promise.all(jobs);
@@ -1367,7 +1386,7 @@ app.post('/api/system-updates/upload', auth, masterOnly, uploadUpdateZip.single(
            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,now())
            ON CONFLICT(update_code) DO UPDATE SET version=$2,title=$3,notes=$4,from_version=$5,to_version=$6,status=$7,validation_token_hash=$8,payload_sha256=$9,manifest=$10,package_data=$11,created_by=$12,validated_at=now(),error=NULL`, updateRowValues(validation.manifest, validation.payloadHash, packageBuffer, req.user.id, 'validado'));
   await notifyUpdateAvailable(validation.manifest, req.user.email).catch(()=>null);
-  res.json({ ok:true, message:'Atualização validada com assinatura, token e hash.', update:validation.manifest, files:validation.files });
+  res.json({ ok:true, message:'Atualização validada pelo site com token e hash.', update:validation.manifest, files:validation.files });
 } catch(e){ next(e); } });
 app.post('/api/system-updates/:id/notify', auth, masterOnly, async (req,res,next)=>{ try {
   const row = (await q('SELECT * FROM system_updates WHERE id=$1',[req.params.id])).rows[0];
@@ -1440,11 +1459,16 @@ app.get('/api/notify/config', auth, can('settings.manage'), async (_req,res,next
 } catch(e){ next(e); } });
 app.post('/api/notify/test', auth, can('settings.manage'), async (req,res,next)=>{ try {
   const channel=String(req.body.channel || 'email'); const msg=req.body.message || 'Mensagem de teste Vitória Régia';
-  if (channel === 'email') return res.json(await sendEmailSmart({ to:req.body.to || req.body.email || await getSetting('SENDGRID_TO_DEFAULT',''), subject:req.body.subject || 'Teste Vitória Régia', text:msg }));
+  if (channel === 'email') return res.json(await sendEmailSmart({ to:req.body.to || req.body.email || await getSetting('SENDGRID_TO_DEFAULT',''), subject:req.body.subject || 'Teste Vitória Régia', text:msg, actionUrl:req.body.action_url || await getSetting('PUBLIC_APP_URL',''), actionLabel:req.body.action_label || 'Abrir sistema' }));
   if (channel === 'telegram') return res.json(await sendTelegramMessage(req.body.chat_id || req.body.to || '', msg));
   if (channel === 'whatsapp') return res.json(await sendWhatsAppText(req.body.phone || req.body.to || '', msg));
   if (channel === 'browser') { await createNotification({ user_id:req.user.id, title:req.body.subject || 'Teste Vitória Régia', body:msg, channel:'app', channels:{ app:true,browser:true }, payload:{ test:true } }); return res.json({ ok:true, channel:'browser' }); }
   res.status(400).json({ error:'Canal inválido.' });
+} catch(e){ next(e); } });
+app.post('/api/notify/email/preview', auth, can('settings.manage'), async (req,res,next)=>{ try {
+  const html = await professionalEmailHtml({ subject:req.body.subject || 'Prévia de e-mail Vitória Régia', text:req.body.message || 'Esta é uma prévia do novo modelo premium de e-mail.', actionUrl:req.body.action_url || await getSetting('PUBLIC_APP_URL',''), actionLabel:req.body.action_label || 'Abrir sistema' });
+  res.setHeader('Content-Type','text/html; charset=utf-8');
+  res.send(html);
 } catch(e){ next(e); } });
 const uploadManual = multer({ storage: multer.memoryStorage(), limits:{ fileSize: 20 * 1024 * 1024 } });
 app.get('/api/manuals', auth, async (_req,res,next)=>{ try { res.json((await q('SELECT id,title,audience,file_name,mime_type,file_size,created_at FROM manuals ORDER BY id DESC')).rows); } catch(e){ next(e); } });

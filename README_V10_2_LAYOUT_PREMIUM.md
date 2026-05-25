@@ -1,4 +1,4 @@
-# Vitória Régia Pro v10.2 — Layout Premium Mobile/Desktop
+# Vitória Régia Pro v10.5 — Layout Premium Mobile/Desktop
 
 Esta versão redesenha a experiência visual com base no layout premium aprovado:
 
@@ -19,8 +19,8 @@ Para subir pelo Mac:
 
 ```bash
 cd ~/Downloads
-unzip -o vitoriaregia_pro_v10_2_layout_premium_mobile_mac.zip
-cd vitoriaregia_pro_v10_2_layout_premium_mobile
+unzip -o vitoriaregia_pro_v10.5_layout_premium_mobile_mac.zip
+cd vitoriaregia_pro_v10.5_layout_premium_mobile
 chmod +x publicar_github_mac_linux.sh
 bash publicar_github_mac_linux.sh
 ```

@@ -1,4 +1,4 @@
-# Vitória Régia Pro v10.2 TOP
+# Vitória Régia Pro v10.5 TOP
 
 Correções e melhorias principais:
 
