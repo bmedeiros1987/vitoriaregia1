@@ -4,7 +4,7 @@ $Src = Join-Path $Root "sistema"
 $Log = Join-Path $Root "vitoriaregia_v93_publicacao_windows.log"
 function Info($m){ Write-Host "▶ $m"; Add-Content $Log "▶ $m" }
 function Fail($m){ Write-Host "ERRO: $m" -ForegroundColor Red; Add-Content $Log "ERRO: $m"; exit 1 }
-Set-Content $Log "===== Publicador Vitória Régia Pro v9.3 - Windows ====="
+Set-Content $Log "===== Publicador Vitória Régia Pro v9.4 - Windows ====="
 if (!(Get-Command git -ErrorAction SilentlyContinue)) { Fail "git não encontrado" }
 if (!(Test-Path (Join-Path $Src "package.json"))) { Fail "não encontrei sistema/package.json" }
 $RepoUrl = Read-Host "URL do repositório GitHub [https://github.com/bmedeiros1987/vitoriaregia1.git]"
@@ -81,7 +81,7 @@ foreach($f in $Staged){
   if($f -match "(^|/)\.env($|\.)" -and $f -notmatch "(^|/)\.env\.example$"){ Fail "commit bloqueado por .env: $f" }
 }
 Info "Criando commit"
-git commit -m "Publica Vitória Régia Pro v9.3 com migração segura do banco legado e central de atualizações" 2>&1 | Add-Content $Log
+git commit -m "Publica Vitória Régia Pro v9.4 com migração segura do banco legado e central de atualizações" 2>&1 | Add-Content $Log
 Info "Enviando para GitHub"
 git -c "http.extraheader=AUTHORIZATION: basic $Auth" push origin "HEAD:$Branch" 2>&1 | Add-Content $Log
 if ($LASTEXITCODE -ne 0) { Fail "push não concluído" }

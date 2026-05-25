@@ -1,4 +1,4 @@
-# Correção v9.3 — migração segura do banco
+# Correção v9.4 — migração segura do banco
 
 Esta versão corrige o erro:
 
@@ -14,8 +14,8 @@ Correção: a inicialização agora executa `ALTER TABLE ... ADD COLUMN IF NOT E
 
 ```bash
 cd ~/Downloads
-unzip -o vitoriaregia_pro_v9_3_migracao_banco_corrigida.zip
-cd vitoriaregia_pro_v9_3_migracao_banco_corrigida
+unzip -o vitoriaregia_pro_v9_4_migracao_banco_corrigida.zip
+cd vitoriaregia_pro_v9_4_migracao_banco_corrigida
 chmod +x publicar_github_mac_linux.sh
 bash publicar_github_mac_linux.sh
 ```
@@ -34,4 +34,4 @@ Se quiser destravar imediatamente pelo console SQL do banco, use o arquivo:
 CORRECAO_RAPIDA_BANCO_USERS_PERMISSIONS.sql
 ```
 
-O pacote v9.3 já aplica automaticamente, então normalmente não é necessário executar manualmente.
+O pacote v9.4 já aplica automaticamente, então normalmente não é necessário executar manualmente.

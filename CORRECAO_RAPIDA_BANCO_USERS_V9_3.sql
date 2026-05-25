@@ -1,4 +1,4 @@
--- Vitória Régia Pro v9.3
+-- Vitória Régia Pro v9.4
 -- Correção rápida para bancos PostgreSQL criados por versões antigas.
 -- Use somente se precisar corrigir o erro:
 -- column "permissions" of relation "users" does not exist

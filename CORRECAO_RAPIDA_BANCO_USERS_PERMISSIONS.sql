@@ -1,6 +1,6 @@
--- Vitória Régia Pro v9.3 - correção rápida de banco legado
+-- Vitória Régia Pro v9.4 - correção rápida de banco legado
 -- Execute somente se quiser corrigir manualmente pelo console SQL.
--- O pacote v9.3 também aplica isso automaticamente ao iniciar.
+-- O pacote v9.4 também aplica isso automaticamente ao iniciar.
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT '{}'::jsonb;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS user_type TEXT DEFAULT 'morador';

@@ -1,4 +1,4 @@
-Configuração Render - Vitória Régia Pro v9.3
+Configuração Render - Vitória Régia Pro v9.4
 
 Root Directory: deixe vazio
 Build Command: npm install --no-audit --no-fund && npm run build
@@ -11,7 +11,7 @@ DATABASE_URL=sua_url_postgresql
 DATABASE_SSL=auto
 DATABASE_SSL_MODE=auto
 JWT_SECRET=uma_senha_grande_e_forte
-APP_VERSION=Vitória Régia Pro v9.3
+APP_VERSION=Vitória Régia Pro v9.4
 ADMIN_EMAIL=seu_email_admin
 ADMIN_PASSWORD=sua_senha_admin
 NPM_CONFIG_AUDIT=false

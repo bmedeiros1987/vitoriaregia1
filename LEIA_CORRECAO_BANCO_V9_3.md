@@ -1,4 +1,4 @@
-# Correção Vitória Régia Pro v9.3 — banco legado
+# Correção Vitória Régia Pro v9.4 — banco legado
 
 Esta versão corrige o erro de inicialização:
 
@@ -6,7 +6,7 @@ Esta versão corrige o erro de inicialização:
 column "permissions" of relation "users" does not exist
 ```
 
-O erro acontece porque bancos criados por versões antigas já tinham a tabela `users`. Em PostgreSQL, `CREATE TABLE IF NOT EXISTS` não adiciona colunas novas em tabelas que já existem. A v9.3 agora executa uma migração segura antes de criar o usuário Master e antes de consultar permissões.
+O erro acontece porque bancos criados por versões antigas já tinham a tabela `users`. Em PostgreSQL, `CREATE TABLE IF NOT EXISTS` não adiciona colunas novas em tabelas que já existem. A v9.4 agora executa uma migração segura antes de criar o usuário Master e antes de consultar permissões.
 
 ## O que foi corrigido
 
@@ -18,7 +18,7 @@ O erro acontece porque bancos criados por versões antigas já tinham a tabela `
 
 ## Como aplicar
 
-Suba a v9.3 pelo script `publicar_github_mac_linux.sh` e depois rode no Render:
+Suba a v9.4 pelo script `publicar_github_mac_linux.sh` e depois rode no Render:
 
 ```text
 Manual Deploy → Clear build cache & deploy
@@ -27,7 +27,7 @@ Manual Deploy → Clear build cache & deploy
 Se precisar corrigir emergencialmente direto no banco, execute o arquivo:
 
 ```text
-CORRECAO_RAPIDA_BANCO_USERS_V9_3.sql
+CORRECAO_RAPIDA_BANCO_USERS_V9_4.sql
 ```
 
-No fluxo normal, não precisa rodar esse SQL manualmente; a v9.3 faz a migração automaticamente ao iniciar.
+No fluxo normal, não precisa rodar esse SQL manualmente; a v9.4 faz a migração automaticamente ao iniciar.

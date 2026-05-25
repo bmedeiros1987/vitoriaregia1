@@ -3,7 +3,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC="$ROOT/sistema"
 LOG="$ROOT/vitoriaregia_v93_publicacao.log"
-echo "===== Publicador Vitória Régia Pro v9.3 - Mac/Linux =====" | tee "$LOG"
+echo "===== Publicador Vitória Régia Pro v9.4 - Mac/Linux =====" | tee "$LOG"
 erro(){ echo "" | tee -a "$LOG"; echo "ERRO: $1" | tee -a "$LOG"; echo "Log salvo em: $LOG"; exit 1; }
 info(){ echo "▶ $1" | tee -a "$LOG"; }
 ok(){ echo "OK: $1" | tee -a "$LOG"; }
@@ -99,7 +99,7 @@ while IFS= read -r f; do
 done <<< "$STAGED"
 ok "limpeza segura aprovada"
 info "Criando commit"
-git commit -m "Publica Vitória Régia Pro v9.3 com migração segura do banco legado e central de atualizações" >> "$LOG" 2>&1 || true
+git commit -m "Publica Vitória Régia Pro v9.4 com migração segura do banco legado e central de atualizações" >> "$LOG" 2>&1 || true
 info "Enviando para GitHub"
 git -c "http.extraheader=AUTHORIZATION: basic $AUTH" push origin "HEAD:$BRANCH" >> "$LOG" 2>&1 || erro "push não concluído. Confira token e permissão."
 git remote set-url origin "$REPO_URL" || true

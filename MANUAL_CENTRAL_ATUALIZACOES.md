@@ -1,4 +1,4 @@
-# Manual — Central de Atualizações Vitória Régia Pro v9.3
+# Manual — Central de Atualizações Vitória Régia Pro v9.4
 
 ## Objetivo
 
@@ -47,12 +47,12 @@ O sistema bloqueia atualização que tente enviar `.env`, `node_modules`, `dist`
 
 ## Primeira vez
 
-A v9.1 ainda não possui a Central completa. Por isso, suba a v9.3 uma vez pelo Mac/GitHub. Depois, as próximas atualizações podem ser enviadas pelo próprio sistema.
+A v9.1 ainda não possui a Central completa. Por isso, suba a v9.4 uma vez pelo Mac/GitHub. Depois, as próximas atualizações podem ser enviadas pelo próprio sistema.
 
 
 ## Segurança da atualização
 
-A partir da v9.3, cada arquivo de atualização oficial deve conter:
+A partir da v9.4, cada arquivo de atualização oficial deve conter:
 
 - `vr-update.json` com código `VRUPD-...` único;
 - token `VRTK-...` único por atualização;

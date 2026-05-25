@@ -1,4 +1,4 @@
-# Vitória Régia Pro v9.3 - pacote vendável
+# Vitória Régia Pro v9.4 - pacote vendável
 
 Sistema completo para condomínio com painel web, PWA e projetos Android WebView para Portaria, Síndico e Morador.
 
@@ -21,8 +21,8 @@ Sistema completo para condomínio com painel web, PWA e projetos Android WebView
 
 ```bash
 cd ~/Downloads
-unzip -o vitoriaregia_pro_v9_3_migracao_banco_corrigida.zip
-cd vitoriaregia_pro_v9_3_migracao_banco_corrigida
+unzip -o vitoriaregia_pro_v9_4_migracao_banco_corrigida.zip
+cd vitoriaregia_pro_v9_4_migracao_banco_corrigida
 chmod +x publicar_github_mac_linux.sh
 bash publicar_github_mac_linux.sh
 ```
@@ -73,9 +73,9 @@ GitHub -> Actions -> Gerar APKs Android Vitória Régia Pro -> Run workflow
 
 Serão gerados:
 
-- vitoria-regia-portaria-v9.3.apk
-- vitoria-regia-sindico-v9.3.apk
-- vitoria-regia-morador-v9.3.apk
+- vitoria-regia-portaria-v9.4.apk
+- vitoria-regia-sindico-v9.4.apk
+- vitoria-regia-morador-v9.4.apk
 
 Antes de gerar APKs para cliente real, ajuste a URL do Render:
 
@@ -95,7 +95,7 @@ admin@vitoriaregia.local
 Troque antes de vender ou entregar ao cliente.
 
 
-## Novidades v9.3
+## Novidades v9.4
 
 - Usuário Master acima do síndico.
 - Liberação comercial de e-mail, WhatsApp, Telegram e notificações do navegador.

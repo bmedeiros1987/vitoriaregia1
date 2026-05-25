@@ -1,5 +1,5 @@
 cd ~/Downloads
-unzip -o vitoriaregia_pro_v9_3_migracao_banco_corrigida.zip
-cd vitoriaregia_pro_v9_3_migracao_banco_corrigida
+unzip -o vitoriaregia_pro_v9_4_migracao_banco_corrigida.zip
+cd vitoriaregia_pro_v9_4_migracao_banco_corrigida
 chmod +x publicar_github_mac_linux.sh
 bash publicar_github_mac_linux.sh

@@ -1,4 +1,4 @@
-# Apps Android Vitória Régia Pro v9.3
+# Apps Android Vitória Régia Pro v9.4
 
 O pacote inclui três wrappers Android/WebView:
 
