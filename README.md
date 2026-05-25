@@ -1,17 +1,17 @@
-# Sistema Vitória Régia Pro v6.9
+# Vitória Régia Pro v9.1
 
-Sistema premium para gestão condominial com dashboard, atalhos rápidos, botão de emergência, moradores, visitantes, portaria, encomendas, reservas, financeiro, comunicados, ocorrências, manutenção, auditoria, configurações de tema/menu, Telegram, SMTP, PostgreSQL e PWA.
+Sistema de gestão condominial completo para síndico, portaria, moradores e funcionários.
 
-## Estrutura
+## Rodar localmente
 
-- `client/`: interface React/Vite.
-- `server/`: API Node/Express/PostgreSQL.
-- `render.yaml`: configuração sugerida para Render.
-- `.env.example`: modelo seguro, sem senhas reais.
+```bash
+cp .env.example .env
+npm install --no-audit --no-fund
+npm run build
+npm start
+```
 
-## Render
-
-Use na raiz do repositório:
+## Produção no Render
 
 ```text
 Build Command: npm install --no-audit --no-fund && npm run build
@@ -19,36 +19,8 @@ Start Command: npm start
 Root Directory: vazio
 ```
 
-Variáveis recomendadas:
+O banco esperado é PostgreSQL por `DATABASE_URL`.
 
-```text
-NODE_VERSION=20.19.0
-NODE_ENV=production
-DATABASE_URL=sua_url_real_no_render
-DATABASE_SSL=auto
-DATABASE_SSL_MODE=auto
-JWT_SECRET=uma_senha_grande_e_forte
-NPM_CONFIG_AUDIT=false
-NPM_CONFIG_FUND=false
-NPM_CONFIG_UPDATE_NOTIFIER=false
-```
+## Segurança
 
-A `DATABASE_URL` deve ficar no Render ou no `.env` local. Nunca envie `.env` para o GitHub.
-
-
-## SendGrid
-
-Backend integrado com `@sendgrid/mail`.
-
-Variáveis esperadas em produção:
-
-```text
-MAIL_PROVIDER=sendgrid
-SENDGRID_API_KEY=sua_nova_chave
-SENDGRID_FROM_EMAIL=remetente_verificado
-SENDGRID_FROM_NAME=Condomínio Vitória Régia
-SENDGRID_TO_DEFAULT=email_padrao_para_testes_e_emergencia
-SENDGRID_DATA_RESIDENCY=global
-```
-
-A chave real deve ficar somente nas variáveis de ambiente do Render.
+Não envie `.env`, tokens, senhas, `DATABASE_URL`, certificados, `node_modules`, `dist` ou `server/public` para o GitHub. Use variáveis de ambiente no Render.

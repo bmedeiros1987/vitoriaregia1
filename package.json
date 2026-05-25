@@ -1,13 +1,13 @@
 {
   "name": "vitoria-regia-pro",
-  "version": "6.9.0",
+  "version": "9.1.0",
   "private": true,
-  "description": "Sistema Vitória Régia Pro v6.9 - gestão condominial premium com PostgreSQL, PWA, SSL automático, SendGrid, GitHub e Render, preparado para publicação pelo PC.",
+  "description": "Sistema Vitória Régia Pro v9.1 com usuário Master, feature flags, canais liberados, apps e banco/boletos",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "npm --prefix client run dev",
     "server": "npm --prefix server run dev",
-    "build": "npm --prefix client run build && npm --prefix server run build",
+    "build": "npm --prefix client run build && npm --prefix server run build && rm -rf server/public && mkdir -p server/public && cp -a client/dist/. server/public/",
     "start": "npm --prefix server start",
     "postinstall": "npm --prefix client install --no-audit --no-fund && npm --prefix server install --omit=dev --no-audit --no-fund",
     "install:all": "npm install --no-audit --no-fund"

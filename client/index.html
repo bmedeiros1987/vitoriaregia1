@@ -2,19 +2,14 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#1f8f7a" />
-    <meta name="description" content="Sistema Vitória Régia Pro para gestão condominial premium." />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#126b5f" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <title>Sistema Vitória Régia Pro</title>
+    <link rel="icon" href="/logo-vitoria-regia.svg" />
+    <title>Vitória Régia Pro</title>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => null));
-      }
-    </script>
   </body>
 </html>

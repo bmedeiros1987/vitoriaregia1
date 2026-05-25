@@ -1,22 +1,23 @@
 {
   "name": "vitoria-regia-pro-server",
-  "version": "6.9.0",
+  "version": "9.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "node --watch src/index.js",
-    "build": "echo backend-ok",
+    "build": "node --check src/index.js",
     "start": "node src/index.js"
   },
   "dependencies": {
-    "@sendgrid/mail": "^8.1.4",
+    "@sendgrid/mail": "8.1.6",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^6.9.16",
-    "pg": "^8.13.1"
+    "pg": "^8.13.1",
+    "web-push": "^3.6.7"
   },
   "engines": {
     "node": "20.19.0"

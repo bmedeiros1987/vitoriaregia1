@@ -1,257 +1,402 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
-  Home, BarChart3, CalendarDays, Users, Package, Megaphone, DoorOpen, Bot, CircleHelp,
-  Settings, Gem, Menu, X, ChevronsLeft, ChevronsRight, Bell, ShieldCheck, Lock, User,
-  Eye, EyeOff, Siren, Mail, Send, CloudSun, LogOut, Plus, Search, CheckCircle2, Trash2,
-  Save, Smartphone, QrCode, Database, MessageCircle, Crown, Palette, LayoutPanelTop,
-  PanelLeft, SlidersHorizontal, Moon, Sun, WandSparkles, AlertTriangle, ClipboardCheck,
-  FileText, MapPin, ShieldAlert, Building2, Paintbrush, Download, Wrench, Activity, Sparkles,
-  Radio, KeyRound, MonitorSmartphone, Rocket, Archive, UserPlus
+  Home, Users, Package, DoorOpen, FileText, AlertTriangle, Settings, Bell, ShieldCheck, LogOut, Menu,
+  X, Search, Plus, Save, Camera, ScanLine, Send, CheckCircle2, Smartphone, Building2, Palette,
+  Moon, Sun, Mail, Siren, KeyRound, UserPlus, Eye, EyeOff, Lock, Megaphone, CalendarDays,
+  WalletCards, Wrench, Activity, Download, Crown, Phone, AppWindow, UploadCloud, PanelLeft,
+  Clock3, MessageCircle, BriefcaseBusiness, CalendarPlus, UserCheck, CloudSun, BadgeDollarSign,
+  FileSignature, ClipboardList, MapPin, RefreshCcw, ShieldAlert, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import './styles.css';
 
 const API = import.meta.env.VITE_API_URL || '';
-const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v6.9';
-const defaultTheme = { accent: '#1f8f7a', menuMode: 'vertical', density: 'comfort', appearance: 'light' };
+const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v9.1';
+const demoMode = new URLSearchParams(location.search).get('demo') === '1';
+
+const defaultSettings = {
+  THEME_ACCENT: '#126b5f', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light',
+  CONDO_NAME: 'Condomínio Vitória Régia', CONDO_ADDRESS: '', WEATHER_CITY: 'João Pessoa', WEATHER_LAT: '-7.1195', WEATHER_LON: '-34.8450',
+  ELEVATOR_OPERATOR_NAME: 'Operadora do elevador', ELEVATOR_EMERGENCY_PHONE: '',
+  DELIVERY_DEFAULT_CHANNELS: '{"app":true,"browser":true,"email":true,"telegram":false,"whatsapp":false}',
+  RESERVATION_DEFAULT_RULES: 'Declaro que li e aceito as normas de uso do espaço comum.',
+  APK_BASE_URL: 'https://vitoriaregia1.onrender.com',
+  ENABLE_EMAIL: 'true', ENABLE_TELEGRAM: 'false', ENABLE_WHATSAPP: 'false', ENABLE_BROWSER_PUSH: 'true',
+  ENABLE_APP_PORTARIA: 'true', ENABLE_APP_SINDICO: 'true', ENABLE_APP_MORADOR: 'true',
+  REGISTRATION_REQUIRE_EMAIL: 'true', REGISTRATION_REQUIRE_WHATSAPP: 'false', REGISTRATION_REQUIRE_TELEGRAM: 'false',
+  BANK_PROVIDER: 'manual', BANK_API_BASE_URL: '', BANK_CLIENT_ID: '', BANK_ACCOUNT: '', BANK_AGENCY: '', BANK_WALLET: '', BANK_CONTRACT: '', BANK_PIX_KEY: '', BOLETO_AUTO_GENERATE: 'false'
+};
+
+const permissionGroups = [
+  { title: 'Moradores e usuários', items: [['residents.view', 'Ver moradores'], ['residents.manage', 'Cadastrar moradores'], ['users.manage', 'Gerenciar usuários']] },
+  { title: 'Portaria', items: [['packages.view', 'Ver encomendas'], ['packages.manage', 'Cadastrar encomendas'], ['visitors.view', 'Ver visitantes'], ['visitors.manage', 'Gerenciar visitantes']] },
+  { title: 'Reservas e financeiro', items: [['reservations.view', 'Ver reservas'], ['reservations.manage', 'Gerenciar reservas'], ['finance.view', 'Ver financeiro'], ['finance.manage', 'Gerenciar financeiro'], ['boletos.manage', 'Vincular boletos']] },
+  { title: 'Equipe', items: [['employees.manage', 'Funcionários'], ['shifts.manage', 'Escalas'], ['messages.view', 'Ver mensagens'], ['messages.manage', 'Responder mensagens']] },
+  { title: 'Administração', items: [['settings.manage', 'Configurações'], ['platform.manage', 'Liberações Master'], ['bank.manage', 'Banco e boletos'], ['audit.view', 'Auditoria'], ['emergency.approve', 'Aprovar emergências']] }
+];
+const allPermissions = permissionGroups.flatMap(g => g.items.map(i => i[0]));
+const roleDefaultPermissions = {
+  master: Object.fromEntries([...allPermissions, 'dashboard.view', 'apps.view', 'emergency.use', 'notices.view', 'notices.manage', 'invoices.view', 'invoices.manage', 'incidents.view', 'incidents.manage', 'maintenance.view', 'maintenance.manage'].map(p => [p, true])),
+  sindico: Object.fromEntries([...allPermissions, 'dashboard.view', 'apps.view', 'emergency.use', 'notices.view', 'notices.manage', 'invoices.view', 'invoices.manage', 'incidents.view', 'incidents.manage', 'maintenance.view', 'maintenance.manage'].map(p => [p, true])),
+  portaria: { 'dashboard.view': true, 'residents.view': true, 'packages.view': true, 'packages.manage': true, 'visitors.view': true, 'visitors.manage': true, 'reservations.view': true, 'messages.view': true, 'messages.manage': true, 'emergency.use': true, 'emergency.approve': true, 'apps.view': true },
+  funcionario: { 'dashboard.view': true, 'messages.view': true, 'messages.manage': true, 'incidents.view': true, 'maintenance.view': true, 'emergency.use': true, 'apps.view': true },
+  financeiro: { 'dashboard.view': true, 'finance.view': true, 'finance.manage': true, 'boletos.manage': true, 'reservations.view': true, 'apps.view': true },
+  morador: { 'dashboard.view': true, 'packages.view': true, 'visitors.view': true, 'reservations.view': true, 'reservations.manage': true, 'finance.view': true, 'notices.view': true, 'messages.manage': true, 'emergency.use': true, 'apps.view': true }
+};
+const weekDays = [['seg', 'Seg'], ['ter', 'Ter'], ['qua', 'Qua'], ['qui', 'Qui'], ['sex', 'Sex'], ['sab', 'Sáb'], ['dom', 'Dom']];
+const money = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const date = (v) => v ? new Date(String(v)).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '-';
+const todayISO = () => new Date().toISOString().slice(0, 10);
+
+const asBool = (v, fallback=false) => v === undefined || v === null || v === '' ? fallback : ['1','true','sim','yes','on','ativo','liberado'].includes(String(v).trim().toLowerCase());
+function enabledChannels(settings = {}) {
+  return {
+    app: true,
+    browser: asBool(settings.ENABLE_BROWSER_PUSH, true),
+    email: asBool(settings.ENABLE_EMAIL, true),
+    telegram: asBool(settings.ENABLE_TELEGRAM, false),
+    whatsapp: asBool(settings.ENABLE_WHATSAPP, false)
+  };
+}
+function appEnabled(settings = {}, key) { return asBool(settings[key], true); }
+function channelLabel(k) { return ({ app:'Sistema', browser:'Navegador', email:'E-mail', telegram:'Telegram', whatsapp:'WhatsApp' }[k] || k); }
+
+
+async function downloadIcs(id) {
+  if (demoMode) {
+    const blob = new Blob(['BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nSUMMARY:Reserva Vitória Régia\r\nEND:VEVENT\r\nEND:VCALENDAR'], { type: 'text/calendar' });
+    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `reserva-${id}.ics`; a.click(); URL.revokeObjectURL(url); return;
+  }
+  const token = localStorage.getItem('vr_token');
+  const res = await fetch(API + `/api/reservations/${id}/ics`, { headers: token ? { Authorization: 'Bearer ' + token } : {} });
+  if (!res.ok) throw new Error('Não consegui exportar o calendário.');
+  const blob = await res.blob(); const url = URL.createObjectURL(blob); const a = document.createElement('a');
+  a.href = url; a.download = `reserva-${id}.ics`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+
+
+function urlBase64ToUint8Array(base64String = '') {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map(char => char.charCodeAt(0)));
+}
 
 async function request(path, opts = {}) {
+  if (demoMode) return demoRequest(path, opts);
   const token = localStorage.getItem('vr_token');
-  const res = await fetch(API + path, {
-    ...opts,
-    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}), ...(token ? { Authorization: 'Bearer ' + token } : {}) }
-  });
+  const res = await fetch(API + path, { ...opts, headers: { 'Content-Type': 'application/json', ...(opts.headers || {}), ...(token ? { Authorization: 'Bearer ' + token } : {}) } });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'Erro na operação');
   return data;
 }
+const post = (path, body) => request(path, { method: 'POST', body: JSON.stringify(body) });
+const put = (path, body) => request(path, { method: 'PUT', body: JSON.stringify(body) });
 
-const blank = () => ({
-  resident: { name: '', unit: '', phone: '', email: '', document: '', vehicle: '', notes: '' },
-  pack: { tracking: '', recipient: '', unit: '', label: '', notes: '' },
-  visitor: { name: '', document: '', unit: '', authorized_by: '', plate: '' },
-  reservation: { area: '', unit: '', resident: '', reserved_for: '', shift: 'noite' },
-  finance: { title: '', amount: '', type: 'receita', due_date: '' },
-  notice: { title: '', body: '', channel: 'app', priority: 'normal' },
-  incident: { title: '', description: '', unit: '', severity: 'normal' },
-  maintenance: { title: '', supplier: '', scheduled_for: '', status: 'planejada', cost: '', notes: '' },
-  email: { to: '', subject: '', body: '', provider: 'sendgrid' },
-  telegram: { message: '' }
-});
+function initialForms() {
+  return {
+    login: { email: 'admin@vitoriaregia.local', password: '123456' },
+    register: { name: '', email: '', phone: '', whatsapp_phone: '', telegram_chat_id: '', unit: '', document: '', role: 'morador' },
+    forgot: { email: '' },
+    resident: { name: '', unit: '', phone: '', whatsapp_phone: '', email: '', document: '', vehicle: '', telegram_chat_id: '', notes: '', access_profile: 'morador', access_permissions: roleDefaultPermissions.morador, notification_preferences: { app: true, browser: true, email: true, telegram: false, whatsapp: false } },
+    user: { name: '', email: '', password: '', role: 'morador', user_type: 'morador', is_outsourced: false, unit: '', phone: '', whatsapp_phone: '', telegram_chat_id: '', notification_preferences: { app:true, browser:true, email:true, telegram:false, whatsapp:false }, resident_id: '', employee_id: '', active: true, permissions: roleDefaultPermissions.morador },
+    employee: { name: '', role: 'portaria', phone: '', email: '', active: true, notes: '' },
+    shift: { employee_id: '', role: 'portaria', starts_at: '', ends_at: '', notes: '' },
+    message: { subject: '', body: '', unit: '' },
+    package: { tracking: '', recipient: '', unit: '', label: '', notes: '', extracted_text: '', photo_url: '', notification_channels: { app: true, browser: true, email: true, telegram: false, whatsapp: false } },
+    invoice: { supplier: '', document_number: '', access_key: '', amount: '', issue_date: '', due_date: '', unit: '', category: 'nota fiscal', extracted_text: '' },
+    visitor: { name: '', document: '', phone: '', unit: '', authorized_by: '', plate: '', recurring: false, weekdays: [], valid_from: '', valid_until: '', announce_required: true, announcement_channel: 'interfone', notification_channels: { app: true, browser: true }, photo_data: '', notes: '' },
+    notice: { title: '', body: '', priority: 'normal', target_role: 'todos' },
+    reservation: { area: 'Salão de festas', unit: '', resident: '', reserved_for: todayISO(), start_time: '19:00', end_time: '23:00', shift: 'noite', terms_accepted: false, document_text: '' },
+    reservationVisitors: { reservation_id: '', bulk: '' },
+    finance: { title: '', amount: '', type: 'receita', due_date: '', unit: '', category: 'geral', generate_boleto: false, digitable_line: '', payment_link: '', bank_name: '' },
+    boleto: { title: '', amount: '', due_date: '', unit: '', bank_name: '', digitable_line: '', barcode: '', pdf_url: '', payment_link: '' },
+    incident: { title: '', description: '', unit: '', severity: 'normal' },
+    maintenance: { title: '', supplier: '', scheduled_for: '', cost: '', notes: '' },
+    emergency: { type: 'elevador', unit: '', message: '' },
+    settings: {}
+  };
+}
 
 function App() {
-  const [session, setSession] = useState(() => JSON.parse(localStorage.getItem('vr_user') || 'null'));
-  const [login, setLogin] = useState({ email: 'admin@vitoriaregia.local', password: '123456' });
+  const appParam = new URLSearchParams(location.search).get('app');
+  const [session, setSession] = useState(() => demoMode ? demoUser(appParam) : JSON.parse(localStorage.getItem('vr_user') || 'null'));
+  const [forms, setForms] = useState(initialForms());
   const [showPass, setShowPass] = useState(false);
+  const [loginMode, setLoginMode] = useState('login');
   const [err, setErr] = useState('');
   const [toast, setToast] = useState('');
-  const [active, setActive] = useState('dashboard');
-  const [closed, setClosed] = useState(false);
-  const [mini, setMini] = useState(false);
-  const [forms, setForms] = useState(blank());
-  const [filter, setFilter] = useState('');
-  const [data, setData] = useState({
-    dashboard: null, residents: [], packages: [], visitors: [], reservations: [], finance: [], notices: [],
-    incidents: [], maintenance: [], audit: [], settings: {}
-  });
+  const [active, setActive] = useState(() => location.hash?.replace('#', '').split('?')[0] || (appParam === 'portaria' ? 'portaria' : appParam === 'morador' ? 'morador' : 'dashboard'));
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuClosed, setMenuClosed] = useState(false);
+  const [query, setQuery] = useState('');
+  const [ocrBusy, setOcrBusy] = useState('');
+  const [configTab, setConfigTab] = useState('aparencia');
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date());
+  const [data, setData] = useState(emptyData());
 
-  const theme = useMemo(() => ({
-    ...defaultTheme,
-    accent: data.settings.THEME_ACCENT || defaultTheme.accent,
-    menuMode: data.settings.MENU_ORIENTATION || defaultTheme.menuMode,
-    density: data.settings.UI_DENSITY || defaultTheme.density,
-    appearance: data.settings.APPEARANCE || defaultTheme.appearance
-  }), [data.settings]);
+  const can = (perm) => session?.role === 'master' || session?.role === 'admin' || (session?.role === 'sindico' && !['platform.manage','bank.manage'].includes(perm)) || Boolean(session?.permissions?.[perm]);
+  const settings = { ...defaultSettings, ...(data.settings || {}) };
+  const appearance = settings.APPEARANCE || localStorage.getItem('vr_appearance') || 'light';
+  const accent = settings.THEME_ACCENT || defaultSettings.THEME_ACCENT;
+  const menuMode = settings.MENU_ORIENTATION || 'vertical';
 
   useEffect(() => {
-    document.documentElement.style.setProperty('--accent', theme.accent);
-    document.body.dataset.appearance = theme.appearance;
-    document.body.dataset.density = theme.density;
-  }, [theme]);
+    document.body.dataset.appearance = appearance;
+    document.body.dataset.density = settings.UI_DENSITY || 'comfort';
+    document.documentElement.style.setProperty('--accent', accent);
+    localStorage.setItem('vr_appearance', appearance);
+  }, [appearance, accent, settings.UI_DENSITY]);
 
-  const menu = [
-    ['dashboard', Home, 'Início'], ['moradores', Building2, 'Moradores'], ['financeiro', BarChart3, 'Financeiro'],
-    ['reservas', CalendarDays, 'Reservas'], ['visitantes', Users, 'Visitantes'], ['encomendas', Package, 'Encomendas'],
-    ['comunicados', Megaphone, 'Comunicados'], ['portaria', DoorOpen, 'Portaria'], ['ocorrencias', ShieldAlert, 'Ocorrências'],
-    ['manutencao', Wrench, 'Manutenção'], ['automacoes', Bot, 'Automações'], ['config', Settings, 'Configurações'],
-    ['premium', Gem, 'Central Pro'], ['ajuda', CircleHelp, 'Ajuda']
-  ];
+  useEffect(() => { if (session) loadAll(); else request('/api/public-config').then(s => setData(d => ({ ...d, settings: { ...d.settings, ...s } }))).catch(() => null); }, [session]);
+  useEffect(() => { if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => null); }, []);
+  useEffect(() => { if (session) { const t = setInterval(() => safe('/api/notifications', []).then(showBrowserNotifications), 45000); return () => clearInterval(t); } }, [session]);
 
-  const shortcuts = [
-    ['financeiro', 'Financeiro', 'Contas, taxas, receitas e despesas', BarChart3, 'green'],
-    ['reservas', 'Reservas', 'Áreas comuns e agenda inteligente', CalendarDays, 'blue'],
-    ['moradores', 'Moradores', 'Cadastro, veículos e contatos', Building2, 'indigo'],
-    ['visitantes', 'Visitantes', 'Autorizações da portaria', Users, 'cyan'],
-    ['encomendas', 'Encomendas', 'Entregas, etiquetas e baixa rápida', Package, 'gold'],
-    ['comunicados', 'Comunicados', 'Avisos por app, e-mail e Telegram', Megaphone, 'mint'],
-    ['ocorrencias', 'Ocorrências', 'Registro, severidade e histórico', ShieldAlert, 'rose'],
-    ['manutencao', 'Manutenção', 'Fornecedores, custos e agenda', Wrench, 'slate'],
-    ['config', 'Configurações', 'Tema, menu, integrações e segurança', Settings, 'gray'],
-    ['premium', 'Central Pro', 'Experiência premium Vitória Régia', Gem, 'premium']
-  ];
-
-  const notify = (m) => { setToast(m); setTimeout(() => setToast(''), 3400); };
-
-  const load = async () => {
-    if (!session) return;
+  async function safe(path, fallback) { try { return await request(path); } catch { return fallback; } }
+  async function loadAll() {
+    if (demoMode) { setData(demoData()); setForms(f => ({ ...f, settings: demoData().settings })); return; }
+    const [settingsRes, dashboard, residents, users, employees, shifts, messages, packagesRes, visitors, invoices, notices, reservations, finance, boletos, commonAreas, incidents, maintenance, emergencyTypes, emergencyRequests, registrationRequests, notifications, audit, weather] = await Promise.all([
+      safe('/api/settings', defaultSettings), safe('/api/dashboard', null), safe('/api/residents', []), safe('/api/users', []), safe('/api/employees', []), safe('/api/shifts', []), safe('/api/messages', []), safe('/api/packages', []), safe('/api/visitors', []), safe('/api/invoices', []), safe('/api/notices', []), safe('/api/reservations', []), safe('/api/finance', []), safe('/api/boletos', []), safe('/api/common-areas', []), safe('/api/incidents', []), safe('/api/maintenance', []), safe('/api/emergency-types', []), safe('/api/emergency-requests', []), safe('/api/registration-requests', []), safe('/api/notifications', []), safe('/api/audit', []), safe('/api/weather', null)
+    ]);
+    setData({ settings: settingsRes, dashboard, residents, users, employees, shifts, messages, packages: packagesRes, visitors, invoices, notices, reservations, finance, boletos, commonAreas, incidents, maintenance, emergencyTypes, emergencyRequests, registrationRequests, notifications, audit, weather });
+    setForms(f => ({ ...f, settings: settingsRes }));
+    showBrowserNotifications(notifications);
+  }
+  function setForm(group, patch) { setForms(f => ({ ...f, [group]: { ...f[group], ...patch } })); }
+  function notify(message, fail = false) { setToast(message); if (fail) document.body.classList.add('shake'); setTimeout(() => { setToast(''); document.body.classList.remove('shake'); }, 3400); }
+  async function action(path, body, message, method = 'POST') { try { method === 'PUT' ? await put(path, body) : await post(path, body); notify(message); await loadAll(); return true; } catch (e) { notify(e.message, true); return false; } }
+  async function doLogin(e) { e.preventDefault(); setErr(''); try { const result = await post('/api/login', forms.login); localStorage.setItem('vr_token', result.token); localStorage.setItem('vr_user', JSON.stringify(result.user)); setSession(result.user); notify('Login realizado com segurança'); } catch (e) { setErr(e.message); } }
+  function logout() { localStorage.removeItem('vr_token'); localStorage.removeItem('vr_user'); setSession(null); }
+  async function registerRequest(e) { e.preventDefault(); const ok = await action('/api/register', forms.register, 'Solicitação enviada para aprovação'); if (ok) setLoginMode('login'); }
+  async function forgotPassword(e) { e.preventDefault(); await action('/api/forgot-password', forms.forgot, 'Se o e-mail existir, a senha temporária será enviada'); }
+  async function enableBrowserNotifications() {
+    if (!('Notification' in window)) return notify('Navegador sem suporte a notificações', true);
+    const p = await Notification.requestPermission();
+    if (p !== 'granted') return notify('Permissão não concedida', true);
     try {
-      const endpoints = {
-        dashboard: '/api/dashboard', residents: '/api/residents', packages: '/api/packages', visitors: '/api/visitors',
-        reservations: '/api/reservations', finance: '/api/finance', notices: '/api/notices', incidents: '/api/incidents',
-        maintenance: '/api/maintenance', audit: '/api/audit', settings: '/api/settings'
-      };
-      const pairs = await Promise.all(Object.entries(endpoints).map(async ([key, url]) => [key, await request(url)]));
-      setData(Object.fromEntries(pairs));
-    } catch (e) { setErr(e.message); }
-  };
+      if ('serviceWorker' in navigator && 'PushManager' in window) {
+        const { publicKey } = await safe('/api/push/vapid-public-key', { publicKey: '' });
+        if (publicKey) {
+          const registration = await navigator.serviceWorker.ready;
+          let sub = await registration.pushManager.getSubscription();
+          if (!sub) sub = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) });
+          await post('/api/push/subscribe', sub.toJSON());
+          return notify('Notificações push do navegador ativadas');
+        }
+      }
+    } catch (e) { console.warn('Push do navegador indisponível:', e.message); }
+    notify('Notificações do navegador ativadas enquanto o app estiver aberto');
+  }
+  function showBrowserNotifications(notifications = []) { if (!('Notification' in window) || Notification.permission !== 'granted') return; const seen = new Set(JSON.parse(localStorage.getItem('vr_seen_notifications') || '[]')); const next = [...seen]; notifications.filter(n => n.status === 'nova' && !seen.has(n.id)).slice(0, 3).forEach(n => { new Notification(n.title || 'Vitória Régia', { body: n.body || '', tag: 'vr-' + n.id }); next.push(n.id); }); localStorage.setItem('vr_seen_notifications', JSON.stringify(next.slice(-100))); }
+  async function runOcr(file, type) { if (!file) return; setOcrBusy(type); try { const { createWorker } = await import('tesseract.js'); const worker = await createWorker('por'); const result = await worker.recognize(file); await worker.terminate(); const text = result?.data?.text || ''; const parsed = await post(type === 'package' ? '/api/ocr/parse-package' : '/api/ocr/parse-invoice', { text }); if (type === 'package') setForm('package', { tracking: parsed.tracking || forms.package.tracking, recipient: parsed.recipient || forms.package.recipient, unit: parsed.unit || forms.package.unit, label: parsed.label || forms.package.label, extracted_text: text }); else setForm('invoice', { supplier: parsed.supplier || forms.invoice.supplier, document_number: parsed.document_number || forms.invoice.document_number, access_key: parsed.access_key || forms.invoice.access_key, amount: parsed.amount || forms.invoice.amount, issue_date: parsed.issue_date || forms.invoice.issue_date, due_date: parsed.due_date || forms.invoice.due_date, extracted_text: text }); notify('OCR concluído. Confira os campos antes de salvar.'); } catch (e) { notify('Não consegui ler a imagem: ' + e.message, true); } finally { setOcrBusy(''); } }
+  function fileToDataUrl(file, cb) { if (!file) return; const r = new FileReader(); r.onload = () => cb(r.result); r.readAsDataURL(file); }
 
-  useEffect(() => { load(); }, [session]);
+  if (!session) return <LoginScreen forms={forms} setForm={setForm} mode={loginMode} setMode={setLoginMode} doLogin={doLogin} registerRequest={registerRequest} forgotPassword={forgotPassword} err={err} showPass={showPass} setShowPass={setShowPass} settings={settings} />;
 
-  const act = async (path, body, msg, method = 'POST') => {
-    await request(path, { method, body: JSON.stringify(body || {}) });
-    setForms(blank());
-    setFilter('');
-    await load();
-    notify(msg);
-  };
+  const menuItems = [
+    ['dashboard', 'Início', Home, 'dashboard.view'], ['portaria', 'Portaria', DoorOpen, 'packages.view'], ['morador', 'Morador', Users, 'dashboard.view'], ['reservas', 'Reservas', CalendarDays, 'reservations.view'], ['encomendas', 'Encomendas', Package, 'packages.view'], ['visitantes', 'Visitantes', UserCheck, 'visitors.view'], ['mensagens', 'Mensagens', MessageCircle, 'messages.view'], ['escalas', 'Escalas', Clock3, 'shifts.manage'], ['financeiro', 'Financeiro', WalletCards, 'finance.view'], ['boletos', 'Boletos', BadgeDollarSign, 'finance.view'], ['notas', 'Notas fiscais', FileText, 'invoices.view'], ['usuarios', 'Cadastros', ShieldCheck, 'users.manage'], ['emergencia', 'Emergência', Siren, 'emergency.use'], ['comunicados', 'Comunicados', Megaphone, 'notices.view'], ['configuracoes', 'Configurações', Settings, 'settings.manage'], ['apps', 'Apps', Smartphone, 'apps.view']
+  ].filter(([key, , , perm]) => can(perm) && (key !== 'apps' || session?.role === 'master' || appEnabled(settings,'ENABLE_APP_PORTARIA') || appEnabled(settings,'ENABLE_APP_SINDICO') || appEnabled(settings,'ENABLE_APP_MORADOR')));
 
-  const signIn = async (e) => {
-    e.preventDefault(); setErr('');
-    try {
-      const r = await request('/api/login', { method: 'POST', body: JSON.stringify(login) });
-      localStorage.setItem('vr_token', r.token);
-      localStorage.setItem('vr_user', JSON.stringify(r.user));
-      setSession(r.user);
-    } catch (e) { setErr(e.message); }
-  };
-
-  const logout = () => { localStorage.removeItem('vr_token'); localStorage.removeItem('vr_user'); setSession(null); };
-
-  const emergency = async () => {
-    const needConfirm = (data.settings.EMERGENCY_CONFIRM || 'true') === 'true';
-    if (needConfirm && !window.confirm('Acionar emergência agora? O evento será registrado e enviado aos canais configurados.')) return;
-    await act('/api/emergency', { message: 'Emergência acionada pelo painel do síndico' }, 'Emergência acionada, registrada e enviada aos canais configurados');
-  };
-
-  const stats = useMemo(() => ({
-    moradores: data.residents.length,
-    pendentes: data.packages.filter(p => p.status !== 'entregue').length,
-    visitantes: data.visitors.length,
-    reservas: data.reservations.filter(r => r.status === 'confirmada').length,
-    ocorrencias: data.incidents.filter(i => i.status !== 'fechada').length,
-    manutencoes: data.maintenance.filter(m => m.status !== 'concluida').length,
-    saldo: data.finance.reduce((acc, x) => acc + (x.type === 'receita' ? Number(x.amount || 0) : -Number(x.amount || 0)), 0)
-  }), [data]);
-
-  if (!session) return <Login login={login} setLogin={setLogin} signIn={signIn} err={err} showPass={showPass} setShowPass={setShowPass} />;
-
-  const menuIsSide = theme.menuMode === 'vertical' || theme.menuMode === 'floating';
-
-  return <main className={`app menu-${theme.menuMode} ${closed ? 'menu-closed' : ''} ${mini ? 'menu-mini' : ''}`}>
-    {menuIsSide && <Sidebar menu={menu} active={active} setActive={setActive} closed={closed} setClosed={setClosed} mini={mini} setMini={setMini} logout={logout} />}
-    {theme.menuMode === 'horizontal' && <TopMenu menu={menu} active={active} setActive={setActive} logout={logout} />}
-    {closed && menuIsSide && <button className="openSide" onClick={() => setClosed(false)}><Menu /></button>}
-    <section className="content">
-      <Header settings={data.settings} session={session} />
-      {err && <div className="toast errorToast">{err}</div>}
+  const contentProps = { data, forms, setForm, action, can, session, query, setQuery, runOcr, ocrBusy, notify, settings, enableBrowserNotifications, fileToDataUrl, calendarMonth, setCalendarMonth, loadAll };
+  return <div className={`appShell menu-${menuMode} ${menuClosed ? 'menu-closed' : ''} ${menuOpen ? 'mobile-open' : ''}`}>
+    <button className="mobileMenu" onClick={() => setMenuOpen(true)}><Menu /></button>
+    <aside>
+      <div className="brand"><div className="brandMark">VR</div><div><b>{settings.CONDO_NAME || 'Vitória Régia'}</b><small>{VERSION}</small></div><button className="insideClose" onClick={() => { setMenuOpen(false); setMenuClosed(!menuClosed); }}><X /></button></div>
+      <nav>{menuItems.map(([key, label, Icon]) => <button key={key} className={active === key ? 'active' : ''} onClick={() => { setActive(key); location.hash = key; setMenuOpen(false); }}><Icon /><span>{label}</span></button>)}</nav>
+      <div className="sideBottom"><button onClick={() => setMenuClosed(!menuClosed)}><PanelLeft /><span>{menuClosed ? 'Abrir menu' : 'Recolher'}</span></button><button onClick={logout}><LogOut /><span>Sair</span></button></div>
+    </aside>
+    <div className="overlay" onClick={() => setMenuOpen(false)} />
+    <main className="content">
+      <header className="topbar"><div><small>Olá, {session.name || session.email}</small><h1>{titleFor(active)}</h1></div><div className="topActions"><button onClick={loadAll}><RefreshCcw />Atualizar</button><button onClick={enableBrowserNotifications}><Bell />Navegador</button></div></header>
       {toast && <div className="toast">{toast}</div>}
-      <View active={active} setActive={setActive} shortcuts={shortcuts} data={data} setData={setData} stats={stats} forms={forms} setForms={setForms} filter={filter} setFilter={setFilter} act={act} load={load} notify={notify} />
-      <button className="emergency" onClick={emergency}><Siren />Emergência</button>
-      <footer className="footer-version"><b>{VERSION}</b></footer>
-    </section>
-  </main>;
+      {active === 'dashboard' && <DashboardPage {...contentProps} setActive={setActive} />}
+      {active === 'portaria' && <PortariaPage {...contentProps} />}
+      {active === 'morador' && <MoradorPage {...contentProps} />}
+      {active === 'reservas' && <ReservationsPage {...contentProps} />}
+      {active === 'encomendas' && <PackagesPage {...contentProps} />}
+      {active === 'visitantes' && <VisitorsPage {...contentProps} />}
+      {active === 'mensagens' && <MessagesPage {...contentProps} />}
+      {active === 'escalas' && <EmployeesShiftsPage {...contentProps} />}
+      {active === 'financeiro' && <FinancePage {...contentProps} />}
+      {active === 'boletos' && <BoletosPage {...contentProps} />}
+      {active === 'notas' && <InvoicesPage {...contentProps} />}
+      {active === 'usuarios' && <UsersResidentsPage {...contentProps} />}
+      {active === 'emergencia' && <EmergencyPage {...contentProps} />}
+      {active === 'comunicados' && <NoticesPage {...contentProps} />}
+      {active === 'configuracoes' && <SettingsPage {...contentProps} configTab={configTab} setConfigTab={setConfigTab} />}
+      {active === 'apps' && <AppsPage {...contentProps} />}
+      <footer><span>{settings.CONDO_NAME}</span><span>{VERSION}</span></footer>
+    </main>
+  </div>;
 }
 
-function Sidebar({ menu, active, setActive, closed, setClosed, mini, setMini, logout }) {
-  if (closed) return null;
-  return <aside>
-    <div className="sideTop"><b>♧</b><button title="Fechar menu" onClick={() => setClosed(true)}><X /></button></div>
-    {menu.map(([id, Icon, label]) => <button key={id} onClick={() => setActive(id)} className={active === id ? 'on' : ''}><Icon /><span>{label}</span></button>)}
-    <div className="sideBottom"><button onClick={() => setMini(!mini)}>{mini ? <ChevronsRight /> : <ChevronsLeft />}<span>{mini ? 'Expandir' : 'Encolher'}</span></button><button onClick={logout}><LogOut /><span>Sair</span></button></div>
-  </aside>;
+function titleFor(active) { return ({ dashboard: 'Painel inicial', portaria: 'Operação da portaria', morador: 'Área do morador', reservas: 'Calendário de reservas', encomendas: 'Encomendas', visitantes: 'Visitantes', mensagens: 'Mensagens', escalas: 'Funcionários e escalas', financeiro: 'Financeiro', boletos: 'Boletos', notas: 'Notas fiscais', usuarios: 'Cadastros e acessos', emergencia: 'Emergência', comunicados: 'Comunicados', configuracoes: 'Configurações', apps: 'Aplicativos' }[active] || 'Vitória Régia'); }
+
+function LoginScreen({ forms, setForm, mode, setMode, doLogin, registerRequest, forgotPassword, err, showPass, setShowPass, settings }) {
+  const channels = enabledChannels(settings);
+  const atLeastOneExternal = channels.email || channels.whatsapp || channels.telegram;
+  return <div className="loginPage"><div className="loginVisual"><div className="loginBadge"><Building2 />{settings.CONDO_NAME || 'Condomínio Vitória Régia'}</div><h1>Gestão condominial premium para portaria, síndico e moradores.</h1><p>Reservas, escalas, encomendas, OCR, visitantes recorrentes, notificações e financeiro em uma única plataforma.</p></div><section className="loginCard"><div className="loginTabs"><button className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Entrar</button><button className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')}>Cadastro</button><button className={mode === 'forgot' ? 'active' : ''} onClick={() => setMode('forgot')}>Esqueci a senha</button></div>{mode === 'login' && <form onSubmit={doLogin}><h2>Acesso seguro</h2><label>E-mail ou usuário<input value={forms.login.email} onChange={e => setForm('login', { email: e.target.value })} /></label><label>Senha<div className="password"><input type={showPass ? 'text' : 'password'} value={forms.login.password} onChange={e => setForm('login', { password: e.target.value })} /><button type="button" onClick={() => setShowPass(!showPass)}>{showPass ? <EyeOff /> : <Eye />}</button></div></label>{err && <p className="error">{err}</p>}<button className="primary"><Lock />Entrar</button><small>Primeiro acesso Master: master@vitoriaregia.local / 123456. Altere no Render antes de vender.</small></form>}{mode === 'register' && <form onSubmit={registerRequest}><h2>Solicitar cadastro</h2><div className="formGrid single"><input placeholder="Nome completo" value={forms.register.name} onChange={e => setForm('register', { name: e.target.value })} />{channels.email && <input placeholder="E-mail" value={forms.register.email} onChange={e => setForm('register', { email: e.target.value })} />}{channels.whatsapp && <input placeholder="WhatsApp com DDD" value={forms.register.whatsapp_phone || forms.register.phone} onChange={e => setForm('register', { whatsapp_phone: e.target.value, phone: e.target.value })} />}{channels.telegram && <input placeholder="Telegram Chat ID" value={forms.register.telegram_chat_id} onChange={e => setForm('register', { telegram_chat_id: e.target.value })} />}<input placeholder="Unidade/apartamento" value={forms.register.unit} onChange={e => setForm('register', { unit: e.target.value })} /><input placeholder="CPF/documento" value={forms.register.document} onChange={e => setForm('register', { document: e.target.value })} />{!atLeastOneExternal && <small>Nenhum canal externo foi liberado pelo Master; o síndico poderá cadastrar manualmente.</small>}<button><UserPlus />Enviar para aprovação</button></div></form>}{mode === 'forgot' && <form onSubmit={forgotPassword}><h2>Recuperar acesso</h2><label>E-mail cadastrado<input value={forms.forgot.email} onChange={e => setForm('forgot', { email: e.target.value })} /></label><button><KeyRound />Gerar senha temporária</button><small>O síndico também pode resetar a senha e enviar pelos canais liberados pelo Master.</small></form>}</section></div>;
 }
 
-function TopMenu({ menu, active, setActive, logout }) {
-  return <nav className="topMenu"><b>♧ Vitória Régia</b><div>{menu.map(([id, Icon, label]) => <button key={id} onClick={() => setActive(id)} className={active === id ? 'on' : ''}><Icon /><span>{label}</span></button>)}</div><button onClick={logout}><LogOut />Sair</button></nav>;
+function DashboardPage({ data, setActive, session }) {
+  const m = data.dashboard?.metrics || {};
+  const shortcuts = [['reservas', 'Reservar espaço', CalendarPlus], ['encomendas', 'Nova encomenda', Package], ['visitantes', 'Visitante recorrente', UserCheck], ['emergencia', 'Solicitar emergência', Siren], ['mensagens', 'Mensagem à portaria', MessageCircle], ['financeiro', 'Meu financeiro', WalletCards]];
+  return <Panel title="Resumo operacional" subtitle="Indicadores alinhados, atalhos rápidos e clima atualizado pelo servidor." icon={<Home />}>
+    <div className="hero"><div><span className="eyebrow">{session.role}</span><h2>Vitória Régia pronto para operação</h2><p>Controle integrado de portaria, moradores, reservas, escalas, notificações e financeiro.</p></div><WeatherCard weather={data.weather || data.dashboard?.weather} /></div>
+    <div className="metricStrip aligned"><Metric icon={<Users />} label="Moradores" value={m.residents || 0} /><Metric icon={<Package />} label="Encomendas" value={m.pendingPackages || 0} sub="pendentes" /><Metric icon={<CalendarDays />} label="Reservas" value={m.reservationsPending || 0} sub="pré-agendadas" /><Metric icon={<MessageCircle />} label="Mensagens" value={m.messagesNew || 0} sub="novas" /><Metric icon={<Siren />} label="Emergências" value={m.emergencyPending || 0} sub="aprovação" /><Metric icon={<BadgeDollarSign />} label="Boletos" value={m.boletosPending || 0} sub="em aberto" /></div>
+    <div className="cards shortcutCards">{shortcuts.map(([key, label, Icon]) => <article key={key} onClick={() => setActive(key)}><Icon /><h3>{label}</h3><p>Abrir módulo</p></article>)}</div>
+  </Panel>;
+}
+function WeatherCard({ weather }) { return <div className="weather"><CloudSun /><div><b>{weather?.temperature ?? '--'}°C</b><small>{weather?.city || 'Clima'}</small><small>Vento {weather?.wind ?? '--'} km/h · Umidade {weather?.humidity ?? '--'}%</small></div></div>; }
+
+function PortariaPage(props) { return <div className="stack"><PackagesPage {...props} compact /><VisitorsPage {...props} compact /><ReservationsPage {...props} compact /></div>; }
+function MoradorPage({ data, forms, setForm, action, session }) { return <div className="stack"><MessagesPage data={data} forms={forms} setForm={setForm} action={action} session={session} /><PackagesPage data={data} forms={forms} setForm={setForm} action={action} session={session} compact /><ReservationsPage data={data} forms={forms} setForm={setForm} action={action} session={session} compact /><FinancePage data={data} forms={forms} setForm={setForm} action={action} session={session} compact /></div>; }
+
+function PackagesPage({ data, forms, setForm, action, runOcr, ocrBusy, fileToDataUrl, compact, settings }) {
+  return <Panel title="Encomendas" subtitle="OCR, vínculo automático ao morador, código de retirada e notificação por todos os canais." icon={<Package />} compact={compact}>
+    <form className="formGrid" onSubmit={e => { e.preventDefault(); action('/api/packages', forms.package, 'Encomenda cadastrada e morador notificado'); }}>
+      <input placeholder="Código de rastreio" value={forms.package.tracking} onChange={e => setForm('package', { tracking: e.target.value })} />
+      <input placeholder="Destinatário" value={forms.package.recipient} onChange={e => setForm('package', { recipient: e.target.value })} />
+      <input placeholder="Unidade" value={forms.package.unit} onChange={e => setForm('package', { unit: e.target.value })} />
+      <input placeholder="Transportadora/etiqueta" value={forms.package.label} onChange={e => setForm('package', { label: e.target.value })} />
+      <label className="fileButton"><ScanLine />{ocrBusy === 'package' ? 'Lendo etiqueta...' : 'OCR etiqueta'}<input type="file" accept="image/*" capture="environment" onChange={e => runOcr(e.target.files?.[0], 'package')} /></label>
+      <label className="fileButton"><Camera />Foto<input type="file" accept="image/*" capture="environment" onChange={e => fileToDataUrl(e.target.files?.[0], url => setForm('package', { photo_url: url }))} /></label>
+      <ChannelPicker value={forms.package.notification_channels} onChange={v => setForm('package', { notification_channels: v })} settings={settings} />
+      <textarea placeholder="Observações" value={forms.package.notes} onChange={e => setForm('package', { notes: e.target.value })} />
+      <button><Plus />Cadastrar e notificar</button>
+    </form>
+    <Table rows={data.packages} render={p => <><td><b>{p.tracking}</b><small>{p.recipient} · Unidade {p.unit}</small></td><td><Code>{p.pickup_code || '-'}</Code></td><td><Status ok={p.status === 'entregue'}>{p.status}</Status><small>{p.delivery_preference}</small></td><td className="actions"><button onClick={() => action(`/api/packages/${p.id}/preference`, { delivery_preference: 'receber_elevador' }, 'Preferência registrada')}>Elevador</button><button onClick={() => action(`/api/packages/${p.id}/preference`, { delivery_preference: 'retirar_portaria' }, 'Preferência registrada')}>Buscar</button><button onClick={() => action(`/api/packages/${p.id}/deliver`, {}, 'Encomenda entregue')}>Entregar</button></td></>} />
+  </Panel>;
 }
 
-function Header({ settings, session }) {
-  return <header><div><h1>Olá, {session?.name || 'Síndico'}! 👋</h1><p>Bem-vindo ao {settings.CONDO_NAME || 'Condomínio Vitória Régia'}</p></div><div className="topActions"><div className="weather"><CloudSun /><span>{settings.WEATHER_CITY || 'João Pessoa'}</span><b>28°</b></div><div className="profile"><Bell /><div><b>{session?.role || 'síndico'}</b><small>Perfil identificado</small></div></div></div></header>;
+function ReservationsPage({ data, forms, setForm, action, calendarMonth, setCalendarMonth, compact }) {
+  const [selected, setSelected] = useState('');
+  const areas = data.commonAreas || [];
+  const area = areas.find(a => a.name === forms.reservation.area);
+  const rules = forms.reservation.document_text || area?.rules_document || data.settings.RESERVATION_DEFAULT_RULES || '';
+  useEffect(() => { if (area) setForm('reservation', { fee_amount: area.fee_amount, document_text: area.rules_document || rules }); }, [forms.reservation.area]);
+  return <Panel title="Reservas" subtitle="Calendário, bloqueio de data, taxa, boleto interno, aceite digital e exportação para Google Calendar." icon={<CalendarDays />} compact={compact}>
+    <Calendar reservations={data.reservations} month={calendarMonth} setMonth={setCalendarMonth} onPick={d => setForm('reservation', { reserved_for: d })} />
+    <form className="formGrid" onSubmit={e => { e.preventDefault(); action('/api/reservations', { ...forms.reservation, terms_accepted: Boolean(forms.reservation.terms_accepted) }, 'Reserva pré-agendada e data bloqueada'); }}>
+      <select value={forms.reservation.area} onChange={e => setForm('reservation', { area: e.target.value })}>{areas.map(a => <option key={a.id || a.name}>{a.name}</option>)}</select>
+      <input placeholder="Unidade" value={forms.reservation.unit} onChange={e => setForm('reservation', { unit: e.target.value })} />
+      <input placeholder="Morador" value={forms.reservation.resident} onChange={e => setForm('reservation', { resident: e.target.value })} />
+      <input type="date" value={forms.reservation.reserved_for} onChange={e => setForm('reservation', { reserved_for: e.target.value })} />
+      <input type="time" value={forms.reservation.start_time} onChange={e => setForm('reservation', { start_time: e.target.value })} />
+      <input type="time" value={forms.reservation.end_time} onChange={e => setForm('reservation', { end_time: e.target.value })} />
+      <div className="terms"><FileSignature /><span>{rules}</span><label><input type="checkbox" checked={forms.reservation.terms_accepted} onChange={e => setForm('reservation', { terms_accepted: e.target.checked })} />Li e aceito digitalmente as normas</label></div>
+      <button><CalendarPlus />Solicitar reserva {area?.fee_amount > 0 ? `· ${money(area.fee_amount)}` : ''}</button>
+    </form>
+    <div className="subpanel"><h3><ClipboardList />Visitantes da reserva</h3><div className="formGrid"><select value={forms.reservationVisitors.reservation_id || selected} onChange={e => { setSelected(e.target.value); setForm('reservationVisitors', { reservation_id: e.target.value }); }}><option value="">Selecione a reserva</option>{data.reservations.map(r => <option key={r.id} value={r.id}>{r.area} · {date(r.reserved_for)} · {r.unit}</option>)}</select><textarea placeholder="Um visitante por linha: Nome; Documento; Telefone; Placa" value={forms.reservationVisitors.bulk} onChange={e => setForm('reservationVisitors', { bulk: e.target.value })} /><button onClick={() => action(`/api/reservations/${forms.reservationVisitors.reservation_id || selected}/visitors`, { bulk: forms.reservationVisitors.bulk }, 'Visitantes importados')}>Importar visitantes</button></div></div>
+    <Table rows={data.reservations} render={r => <><td><b>{r.area}</b><small>Unidade {r.unit} · {r.resident}</small></td><td>{date(r.reserved_for)}<small>{r.start_time} às {r.end_time}</small></td><td>{money(r.fee_amount)}<small>{r.digitable_line || ''}</small></td><td><Status ok={r.status === 'confirmada'}>{r.status}</Status></td><td className="actions"><button onClick={() => downloadIcs(r.id)}>ICS</button><button onClick={() => request(`/api/reservations/${r.id}/google`).then(x => window.open(x.url, '_blank'))}>Google</button><button onClick={() => action(`/api/reservations/${r.id}/approve`, {}, 'Reserva confirmada')}>Confirmar</button><button onClick={() => action(`/api/reservations/${r.id}/cancel`, { reason: 'Cancelado pelo sistema' }, 'Reserva cancelada')}>Cancelar</button></td></>} />
+  </Panel>;
 }
 
-function Login({ login, setLogin, signIn, err, showPass, setShowPass }) {
-  return <div className="loginPage"><div className="loginCard"><div className="brand"><div className="lotus">♧</div><h1>VITÓRIA RÉGIA</h1><span>CONDOMÍNIO PRO</span></div><h2>Bem-vindo de volta!</h2><p>Faça login para acessar o sistema.</p><form onSubmit={signIn}><label><User size={18} /><input placeholder="Usuário" value={login.email} onChange={e => setLogin({ ...login, email: e.target.value })} /></label><label><Lock size={18} /><input type={showPass ? 'text' : 'password'} placeholder="Senha" value={login.password} onChange={e => setLogin({ ...login, password: e.target.value })} /><button type="button" onClick={() => setShowPass(!showPass)}>{showPass ? <EyeOff /> : <Eye />}</button></label>{err && <b className="error">{err}</b>}<button className="primary">Entrar</button></form><a>Sistema protegido por login</a></div><div className="secure"><ShieldCheck /> Acesso seguro e inteligente.<small>Seu perfil é identificado automaticamente.</small></div></div>;
+function Calendar({ reservations, month, setMonth, onPick }) {
+  const year = month.getFullYear(); const m = month.getMonth(); const first = new Date(year, m, 1); const start = new Date(first); start.setDate(1 - first.getDay());
+  const days = Array.from({ length: 42 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d; });
+  const monthStr = month.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  const byDay = (iso) => reservations.filter(r => String(r.reserved_for).slice(0, 10) === iso && r.status !== 'cancelada');
+  return <div className="calendarBox"><div className="calendarHead"><button onClick={() => setMonth(new Date(year, m - 1, 1))}><ChevronLeft /></button><b>{monthStr}</b><button onClick={() => setMonth(new Date(year, m + 1, 1))}><ChevronRight /></button></div><div className="weekLabels">{['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map(x => <span key={x}>{x}</span>)}</div><div className="calendarGrid">{days.map(d => { const iso = d.toISOString().slice(0, 10); const items = byDay(iso); return <button key={iso} className={d.getMonth() !== m ? 'mutedDay' : ''} onClick={() => onPick(iso)}><b>{d.getDate()}</b>{items.slice(0, 2).map(r => <small key={r.id}>{r.area}</small>)}</button>; })}</div></div>;
 }
 
-function View(p) {
-  const set = (k, v) => p.setForms({ ...p.forms, [k]: { ...p.forms[k], ...v } });
-  const f = p.forms;
-  const has = (x) => (JSON.stringify(x || '')).toLowerCase().includes(p.filter.toLowerCase());
-
-  if (p.active === 'dashboard') return <Dashboard {...p} />;
-
-  if (p.active === 'moradores') return <Panel title="Moradores"><form className="inline" onSubmit={e => { e.preventDefault(); p.act('/api/residents', f.resident, 'Morador cadastrado'); }}><input placeholder="Nome" value={f.resident.name} onChange={e => set('resident', { name: e.target.value })} /><input placeholder="Unidade" value={f.resident.unit} onChange={e => set('resident', { unit: e.target.value })} /><input placeholder="Telefone" value={f.resident.phone} onChange={e => set('resident', { phone: e.target.value })} /><input placeholder="E-mail" value={f.resident.email} onChange={e => set('resident', { email: e.target.value })} /><button><UserPlus />Cadastrar</button></form><div className="search"><Search /><input placeholder="Buscar morador, unidade, telefone ou veículo" value={p.filter} onChange={e => p.setFilter(e.target.value)} /><Building2 /></div><Table rows={p.data.residents.filter(has)} render={x => <><td><b>{x.name}</b><small>Unidade {x.unit} · {x.phone || 'sem telefone'}</small></td><td>{x.email || '-'}</td><td><button onClick={() => p.act('/api/residents/' + x.id, {}, 'Morador removido', 'DELETE')}><Trash2 />Remover</button></td></>} /></Panel>;
-
-  if (p.active === 'encomendas') return <Panel title="Encomendas"><form className="inline" onSubmit={e => { e.preventDefault(); p.act('/api/packages', f.pack, 'Encomenda registrada'); }}><input placeholder="Código/etiqueta" value={f.pack.tracking} onChange={e => set('pack', { tracking: e.target.value, label: e.target.value })} /><input placeholder="Destinatário" value={f.pack.recipient} onChange={e => set('pack', { recipient: e.target.value })} /><input placeholder="Unidade" value={f.pack.unit} onChange={e => set('pack', { unit: e.target.value })} /><input placeholder="Observação" value={f.pack.notes} onChange={e => set('pack', { notes: e.target.value })} /><button><Plus />Cadastrar</button></form><div className="search"><Search /><input placeholder="Buscar encomenda, etiqueta, unidade ou morador" value={p.filter} onChange={e => p.setFilter(e.target.value)} /><QrCode /></div><Table rows={p.data.packages.filter(has)} render={x => <><td><b>{x.tracking}</b><small>{x.recipient} · Unidade {x.unit}</small></td><td><Status ok={x.status === 'entregue'}>{x.status}</Status></td><td>{x.status !== 'entregue' && <button onClick={() => p.act('/api/packages/' + x.id + '/deliver', {}, 'Entrega confirmada')}><CheckCircle2 />Entregar</button>}</td></>} /></Panel>;
-
-  if (p.active === 'visitantes' || p.active === 'portaria') return <Panel title="Portaria e visitantes"><form className="inline" onSubmit={e => { e.preventDefault(); p.act('/api/visitors', f.visitor, 'Visitante autorizado'); }}><input placeholder="Visitante" value={f.visitor.name} onChange={e => set('visitor', { name: e.target.value })} /><input placeholder="Documento" value={f.visitor.document} onChange={e => set('visitor', { document: e.target.value })} /><input placeholder="Unidade" value={f.visitor.unit} onChange={e => set('visitor', { unit: e.target.value })} /><input placeholder="Placa/empresa" value={f.visitor.plate} onChange={e => set('visitor', { plate: e.target.value })} /><input placeholder="Autorizado por" value={f.visitor.authorized_by} onChange={e => set('visitor', { authorized_by: e.target.value })} /><button><Plus />Autorizar</button></form><Table rows={p.data.visitors} render={x => <><td><b>{x.name}</b><small>{x.document || 'sem documento'} · Unidade {x.unit}</small></td><td><Status ok>{x.status}</Status></td><td><button onClick={() => p.act('/api/incidents', { title: 'Ocorrência na portaria', description: 'Ocorrência envolvendo ' + x.name, unit: x.unit, severity: 'normal' }, 'Ocorrência registrada')}><ShieldAlert />Ocorrência</button></td></>} /></Panel>;
-
-  if (p.active === 'financeiro') return <Panel title="Financeiro"><div className="metricStrip"><Metric label="Saldo previsto" value={money(p.stats.saldo)} icon={<BarChart3 />} /><Metric label="Receitas" value={money(p.data.finance.filter(x => x.type === 'receita').reduce((a, x) => a + Number(x.amount || 0), 0))} icon={<CheckCircle2 />} /><Metric label="Despesas" value={money(p.data.finance.filter(x => x.type === 'despesa').reduce((a, x) => a + Number(x.amount || 0), 0))} icon={<AlertTriangle />} /></div><form className="inline" onSubmit={e => { e.preventDefault(); p.act('/api/finance', f.finance, 'Lançamento criado'); }}><input placeholder="Descrição" value={f.finance.title} onChange={e => set('finance', { title: e.target.value })} /><input placeholder="Valor" type="number" value={f.finance.amount} onChange={e => set('finance', { amount: e.target.value })} /><select value={f.finance.type} onChange={e => set('finance', { type: e.target.value })}><option value="receita">Receita</option><option value="despesa">Despesa</option></select><input type="date" value={f.finance.due_date} onChange={e => set('finance', { due_date: e.target.value })} /><button><Plus />Adicionar</button></form><Table rows={p.data.finance} render={x => <><td><b>{x.title}</b><small>{x.type} · venc. {date(x.due_date)}</small></td><td>{money(Number(x.amount || 0))}</td><td>{x.status !== 'pago' ? <button onClick={() => p.act('/api/finance/' + x.id + '/pay', {}, 'Pagamento confirmado')}><CheckCircle2 />Baixar</button> : <Status ok>pago</Status>}</td></>} /></Panel>;
-
-  if (p.active === 'reservas') return <Panel title="Reservas"><form className="inline" onSubmit={e => { e.preventDefault(); p.act('/api/reservations', f.reservation, 'Reserva confirmada'); }}><input placeholder="Área comum" value={f.reservation.area} onChange={e => set('reservation', { area: e.target.value })} /><input placeholder="Unidade" value={f.reservation.unit} onChange={e => set('reservation', { unit: e.target.value })} /><input placeholder="Morador" value={f.reservation.resident} onChange={e => set('reservation', { resident: e.target.value })} /><input type="date" value={f.reservation.reserved_for} onChange={e => set('reservation', { reserved_for: e.target.value })} /><select value={f.reservation.shift} onChange={e => set('reservation', { shift: e.target.value })}><option value="manha">Manhã</option><option value="tarde">Tarde</option><option value="noite">Noite</option></select><button><Plus />Reservar</button></form><Table rows={p.data.reservations} render={x => <><td><b>{x.area}</b><small>{x.resident} · Unidade {x.unit} · {x.shift || '-'}</small></td><td>{date(x.reserved_for)}</td><td>{x.status !== 'cancelada' ? <button onClick={() => p.act('/api/reservations/' + x.id + '/cancel', {}, 'Reserva cancelada')}><Trash2 />Cancelar</button> : <Status>cancelada</Status>}</td></>} /></Panel>;
-
-  if (p.active === 'comunicados') return <Panel title="Comunicados"><div className="grid two"><form onSubmit={e => { e.preventDefault(); p.act('/api/notices', f.notice, 'Comunicado salvo'); }} className="stack"><h3><Megaphone />Comunicado interno</h3><input placeholder="Título" value={f.notice.title} onChange={e => set('notice', { title: e.target.value })} /><select value={f.notice.priority} onChange={e => set('notice', { priority: e.target.value })}><option value="normal">Normal</option><option value="alta">Alta</option><option value="critica">Crítica</option></select><textarea placeholder="Mensagem" value={f.notice.body} onChange={e => set('notice', { body: e.target.value })} /><button><Save />Salvar comunicado</button></form><form onSubmit={e => { e.preventDefault(); p.act('/api/notify/telegram', f.telegram, 'Telegram enviado'); }} className="stack"><h3><MessageCircle />Telegram rápido</h3><textarea placeholder="Mensagem" value={f.telegram.message} onChange={e => set('telegram', { message: e.target.value })} /><button><Radio />Enviar Telegram</button></form><form onSubmit={e => { e.preventDefault(); p.act('/api/notify/email', f.email, 'E-mail enviado'); }} className="stack stackWide"><h3><Mail />Enviar e-mail</h3><select value={f.email.provider} onChange={e => set('email', { provider: e.target.value })}><option value="sendgrid">SendGrid</option><option value="auto">Automático</option><option value="smtp">SMTP</option></select><input placeholder="Destinatário" value={f.email.to} onChange={e => set('email', { to: e.target.value })} /><input placeholder="Assunto" value={f.email.subject} onChange={e => set('email', { subject: e.target.value })} /><textarea placeholder="Mensagem" value={f.email.body} onChange={e => set('email', { body: e.target.value })} /><button><Send />Enviar pelo canal escolhido</button></form></div><Table rows={p.data.notices} render={x => <><td><b>{x.title}</b><small>{x.body}</small></td><td><Status ok={x.priority !== 'critica'}>{x.priority}</Status></td><td>{date(x.created_at)}</td></>} /></Panel>;
-
-  if (p.active === 'ocorrencias') return <Panel title="Ocorrências"><form className="inline" onSubmit={e => { e.preventDefault(); p.act('/api/incidents', f.incident, 'Ocorrência registrada'); }}><input placeholder="Título" value={f.incident.title} onChange={e => set('incident', { title: e.target.value })} /><input placeholder="Unidade" value={f.incident.unit} onChange={e => set('incident', { unit: e.target.value })} /><select value={f.incident.severity} onChange={e => set('incident', { severity: e.target.value })}><option value="normal">Normal</option><option value="alta">Alta</option><option value="critica">Crítica</option></select><input placeholder="Descrição" value={f.incident.description} onChange={e => set('incident', { description: e.target.value })} /><button><Plus />Registrar</button></form><Table rows={p.data.incidents} render={x => <><td><b>{x.title}</b><small>{x.description || '-'} · Unidade {x.unit || '-'}</small></td><td><Status ok={x.status === 'fechada'}>{x.severity} · {x.status}</Status></td><td>{x.status !== 'fechada' && <button onClick={() => p.act('/api/incidents/' + x.id + '/close', {}, 'Ocorrência fechada')}><CheckCircle2 />Fechar</button>}</td></>} /></Panel>;
-
-  if (p.active === 'manutencao') return <Panel title="Manutenção"><form className="inline" onSubmit={e => { e.preventDefault(); p.act('/api/maintenance', f.maintenance, 'Manutenção criada'); }}><input placeholder="Serviço" value={f.maintenance.title} onChange={e => set('maintenance', { title: e.target.value })} /><input placeholder="Fornecedor" value={f.maintenance.supplier} onChange={e => set('maintenance', { supplier: e.target.value })} /><input type="date" value={f.maintenance.scheduled_for} onChange={e => set('maintenance', { scheduled_for: e.target.value })} /><input type="number" placeholder="Custo previsto" value={f.maintenance.cost} onChange={e => set('maintenance', { cost: e.target.value })} /><button><Plus />Agendar</button></form><Table rows={p.data.maintenance} render={x => <><td><b>{x.title}</b><small>{x.supplier || '-'} · {date(x.scheduled_for)}</small></td><td>{money(Number(x.cost || 0))}</td><td>{x.status !== 'concluida' ? <button onClick={() => p.act('/api/maintenance/' + x.id + '/done', {}, 'Manutenção concluída')}><CheckCircle2 />Concluir</button> : <Status ok>concluída</Status>}</td></>} /></Panel>;
-
-  if (p.active === 'automacoes') return <Panel title="Automações"><div className="automation"><Bot /><h3>Central de regras inteligentes</h3><p>Lembretes de encomendas, alertas de manutenção, emergência integrada e dados de demonstração para testar o sistema sem risco.</p><div className="badges"><span><Sparkles />Atalhos dinâmicos</span><span><Activity />Registro de ações</span><span><Database />Banco preservado</span></div><button onClick={() => p.act('/api/seed-demo', {}, 'Dados de demonstração carregados')}><WandSparkles />Carregar demonstração</button></div></Panel>;
-
-  if (p.active === 'config') return <ConfigPanel {...p} />;
-
-  if (p.active === 'premium') return <Panel title="Central Pro"><div className="premiumBox"><Gem /><h3>Vitória Régia Pro</h3><p>Uma experiência premium com atalhos estilo aplicativo, tema personalizável, menu flexível, emergência, auditoria e integrações reais.</p><div className="badges"><span><Crown />Premium</span><span><Database />PostgreSQL</span><span><Smartphone />Mobile</span><span><ShieldCheck />Seguro</span></div></div></Panel>;
-
-  return <Panel title="Ajuda"><div className="grid two"><section className="stack"><h3><Rocket />Primeiros passos</h3><p>Configure o banco em .env, faça login, ajuste cores e menu em Configurações, depois carregue dados de demonstração em Automações.</p></section><section className="stack"><h3><KeyRound />Login padrão</h3><p>Usuário: admin@vitoriaregia.local<br />Senha: 123456</p></section></div></Panel>;
+function VisitorsPage({ data, forms, setForm, action, query, setQuery, fileToDataUrl, compact }) {
+  const rows = data.visitors.filter(v => !query || String(v.unit || '').toLowerCase().includes(query.toLowerCase()) || String(v.name || '').toLowerCase().includes(query.toLowerCase()));
+  const toggleDay = (code) => setForm('visitor', { weekdays: forms.visitor.weekdays.includes(code) ? forms.visitor.weekdays.filter(x => x !== code) : [...forms.visitor.weekdays, code] });
+  return <Panel title="Visitantes" subtitle="Visitantes recorrentes, busca por unidade, dias da semana, anúncio por interfone/notificação e foto." icon={<UserCheck />} compact={compact}>
+    <SearchBox query={query} setQuery={setQuery} placeholder="Buscar por unidade ou visitante" />
+    <form className="formGrid" onSubmit={e => { e.preventDefault(); action('/api/visitors', forms.visitor, 'Visitante cadastrado'); }}>
+      <input placeholder="Nome" value={forms.visitor.name} onChange={e => setForm('visitor', { name: e.target.value })} /><input placeholder="Documento" value={forms.visitor.document} onChange={e => setForm('visitor', { document: e.target.value })} /><input placeholder="Unidade" value={forms.visitor.unit} onChange={e => setForm('visitor', { unit: e.target.value })} /><input placeholder="Telefone" value={forms.visitor.phone} onChange={e => setForm('visitor', { phone: e.target.value })} /><input placeholder="Placa" value={forms.visitor.plate} onChange={e => setForm('visitor', { plate: e.target.value })} />
+      <select value={forms.visitor.announcement_channel} onChange={e => setForm('visitor', { announcement_channel: e.target.value })}><option value="interfone">Anunciar no interfone</option><option value="app">Notificação no sistema</option><option value="whatsapp">WhatsApp</option><option value="nao_anunciar">Não anunciar</option></select>
+      <label className="check"><input type="checkbox" checked={forms.visitor.recurring} onChange={e => setForm('visitor', { recurring: e.target.checked })} />Visitante recorrente</label><label className="check"><input type="checkbox" checked={forms.visitor.announce_required} onChange={e => setForm('visitor', { announce_required: e.target.checked })} />Porteiro deve anunciar</label>
+      <div className="weekPicker">{weekDays.map(([c, l]) => <button type="button" key={c} className={forms.visitor.weekdays.includes(c) ? 'active' : ''} onClick={() => toggleDay(c)}>{l}</button>)}</div>
+      <label className="fileButton"><Camera />Foto do visitante<input type="file" accept="image/*" capture="environment" onChange={e => fileToDataUrl(e.target.files?.[0], url => setForm('visitor', { photo_data: url }))} /></label>
+      <textarea placeholder="Observações" value={forms.visitor.notes} onChange={e => setForm('visitor', { notes: e.target.value })} />
+      <button><Plus />Cadastrar visitante</button>
+    </form>
+    <Table rows={rows} render={v => <><td>{v.photo_data ? <img src={v.photo_data} className="avatar" /> : <UserCheck />}<b>{v.name}</b><small>Unidade {v.unit} · {v.document}</small></td><td>{v.recurring ? 'Recorrente' : 'Avulso'}<small>{Array.isArray(v.weekdays) ? v.weekdays.join(', ') : ''}</small></td><td><Status ok={v.status === 'autorizado'}>{v.status}</Status><small>{v.announcement_channel}</small></td></>} />
+  </Panel>;
 }
 
-function Dashboard(p) {
-  const metrics = p.data.dashboard?.metrics || {};
-  const packagePreview = p.data.packages.filter(x => x.status !== 'entregue').slice(0, 4);
-  const auditPreview = p.data.audit.slice(0, 5);
-  return <>
-    <section className="hero proHero"><div><span className="eyebrow"><Sparkles />Sistema Pro</span><h2>Painel inteligente do condomínio</h2><p>Atalhos rápidos, emergência, portaria, encomendas e comunicação em uma única tela com visual de aplicativo premium.</p></div><div className="heroStats"><b>{metrics.residents ?? p.stats.moradores}</b><span>moradores</span><b>{metrics.pendingPackages ?? p.stats.pendentes}</b><span>encomendas pendentes</span><b>{money(metrics.balance ?? p.stats.saldo)}</b><span>saldo previsto</span></div></section>
-    <div className="metricStrip"><Metric label="Visitantes" value={p.stats.visitantes} icon={<Users />} /><Metric label="Reservas" value={p.stats.reservas} icon={<CalendarDays />} /><Metric label="Ocorrências" value={p.stats.ocorrencias} icon={<ShieldAlert />} /><Metric label="Manutenções" value={p.stats.manutencoes} icon={<Wrench />} /></div>
-    <div className="grid cards">{p.shortcuts.map(([id, t, d, Icon, color]) => <article key={id} onClick={() => p.setActive(id)} className={color}><div><Icon /></div><h3>{t}</h3><p>{d}</p><span>›</span></article>)}</div>
-    <section className="command grid two"><div><h3><Activity />Central de comando</h3><p>Próximas ações sugeridas com base no que está pendente.</p><div className="miniList">{packagePreview.length ? packagePreview.map(x => <button key={x.id} onClick={() => p.setActive('encomendas')}><Package /><span><b>{x.tracking}</b><small>{x.recipient} · Unidade {x.unit}</small></span></button>) : <button onClick={() => p.setActive('encomendas')}><CheckCircle2 /><span><b>Sem encomendas pendentes</b><small>Tudo em dia na portaria</small></span></button>}</div></div><div><h3><ClipboardCheck />Atividade recente</h3><div className="miniList auditList">{auditPreview.length ? auditPreview.map(x => <span key={x.id}><b>{x.action}</b><small>{x.actor} · {date(x.created_at)}</small></span>) : <span><b>Sem auditoria ainda</b><small>As ações aparecerão aqui</small></span>}</div></div></section>
-    <section className="download"><h3>Atalhos de aplicativo</h3><p>Use o sistema como aplicativo no celular pelo navegador ou instale como PWA.</p><div><AppBtn title="App do Morador" icon={<Users />} /><AppBtn title="App do Síndico" icon={<User />} /><AppBtn title="App da Portaria" icon={<DoorOpen />} /></div></section>
-  </>;
+function EmployeesShiftsPage({ data, forms, setForm, action }) {
+  const onDuty = data.shifts.find(s => new Date(s.starts_at) <= new Date() && new Date(s.ends_at) >= new Date());
+  return <Panel title="Funcionários e escalas" subtitle="Mensagens dos moradores são direcionadas ao funcionário em serviço pela escala." icon={<Clock3 />}>
+    <div className="metricStrip"><Metric icon={<BriefcaseBusiness />} label="Funcionários" value={data.employees.length} /><Metric icon={<Clock3 />} label="Em serviço" value={onDuty?.employee_name || 'Nenhum'} /></div>
+    <div className="split"><form className="formGrid single" onSubmit={e => { e.preventDefault(); action('/api/employees', forms.employee, 'Funcionário cadastrado'); }}><h3>Funcionário</h3><input placeholder="Nome" value={forms.employee.name} onChange={e => setForm('employee', { name: e.target.value })} /><select value={forms.employee.role} onChange={e => setForm('employee', { role: e.target.value })}><option value="portaria">Portaria</option><option value="zeladoria">Zeladoria</option><option value="manutencao">Manutenção</option><option value="seguranca">Segurança</option></select><input placeholder="Telefone" value={forms.employee.phone} onChange={e => setForm('employee', { phone: e.target.value })} /><input placeholder="E-mail" value={forms.employee.email} onChange={e => setForm('employee', { email: e.target.value })} /><button><Plus />Salvar funcionário</button></form><form className="formGrid single" onSubmit={e => { e.preventDefault(); action('/api/shifts', forms.shift, 'Escala cadastrada'); }}><h3>Escala</h3><select value={forms.shift.employee_id} onChange={e => setForm('shift', { employee_id: e.target.value })}><option value="">Funcionário</option>{data.employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select><select value={forms.shift.role} onChange={e => setForm('shift', { role: e.target.value })}><option value="portaria">Portaria</option><option value="zeladoria">Zeladoria</option><option value="manutencao">Manutenção</option><option value="seguranca">Segurança</option></select><input type="datetime-local" value={forms.shift.starts_at} onChange={e => setForm('shift', { starts_at: e.target.value })} /><input type="datetime-local" value={forms.shift.ends_at} onChange={e => setForm('shift', { ends_at: e.target.value })} /><button><CalendarPlus />Salvar escala</button></form></div>
+    <Table rows={data.shifts} render={s => <><td><b>{s.employee_name}</b><small>{s.role}</small></td><td>{new Date(s.starts_at).toLocaleString('pt-BR')}</td><td>{new Date(s.ends_at).toLocaleString('pt-BR')}</td><td><Status ok={s.status !== 'cancelada'}>{s.status}</Status></td></>} />
+  </Panel>;
 }
 
-function ConfigPanel(p) {
-  const [settings, setSettings] = useState(() => ({ ...p.data.settings }));
-  useEffect(() => setSettings({ ...p.data.settings }), [p.data.settings]);
-  const set = (k, v) => setSettings(s => ({ ...s, [k]: v }));
-  const save = async () => { await request('/api/settings', { method: 'POST', body: JSON.stringify(settings) }); p.setData({ ...p.data, settings }); p.notify('Configurações salvas e aplicadas'); };
-  const exportBackup = async () => {
-    const payload = await request('/api/export');
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `backup-vitoria-regia-${new Date().toISOString().slice(0, 10)}.json`; a.click();
-    URL.revokeObjectURL(url);
-    p.notify('Backup exportado');
-  };
-  const palettes = [['Vitória Régia', '#1f8f7a'], ['Esmeralda', '#0f9f6e'], ['Azul executivo', '#2563eb'], ['Roxo premium', '#7c3aed'], ['Dourado discreto', '#b7791f'], ['Grafite', '#475569']];
-  return <Panel title="Configurações"><section className="settingsHero"><div><h3><SlidersHorizontal /> Configuração intuitiva</h3><p>Altere aparência, orientação do menu, integrações, segurança e preferências sem mexer no código.</p></div><button onClick={save}><Save />Salvar tudo</button></section><div className="settingsGrid"><section className="settingsCard"><h3><Palette /> Cor do sistema</h3><p>Sugestão: mantenha “Vitória Régia” para um visual elegante e leve.</p><div className="palette">{palettes.map(([name, color]) => <button key={color} className={(settings.THEME_ACCENT || defaultTheme.accent) === color ? 'selected' : ''} onClick={() => set('THEME_ACCENT', color)}><i style={{ background: color }} />{name}</button>)}</div><label>Cor personalizada<input type="color" value={settings.THEME_ACCENT || defaultTheme.accent} onChange={e => set('THEME_ACCENT', e.target.value)} /></label></section><section className="settingsCard"><h3><LayoutPanelTop /> Menu e layout</h3><div className="choice layoutChoice"><button className={(settings.MENU_ORIENTATION || 'vertical') === 'vertical' ? 'selected' : ''} onClick={() => set('MENU_ORIENTATION', 'vertical')}><PanelLeft />Lateral</button><button className={settings.MENU_ORIENTATION === 'horizontal' ? 'selected' : ''} onClick={() => set('MENU_ORIENTATION', 'horizontal')}><LayoutPanelTop />Superior</button><button className={settings.MENU_ORIENTATION === 'floating' ? 'selected' : ''} onClick={() => set('MENU_ORIENTATION', 'floating')}><Paintbrush />Flutuante</button></div><label>Densidade<select value={settings.UI_DENSITY || 'comfort'} onChange={e => set('UI_DENSITY', e.target.value)}><option value="comfort">Confortável</option><option value="compact">Compacta</option></select></label><div className="choice"><button className={(settings.APPEARANCE || 'light') === 'light' ? 'selected' : ''} onClick={() => set('APPEARANCE', 'light')}><Sun />Claro</button><button className={settings.APPEARANCE === 'dark' ? 'selected' : ''} onClick={() => set('APPEARANCE', 'dark')}><Moon />Escuro</button></div></section><section className="settingsCard"><h3><MessageCircle /> Telegram</h3><input placeholder="TELEGRAM_BOT_TOKEN" value={settings.TELEGRAM_BOT_TOKEN || ''} onChange={e => set('TELEGRAM_BOT_TOKEN', e.target.value)} /><input placeholder="TELEGRAM_CHAT_ID" value={settings.TELEGRAM_CHAT_ID || ''} onChange={e => set('TELEGRAM_CHAT_ID', e.target.value)} /><small>Usado para comunicados e botão de emergência.</small></section><section className="settingsCard"><h3><Send /> SendGrid</h3><p>Canal recomendado para e-mails transacionais. A chave API deve ficar no Render, em SENDGRID_API_KEY.</p><label>Provedor de e-mail<select value={settings.MAIL_PROVIDER || 'sendgrid'} onChange={e => set('MAIL_PROVIDER', e.target.value)}><option value="sendgrid">SendGrid API</option><option value="auto">Automático: SendGrid ou SMTP</option><option value="smtp">SMTP legado</option></select></label><input placeholder="SENDGRID_FROM_EMAIL remetente verificado" value={settings.SENDGRID_FROM_EMAIL || ''} onChange={e => set('SENDGRID_FROM_EMAIL', e.target.value)} /><input placeholder="SENDGRID_FROM_NAME" value={settings.SENDGRID_FROM_NAME || 'Condomínio Vitória Régia'} onChange={e => set('SENDGRID_FROM_NAME', e.target.value)} /><input placeholder="SENDGRID_REPLY_TO" value={settings.SENDGRID_REPLY_TO || ''} onChange={e => set('SENDGRID_REPLY_TO', e.target.value)} /><input placeholder="SENDGRID_TO_DEFAULT / e-mail de emergência" value={settings.SENDGRID_TO_DEFAULT || ''} onChange={e => set('SENDGRID_TO_DEFAULT', e.target.value)} /><select value={settings.SENDGRID_DATA_RESIDENCY || 'global'} onChange={e => set('SENDGRID_DATA_RESIDENCY', e.target.value)}><option value="global">Global</option><option value="eu">EU Data Residency</option></select><button type="button" onClick={() => p.act('/api/notify/sendgrid/test', { to: settings.SENDGRID_TO_DEFAULT || settings.SENDGRID_FROM_EMAIL }, 'Teste SendGrid enviado')}><Send />Enviar teste</button><small>Nunca coloque a chave real no GitHub. Use Environment Variables no Render.</small></section><section className="settingsCard"><h3><Mail /> SMTP legado</h3><input placeholder="SMTP_HOST" value={settings.SMTP_HOST || ''} onChange={e => set('SMTP_HOST', e.target.value)} /><input placeholder="SMTP_PORT" value={settings.SMTP_PORT || '587'} onChange={e => set('SMTP_PORT', e.target.value)} /><input placeholder="SMTP_USER" value={settings.SMTP_USER || ''} onChange={e => set('SMTP_USER', e.target.value)} /><input placeholder="SMTP_PASS" type="password" value={settings.SMTP_PASS || ''} onChange={e => set('SMTP_PASS', e.target.value)} /><input placeholder="MAIL_FROM" value={settings.MAIL_FROM || ''} onChange={e => set('MAIL_FROM', e.target.value)} /></section><section className="settingsCard"><h3><CloudSun /> Clima e condomínio</h3><input placeholder="Cidade do clima" value={settings.WEATHER_CITY || 'João Pessoa'} onChange={e => set('WEATHER_CITY', e.target.value)} /><input placeholder="Nome do condomínio" value={settings.CONDO_NAME || 'Condomínio Vitória Régia'} onChange={e => set('CONDO_NAME', e.target.value)} /><input placeholder="Telefone emergência" value={settings.EMERGENCY_PHONE || ''} onChange={e => set('EMERGENCY_PHONE', e.target.value)} /></section><section className="settingsCard"><h3><ShieldCheck /> Segurança</h3><label><input type="checkbox" checked={(settings.ONLY_LOGIN_DASHBOARD || 'true') === 'true'} onChange={e => set('ONLY_LOGIN_DASHBOARD', String(e.target.checked))} /> Proteger dashboard antes do login</label><label><input type="checkbox" checked={(settings.EMERGENCY_CONFIRM || 'true') === 'true'} onChange={e => set('EMERGENCY_CONFIRM', String(e.target.checked))} /> Confirmar antes de acionar emergência</label><small>O sistema inicia exibindo somente a tela de login.</small></section><section className="settingsCard"><h3><Database /> Banco e backup</h3><p>O sistema usa o banco anterior sem apagar dados. Novas tabelas são criadas automaticamente quando necessário.</p><button onClick={exportBackup}><Download />Exportar backup JSON</button><button onClick={() => p.act('/api/seed-demo', {}, 'Dados de demonstração carregados')}><Archive />Carregar demonstração</button></section><section className="settingsCard"><h3><MonitorSmartphone /> Experiência</h3><input placeholder="Nome curto do app" value={settings.APP_SHORT_NAME || 'Vitória Régia'} onChange={e => set('APP_SHORT_NAME', e.target.value)} /><select value={settings.FOOTER_MODE || 'minimal'} onChange={e => set('FOOTER_MODE', e.target.value)}><option value="minimal">Rodapé minimalista</option><option value="hidden">Ocultar informações extras</option></select><small>O rodapé permanece simples, sem nota de versão extensa.</small></section></div></Panel>;
+function MessagesPage({ data, forms, setForm, action, compact }) {
+  return <Panel title="Mensagens" subtitle="Morador envia e a escala direciona para o funcionário em serviço." icon={<MessageCircle />} compact={compact}>
+    <form className="formGrid" onSubmit={e => { e.preventDefault(); action('/api/messages', forms.message, 'Mensagem enviada para funcionário em serviço'); }}><input placeholder="Unidade" value={forms.message.unit} onChange={e => setForm('message', { unit: e.target.value })} /><input placeholder="Assunto" value={forms.message.subject} onChange={e => setForm('message', { subject: e.target.value })} /><textarea placeholder="Mensagem" value={forms.message.body} onChange={e => setForm('message', { body: e.target.value })} /><button><Send />Enviar</button></form>
+    <Table rows={data.messages} render={m => <><td><b>{m.subject}</b><small>{m.body}</small></td><td>Unidade {m.unit}<small>{m.employee_name ? 'Responsável: ' + m.employee_name : 'Sem escala vinculada'}</small></td><td><Status ok={m.status === 'respondida'}>{m.status}</Status></td><td className="actions"><button onClick={() => { const response = prompt('Resposta ao morador'); if (response) action(`/api/messages/${m.id}/respond`, { response }, 'Resposta enviada'); }}>Responder</button></td></>} />
+  </Panel>;
 }
 
-function Panel({ title, children }) { return <section className="panel"><h2>{title}</h2>{children}</section>; }
-function Table({ rows, render }) { return <table><tbody>{rows.length ? rows.map(x => <tr key={x.id}>{render(x)}</tr>) : <tr><td>Nenhum registro encontrado.</td></tr>}</tbody></table>; }
-function Status({ ok, children }) { return <span className={ok ? 'status ok' : 'status'}>{children}</span>; }
-function AppBtn({ title, icon }) { return <button className="appBtn">{icon}<span>{title}</span><Smartphone /></button>; }
-function Metric({ label, value, icon }) { return <article className="metric">{icon}<div><b>{value}</b><span>{label}</span></div></article>; }
-function money(v) { return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
-function date(v) { return v ? new Date(v).toLocaleDateString('pt-BR') : '-'; }
+function UsersResidentsPage({ data, forms, setForm, action, settings, session }) {
+  const role = forms.user.role;
+  const channels = enabledChannels(settings);
+  const showUnit = !(role === 'funcionario' || role === 'portaria' || role === 'financeiro' || role === 'master' || (role === 'sindico' && forms.user.is_outsourced));
+  const roleChange = (r) => setForm('user', { role: r, user_type: r, permissions: roleDefaultPermissions[r] || roleDefaultPermissions.morador, unit: ['master','funcionario', 'portaria', 'financeiro'].includes(r) ? '' : forms.user.unit });
+  const roleOptions = [['morador','Morador'], ['sindico','Síndico'], ['portaria','Portaria'], ['funcionario','Funcionário'], ['financeiro','Financeiro'], ...(session?.role === 'master' ? [['master','Master']] : [])];
+  return <Panel title="Cadastros e acessos" subtitle="Cadastro completo com canais liberados pelo Master, regras por perfil e reset de senha." icon={<ShieldCheck />}>
+    <div className="split"><form className="formGrid single" onSubmit={e => { e.preventDefault(); action('/api/residents', forms.resident, 'Morador cadastrado'); }}><h3>Morador</h3><input placeholder="Nome" value={forms.resident.name} onChange={e => setForm('resident', { name: e.target.value })} /><input placeholder="Unidade" value={forms.resident.unit} onChange={e => setForm('resident', { unit: e.target.value })} />{channels.email && <input placeholder="E-mail" value={forms.resident.email} onChange={e => setForm('resident', { email: e.target.value })} />}{channels.whatsapp && <input placeholder="WhatsApp" value={forms.resident.whatsapp_phone} onChange={e => setForm('resident', { whatsapp_phone: e.target.value })} />}{channels.telegram && <input placeholder="Telegram chat ID" value={forms.resident.telegram_chat_id} onChange={e => setForm('resident', { telegram_chat_id: e.target.value })} />}<ChannelPicker value={forms.resident.notification_preferences} onChange={v => setForm('resident', { notification_preferences: v })} settings={settings} /><button><Plus />Salvar morador</button></form><form className="formGrid single" onSubmit={e => { e.preventDefault(); action('/api/users', forms.user, 'Usuário criado'); }}><h3>Usuário</h3><input placeholder="Nome" value={forms.user.name} onChange={e => setForm('user', { name: e.target.value })} />{channels.email && <input placeholder="E-mail de login" value={forms.user.email} onChange={e => setForm('user', { email: e.target.value })} />}{channels.whatsapp && <input placeholder="WhatsApp" value={forms.user.whatsapp_phone || forms.user.phone} onChange={e => setForm('user', { whatsapp_phone: e.target.value, phone: e.target.value })} />}{channels.telegram && <input placeholder="Telegram Chat ID" value={forms.user.telegram_chat_id} onChange={e => setForm('user', { telegram_chat_id: e.target.value })} />}<select value={forms.user.role} onChange={e => roleChange(e.target.value)}>{roleOptions.map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select><label className="check"><input type="checkbox" checked={forms.user.is_outsourced} onChange={e => setForm('user', { is_outsourced: e.target.checked })} />Terceirizado</label>{showUnit && <input placeholder="Unidade vinculada" value={forms.user.unit} onChange={e => setForm('user', { unit: e.target.value })} />}{!['funcionario','master'].includes(role) && <select value={forms.user.resident_id} onChange={e => setForm('user', { resident_id: e.target.value })}><option value="">Vincular morador</option>{data.residents.map(r => <option key={r.id} value={r.id}>{r.name} · {r.unit}</option>)}</select>} {role === 'funcionario' && <select value={forms.user.employee_id} onChange={e => setForm('user', { employee_id: e.target.value })}><option value="">Vincular funcionário</option>{data.employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select>}<input placeholder="Senha temporária opcional" value={forms.user.password} onChange={e => setForm('user', { password: e.target.value })} /><ChannelPicker value={forms.user.notification_preferences} onChange={v => setForm('user', { notification_preferences: v })} settings={settings} /><PermissionsEditor value={forms.user.permissions} onChange={v => setForm('user', { permissions: v })} /><button><UserPlus />Criar usuário</button></form></div>
+    <h3>Solicitações de cadastro</h3><Table rows={data.registrationRequests} render={r => <><td><b>{r.name}</b><small>{[r.email, r.whatsapp_phone || r.phone, r.telegram_chat_id && 'Telegram ' + r.telegram_chat_id].filter(Boolean).join(' · ')} · unidade {r.unit}</small></td><td><Status ok={r.status === 'aprovada'}>{r.status}</Status></td><td className="actions"><button onClick={() => action(`/api/registration-requests/${r.id}/approve`, {}, 'Cadastro aprovado')}>Aprovar</button><button onClick={() => action(`/api/registration-requests/${r.id}/reject`, { note: 'Dados não conferem' }, 'Cadastro rejeitado')}>Rejeitar</button></td></>} />
+    <h3>Usuários ativos</h3><Table rows={data.users} render={u => <><td><b>{u.name}</b><small>{u.email}</small></td><td>{u.role}<small>{u.unit || (u.is_outsourced ? 'terceirizado' : '')}</small></td><td><Status ok={u.active}>{u.active ? 'ativo' : 'inativo'}</Status></td><td className="actions"><button onClick={() => action(`/api/users/${u.id}/reset-password`, {}, 'Senha temporária enviada')}>Reset senha</button></td></>} />
+  </Panel>;
+}
+
+function PermissionsEditor({ value = {}, onChange }) { return <details className="permissions"><summary>Delimitar acessos</summary>{permissionGroups.map(g => <div key={g.title}><b>{g.title}</b>{g.items.map(([k, label]) => <label key={k}><input type="checkbox" checked={Boolean(value[k])} onChange={e => onChange({ ...value, [k]: e.target.checked })} />{label}</label>)}</div>)}</details>; }
+
+function FinancePage({ data, forms, setForm, action, compact }) {
+  const saldo = data.finance.reduce((a, f) => a + (f.type === 'receita' ? 1 : -1) * Number(f.amount || 0), 0);
+  return <Panel title="Financeiro" subtitle="Usuários acompanham lançamentos e boletos de seus apartamentos." icon={<WalletCards />} compact={compact}>
+    <div className="metricStrip"><Metric icon={<WalletCards />} label="Saldo previsto" value={money(saldo)} /><Metric icon={<BadgeDollarSign />} label="Boletos" value={data.boletos.length} /></div>
+    <form className="formGrid" onSubmit={e => { e.preventDefault(); action('/api/finance', forms.finance, 'Lançamento criado'); }}><input placeholder="Descrição" value={forms.finance.title} onChange={e => setForm('finance', { title: e.target.value })} /><input type="number" placeholder="Valor" value={forms.finance.amount} onChange={e => setForm('finance', { amount: e.target.value })} /><select value={forms.finance.type} onChange={e => setForm('finance', { type: e.target.value })}><option value="receita">Receita</option><option value="despesa">Despesa</option></select><input placeholder="Unidade" value={forms.finance.unit} onChange={e => setForm('finance', { unit: e.target.value })} /><input type="date" value={forms.finance.due_date} onChange={e => setForm('finance', { due_date: e.target.value })} /><label className="check"><input type="checkbox" checked={forms.finance.generate_boleto} onChange={e => setForm('finance', { generate_boleto: e.target.checked })} />Gerar/vincular boleto</label><button><Plus />Adicionar</button></form>
+    <Table rows={data.finance} render={f => <><td><b>{f.title}</b><small>{f.category} · unidade {f.unit || '-'}</small></td><td>{money(f.amount)}<small>{date(f.due_date)}</small></td><td><Status ok={f.status === 'pago'}>{f.status}</Status></td><td>{f.digitable_line && <Code>{f.digitable_line}</Code>}</td></>} />
+  </Panel>;
+}
+
+function BoletosPage({ data, forms, setForm, action, settings }) { const bankProvider = settings.BANK_PROVIDER || settings.BOLETO_PROVIDER || 'manual'; return <Panel title="Boletos" subtitle="Vincule boleto de qualquer banco ou gere cobrança pelo banco configurado pelo Master." icon={<BadgeDollarSign />}><div className="noticeBox"><b>Banco ativo:</b> {bankProvider === 'manual' ? 'vinculação manual' : bankProvider}<small>{bankProvider === 'manual' ? 'Cole linha digitável, link ou PDF do boleto.' : 'A cobrança usa o conector configurado em Configurações → Banco.'}</small></div><form className="formGrid" onSubmit={e => { e.preventDefault(); action('/api/boletos', { ...forms.boleto, provider: bankProvider === 'manual' ? 'manual' : 'auto' }, 'Boleto vinculado/gerado'); }}><input placeholder="Título" value={forms.boleto.title} onChange={e => setForm('boleto', { title: e.target.value })} /><input type="number" placeholder="Valor" value={forms.boleto.amount} onChange={e => setForm('boleto', { amount: e.target.value })} /><input placeholder="Unidade" value={forms.boleto.unit} onChange={e => setForm('boleto', { unit: e.target.value })} /><input type="date" value={forms.boleto.due_date} onChange={e => setForm('boleto', { due_date: e.target.value })} /><input placeholder="Banco" value={forms.boleto.bank_name} onChange={e => setForm('boleto', { bank_name: e.target.value })} />{bankProvider === 'manual' && <><input placeholder="Linha digitável" value={forms.boleto.digitable_line} onChange={e => setForm('boleto', { digitable_line: e.target.value })} /><input placeholder="Link/PDF do boleto" value={forms.boleto.payment_link} onChange={e => setForm('boleto', { payment_link: e.target.value })} /></>}<button><Plus />{bankProvider === 'manual' ? 'Vincular boleto' : 'Gerar boleto'}</button></form><Table rows={data.boletos} render={b => <><td><b>{b.title}</b><small>Unidade {b.unit} · {b.bank_name || b.provider}</small></td><td>{money(b.amount)}<small>{date(b.due_date)}</small></td><td><Status ok={b.status === 'pago'}>{b.status}</Status></td><td><Code>{b.digitable_line || b.payment_link || b.external_id || '-'}</Code></td></>} /></Panel>; }
+
+function InvoicesPage({ data, forms, setForm, action, runOcr, ocrBusy }) { return <Panel title="Notas fiscais" subtitle="OCR para foto de nota fiscal, com conferência antes do cadastro." icon={<FileText />}><form className="formGrid" onSubmit={e => { e.preventDefault(); action('/api/invoices', forms.invoice, 'Nota fiscal cadastrada'); }}><input placeholder="Fornecedor" value={forms.invoice.supplier} onChange={e => setForm('invoice', { supplier: e.target.value })} /><input placeholder="Número" value={forms.invoice.document_number} onChange={e => setForm('invoice', { document_number: e.target.value })} /><input placeholder="Chave de acesso" value={forms.invoice.access_key} onChange={e => setForm('invoice', { access_key: e.target.value })} /><input type="number" placeholder="Valor" value={forms.invoice.amount} onChange={e => setForm('invoice', { amount: e.target.value })} /><input type="date" value={forms.invoice.issue_date} onChange={e => setForm('invoice', { issue_date: e.target.value })} /><input type="date" value={forms.invoice.due_date} onChange={e => setForm('invoice', { due_date: e.target.value })} /><label className="fileButton"><ScanLine />{ocrBusy === 'invoice' ? 'Lendo nota...' : 'OCR nota fiscal'}<input type="file" accept="image/*" capture="environment" onChange={e => runOcr(e.target.files?.[0], 'invoice')} /></label><button><Plus />Cadastrar nota</button></form><Table rows={data.invoices} render={i => <><td><b>{i.supplier}</b><small>NF {i.document_number}</small></td><td>{money(i.amount)}</td><td>{date(i.due_date)}</td></>} /></Panel>; }
+function NoticesPage({ data, forms, setForm, action }) { return <Panel title="Comunicados" icon={<Megaphone />}><form className="formGrid" onSubmit={e => { e.preventDefault(); action('/api/notices', forms.notice, 'Comunicado publicado'); }}><input placeholder="Título" value={forms.notice.title} onChange={e => setForm('notice', { title: e.target.value })} /><select value={forms.notice.priority} onChange={e => setForm('notice', { priority: e.target.value })}><option value="normal">Normal</option><option value="alta">Alta</option><option value="critica">Crítica</option></select><select value={forms.notice.target_role} onChange={e => setForm('notice', { target_role: e.target.value })}><option value="todos">Todos</option><option value="morador">Moradores</option><option value="portaria">Portaria</option></select><textarea placeholder="Mensagem" value={forms.notice.body} onChange={e => setForm('notice', { body: e.target.value })} /><button><Send />Publicar</button></form><Table rows={data.notices} render={n => <><td><b>{n.title}</b><small>{n.body}</small></td><td><Status ok={n.priority !== 'critica'}>{n.priority}</Status></td><td>{date(n.created_at)}</td></>} /></Panel>; }
+
+function SettingsPage({ data, forms, setForm, action, configTab, setConfigTab, enableBrowserNotifications, session }) {
+  const s = forms.settings || {};
+  const setS = patch => setForm('settings', { ...s, ...patch });
+  const tabs = [['aparencia', 'Aparência'], ['menu', 'Menu'], ['comunicacao', 'Comunicação'], ['reservas', 'Reservas'], ['emergencia', 'Emergência'], ['condominio', 'Condomínio'], ['apps', 'Apps'], ...(session?.role === 'master' ? [['master', 'Master'], ['banco', 'Banco']] : [])];
+  const savePath = ['master', 'banco'].includes(configTab) ? '/api/platform-settings' : '/api/settings';
+  return <Panel title="Configurações" subtitle="Menu simplificado por subcategorias. Liberações comerciais ficam somente para o usuário Master." icon={<Settings />}>
+    <div className="configTabs">{tabs.map(([k, label]) => <button key={k} className={configTab === k ? 'active' : ''} onClick={() => setConfigTab(k)}>{label}</button>)}</div><div className="settingsGrid">
+    {configTab === 'aparencia' && <><SettingCard title="Tema" icon={<Palette />}><label>Cor principal<input type="color" value={s.THEME_ACCENT || '#126b5f'} onChange={e => setS({ THEME_ACCENT: e.target.value })} /></label><label>Modo<select value={s.APPEARANCE || 'light'} onChange={e => setS({ APPEARANCE: e.target.value })}><option value="light">Claro</option><option value="dark">Escuro</option></select></label></SettingCard><SettingCard title="Densidade" icon={<Activity />}><select value={s.UI_DENSITY || 'comfort'} onChange={e => setS({ UI_DENSITY: e.target.value })}><option value="comfort">Confortável</option><option value="compact">Compacto</option></select></SettingCard></>}
+    {configTab === 'menu' && <SettingCard title="Orientação do menu" icon={<PanelLeft />} wide><select value={s.MENU_ORIENTATION || 'vertical'} onChange={e => setS({ MENU_ORIENTATION: e.target.value })}><option value="vertical">Lateral</option><option value="top">Superior</option><option value="floating">Flutuante</option></select><p>O botão de fechar fica dentro do menu e o celular usa gaveta responsiva.</p></SettingCard>}
+    {configTab === 'comunicacao' && <><SettingCard title="SendGrid / e-mail" icon={<Mail />}><label>Remetente verificado<input value={s.SENDGRID_FROM_EMAIL || ''} onChange={e => setS({ SENDGRID_FROM_EMAIL: e.target.value })} /></label><label>Nome remetente<input value={s.SENDGRID_FROM_NAME || ''} onChange={e => setS({ SENDGRID_FROM_NAME: e.target.value })} /></label><small>A chave SENDGRID_API_KEY fica no Render. O Master libera ou bloqueia o canal.</small></SettingCard><SettingCard title="Telegram e WhatsApp" icon={<MessageCircle />}><label>Telegram Chat ID padrão<input value={s.TELEGRAM_CHAT_ID || ''} onChange={e => setS({ TELEGRAM_CHAT_ID: e.target.value })} /></label><label>WhatsApp Phone Number ID<input value={s.WHATSAPP_PHONE_NUMBER_ID || ''} onChange={e => setS({ WHATSAPP_PHONE_NUMBER_ID: e.target.value })} /></label><small>Tokens ficam no Render ou no banco, nunca no GitHub.</small><button onClick={enableBrowserNotifications}><Bell />Ativar navegador</button></SettingCard></>}
+    {configTab === 'reservas' && <SettingCard title="Normas e taxa padrão" icon={<FileSignature />} wide><textarea value={s.RESERVATION_DEFAULT_RULES || ''} onChange={e => setS({ RESERVATION_DEFAULT_RULES: e.target.value })} /><small>As áreas comuns podem ter taxas próprias. A reserva gera pré-agendamento e boleto interno quando houver taxa.</small></SettingCard>}
+    {configTab === 'emergencia' && <><SettingCard title="Elevador" icon={<Siren />}><label>Operadora<input value={s.ELEVATOR_OPERATOR_NAME || ''} onChange={e => setS({ ELEVATOR_OPERATOR_NAME: e.target.value })} /></label><label>Telefone<input value={s.ELEVATOR_EMERGENCY_PHONE || ''} onChange={e => setS({ ELEVATOR_EMERGENCY_PHONE: e.target.value })} /></label></SettingCard><SettingCard title="Tipos" icon={<ShieldAlert />}>{data.emergencyTypes.map(t => <span className="miniRow" key={t.code}>{t.label}<small>{t.notify_all ? 'notifica todos' : 'somente equipe'} · {t.phone}</small></span>)}</SettingCard></>}
+    {configTab === 'condominio' && <SettingCard title="Dados e clima" icon={<Building2 />} wide><label>Nome<input value={s.CONDO_NAME || ''} onChange={e => setS({ CONDO_NAME: e.target.value })} /></label><label>Endereço<input value={s.CONDO_ADDRESS || ''} onChange={e => setS({ CONDO_ADDRESS: e.target.value })} /></label><label>Cidade<input value={s.WEATHER_CITY || ''} onChange={e => setS({ WEATHER_CITY: e.target.value })} /></label><label>Latitude<input value={s.WEATHER_LAT || ''} onChange={e => setS({ WEATHER_LAT: e.target.value })} /></label><label>Longitude<input value={s.WEATHER_LON || ''} onChange={e => setS({ WEATHER_LON: e.target.value })} /></label></SettingCard>}
+    {configTab === 'apps' && <SettingCard title="URL pública" icon={<AppWindow />} wide><label>URL do Render<input value={s.APK_BASE_URL || ''} onChange={e => setS({ APK_BASE_URL: e.target.value })} /></label><p>Essa URL alimenta os apps Android de Portaria, Síndico e Morador. A liberação comercial dos apps fica na aba Master.</p></SettingCard>}
+    {configTab === 'master' && <><SettingCard title="Canais liberados" icon={<Crown />}><label className="check"><input type="checkbox" checked={asBool(s.ENABLE_EMAIL, true)} onChange={e => setS({ ENABLE_EMAIL: String(e.target.checked) })} />E-mail / SendGrid</label><label className="check"><input type="checkbox" checked={asBool(s.ENABLE_WHATSAPP, false)} onChange={e => setS({ ENABLE_WHATSAPP: String(e.target.checked) })} />WhatsApp</label><label className="check"><input type="checkbox" checked={asBool(s.ENABLE_TELEGRAM, false)} onChange={e => setS({ ENABLE_TELEGRAM: String(e.target.checked) })} />Telegram</label><label className="check"><input type="checkbox" checked={asBool(s.ENABLE_BROWSER_PUSH, true)} onChange={e => setS({ ENABLE_BROWSER_PUSH: String(e.target.checked) })} />Notificação do navegador</label></SettingCard><SettingCard title="Apps liberados" icon={<Smartphone />}><label className="check"><input type="checkbox" checked={asBool(s.ENABLE_APP_PORTARIA, true)} onChange={e => setS({ ENABLE_APP_PORTARIA: String(e.target.checked) })} />APK Portaria</label><label className="check"><input type="checkbox" checked={asBool(s.ENABLE_APP_SINDICO, true)} onChange={e => setS({ ENABLE_APP_SINDICO: String(e.target.checked) })} />APK Síndico</label><label className="check"><input type="checkbox" checked={asBool(s.ENABLE_APP_MORADOR, true)} onChange={e => setS({ ENABLE_APP_MORADOR: String(e.target.checked) })} />APK Morador</label></SettingCard><SettingCard title="Cadastro pela tela de login" icon={<UserPlus />} wide><label className="check"><input type="checkbox" checked={asBool(s.REGISTRATION_REQUIRE_EMAIL, true)} onChange={e => setS({ REGISTRATION_REQUIRE_EMAIL: String(e.target.checked) })} />Exigir e-mail quando o canal estiver liberado</label><label className="check"><input type="checkbox" checked={asBool(s.REGISTRATION_REQUIRE_WHATSAPP, false)} onChange={e => setS({ REGISTRATION_REQUIRE_WHATSAPP: String(e.target.checked), ENABLE_WHATSAPP: String(e.target.checked || asBool(s.ENABLE_WHATSAPP,false)) })} />Exibir WhatsApp no cadastro</label><label className="check"><input type="checkbox" checked={asBool(s.REGISTRATION_REQUIRE_TELEGRAM, false)} onChange={e => setS({ REGISTRATION_REQUIRE_TELEGRAM: String(e.target.checked), ENABLE_TELEGRAM: String(e.target.checked || asBool(s.ENABLE_TELEGRAM,false)) })} />Exibir Telegram no cadastro</label></SettingCard></>}
+    {configTab === 'banco' && <><SettingCard title="Banco para boletos" icon={<BadgeDollarSign />}><label>Provedor<select value={s.BANK_PROVIDER || 'manual'} onChange={e => setS({ BANK_PROVIDER: e.target.value, BOLETO_PROVIDER: e.target.value })}><option value="manual">Manual / qualquer banco</option><option value="efi">Efí / Gerencianet</option><option value="sicoob">Sicoob</option><option value="sicredi">Sicredi</option><option value="inter">Banco Inter</option><option value="asaas">Asaas</option><option value="outro">Outro via API</option></select></label><label>URL base da API<input value={s.BANK_API_BASE_URL || ''} onChange={e => setS({ BANK_API_BASE_URL: e.target.value })} /></label><label>Client ID / identificador<input value={s.BANK_CLIENT_ID || ''} onChange={e => setS({ BANK_CLIENT_ID: e.target.value })} /></label><small>Client Secret, certificados e tokens ficam no Render, nunca no GitHub.</small></SettingCard><SettingCard title="Dados bancários" icon={<WalletCards />}><label>Agência<input value={s.BANK_AGENCY || ''} onChange={e => setS({ BANK_AGENCY: e.target.value })} /></label><label>Conta<input value={s.BANK_ACCOUNT || ''} onChange={e => setS({ BANK_ACCOUNT: e.target.value })} /></label><label>Carteira/convênio<input value={s.BANK_WALLET || ''} onChange={e => setS({ BANK_WALLET: e.target.value })} /></label><label>Contrato<input value={s.BANK_CONTRACT || ''} onChange={e => setS({ BANK_CONTRACT: e.target.value })} /></label><label>Chave Pix<input value={s.BANK_PIX_KEY || ''} onChange={e => setS({ BANK_PIX_KEY: e.target.value })} /></label><label className="check"><input type="checkbox" checked={asBool(s.BOLETO_AUTO_GENERATE, false)} onChange={e => setS({ BOLETO_AUTO_GENERATE: String(e.target.checked) })} />Gerar boleto automaticamente nas taxas</label></SettingCard></>}
+  </div><button className="saveConfig" onClick={() => action(savePath, s, 'Configurações salvas')}><Save />Salvar configurações</button></Panel>;
+}
+
+function SettingCard({ title, icon, children, wide }) { return <section className={wide ? 'settingsCard wideCard' : 'settingsCard'}><h3>{icon}{title}</h3>{children}</section>; }
+function AppsPage({ settings, session }) { const base = settings.APK_BASE_URL || location.origin; const apps = [['Portaria APK','Visitantes, encomendas, calendário e OCR.',`${base}/?app=portaria#/portaria`,DoorOpen,'ENABLE_APP_PORTARIA'],['Síndico APK','Administração completa, aprovações e financeiro.',`${base}/?app=sindico#/dashboard`,Crown,'ENABLE_APP_SINDICO'],['Morador APK','Reservas, financeiro da unidade, mensagens e encomendas.',`${base}/?app=morador#/morador`,Users,'ENABLE_APP_MORADOR']].filter(a => session?.role === 'master' || appEnabled(settings, a[4])); return <Panel title="Apps para celular" subtitle="Projetos Android/WebView e PWA liberados pelo Master." icon={<Smartphone />}><div className="appCards">{apps.map(([title, desc, url, Icon, key]) => <article key={title} className={!appEnabled(settings, key) ? 'disabledCard' : ''}><Icon /><h3>{title}</h3><p>{desc}</p><code>{appEnabled(settings, key) ? url : 'Bloqueado pelo Master'}</code></article>)}</div><section className="wide"><h3><Download />Como gerar</h3><p>Suba o projeto no GitHub e execute o workflow “Gerar APKs Android Vitória Régia Pro”. Os APKs ficam em Artifacts e Release. Apps bloqueados continuam no código, mas podem ser ocultados e comercialmente desabilitados.</p></section></Panel>; }
+
+
+function ChannelPicker({ value = {}, onChange, settings = {} }) { const available = enabledChannels(settings); const channels = Object.entries(available).filter(([, enabled]) => enabled).map(([k]) => [k, channelLabel(k)]); return <div className="channels">{channels.map(([k, label]) => <label key={k}><input type="checkbox" checked={Boolean(value[k])} onChange={e => onChange({ ...value, [k]: e.target.checked })} />{label}</label>)}</div>; }
+function Panel({ title, subtitle, icon, children, compact }) { return <section className={compact ? 'panel compactPanel' : 'panel'}><div className="panelHead"><div>{icon}<div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div></div></div>{children}</section>; }
+function Metric({ icon, label, value, sub }) { return <article className="metric"><span>{icon}</span><div><b>{value}</b><small>{label}</small>{sub && <em>{sub}</em>}</div></article>; }
+function Status({ ok, children }) { return <span className={ok ? 'status ok' : 'status warn'}>{children}</span>; }
+function Code({ children }) { return <code className="code">{children}</code>; }
+function SearchBox({ query, setQuery, placeholder }) { return <div className="search"><Search /><input value={query} onChange={e => setQuery(e.target.value)} placeholder={placeholder || 'Buscar'} /></div>; }
+function Table({ rows = [], render }) { return <div className="tableWrap"><table><tbody>{rows.length ? rows.map((row, i) => <tr key={row.id || i}>{render(row)}</tr>) : <tr><td><small>Nenhum registro encontrado.</small></td></tr>}</tbody></table></div>; }
+
+function emptyData() { return { dashboard: null, residents: [], users: [], employees: [], shifts: [], messages: [], packages: [], visitors: [], invoices: [], notices: [], reservations: [], finance: [], boletos: [], commonAreas: [], incidents: [], maintenance: [], settings: defaultSettings, emergencyTypes: [], emergencyRequests: [], registrationRequests: [], notifications: [], audit: [], weather: null }; }
+function demoUser(app) { const role = app === 'morador' ? 'morador' : app === 'portaria' ? 'portaria' : 'sindico'; return { id: 1, name: role === 'morador' ? 'Maria Oliveira' : role === 'portaria' ? 'Carlos Portaria' : 'Síndico', email: 'demo@vitoriaregia.local', role, resident_id: role === 'morador' ? 1 : null, permissions: roleDefaultPermissions[role] || roleDefaultPermissions.sindico }; }
+function demoData() { return { ...emptyData(), settings: { ...defaultSettings, APPEARANCE: localStorage.getItem('vr_appearance') || 'light', ENABLE_WHATSAPP: 'true', ENABLE_TELEGRAM: 'true' }, weather: { city: 'João Pessoa', temperature: 28, humidity: 72, wind: 12 }, dashboard: { metrics: { residents: 128, pendingPackages: 9, reservationsPending: 3, messagesNew: 4, emergencyPending: 1, boletosPending: 16 } }, residents: [{ id: 1, name: 'Maria Oliveira', unit: '101', email: 'morador@example.com', whatsapp_phone: '5583999990000' }], employees: [{ id: 1, name: 'Carlos Portaria', role: 'portaria', email: 'portaria@example.com', active: true }], shifts: [{ id: 1, employee_id: 1, employee_name: 'Carlos Portaria', role: 'portaria', starts_at: new Date(Date.now() - 3600000).toISOString(), ends_at: new Date(Date.now() + 3600000 * 7).toISOString(), status: 'em serviço' }], messages: [{ id: 1, subject: 'Barulho na garagem', body: 'Pode verificar?', unit: '101', employee_name: 'Carlos Portaria', status: 'nova' }], packages: [{ id: 1, tracking: 'BR123456789BR', recipient: 'Maria Oliveira', unit: '101', pickup_code: 'A7K92P', status: 'pendente', delivery_preference: 'receber_elevador' }], visitors: [{ id: 1, name: 'João Silva', document: '1234567', unit: '101', recurring: true, weekdays: ['seg', 'qua', 'sex'], status: 'autorizado', announcement_channel: 'interfone' }], commonAreas: [{ id: 1, name: 'Salão de festas', fee_amount: 250, rules_document: defaultSettings.RESERVATION_DEFAULT_RULES }, { id: 2, name: 'Churrasqueira', fee_amount: 120, rules_document: defaultSettings.RESERVATION_DEFAULT_RULES }], reservations: [{ id: 1, area: 'Salão de festas', unit: '101', resident: 'Maria Oliveira', reserved_for: todayISO(), start_time: '19:00', end_time: '23:00', status: 'pre_agendada', fee_amount: 250, digitable_line: 'VR000123456' }], finance: [{ id: 1, title: 'Taxa de reserva - Salão', amount: 250, type: 'receita', status: 'pendente', unit: '101', due_date: todayISO(), digitable_line: 'VR000123456' }], boletos: [{ id: 1, title: 'Taxa de reserva - Salão', amount: 250, status: 'pendente', unit: '101', bank_name: 'Banco exemplo', digitable_line: 'VR000123456' }], emergencyTypes: [{ code: 'elevador', label: 'Preso no elevador', supplier: 'Operadora', phone: '0800 000 000', instructions: 'Ligue para a operadora cadastrada.', notify_all: false }, { code: 'incendio', label: 'Fogo / fumaça', supplier: 'Bombeiros', phone: '193', instructions: 'Evacue com segurança.', notify_all: true }, { code: 'invasao', label: 'Invasão do prédio', supplier: 'Polícia Militar', phone: '190', instructions: 'Evite confronto.', notify_all: true }], emergencyRequests: [{ id: 1, type_label: 'Preso no elevador', unit: 'Bloco A', message: 'Pessoa presa', status: 'pendente', notify_all: false }], registrationRequests: [{ id: 1, name: 'Ana Paula', email: 'ana@example.com', unit: '203', status: 'pendente' }], invoices: [{ id: 1, supplier: 'Manutenção Elevadores LTDA', document_number: '4567', amount: 680, due_date: todayISO() }], notices: [{ id: 1, title: 'Assembleia', body: 'Reunião no salão às 19h.', priority: 'alta' }], notifications: [{ id: 1, title: 'Encomenda chegou', body: 'Código A7K92P', status: 'nova' }], users: [{ id: 1, name: 'Administrador Master', email: 'master@vitoriaregia.local', role: 'master', active: true }, { id: 2, name: 'Síndico', email: 'admin@vitoriaregia.local', role: 'sindico', active: true }] }; }
+async function demoRequest(path, opts) { if (path === '/api/login') return { token: 'demo', user: demoUser('sindico') }; if (path.includes('/google')) return { url: 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=Reserva' }; return { ok: true }; }
 
 createRoot(document.getElementById('root')).render(<App />);

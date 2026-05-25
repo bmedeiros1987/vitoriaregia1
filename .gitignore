@@ -1,48 +1,32 @@
-# Dependências
 node_modules/
 **/node_modules/
-
-
-# Locks gerados localmente
-package-lock.json
-client/package-lock.json
-server/package-lock.json
-
-# Builds, caches e artefatos gerados
+server/public/
 client/dist/
 dist/
 build/
-.vite/
 .cache/
 coverage/
-
-# Ambientes e segredos
+.vite/
 .env
 .env.*
-*.env
-*.env.*
-**/.env
-**/.env.*
 !.env.example
-!**/.env.example
-
-# Logs e arquivos temporários
-*.log
-.DS_Store
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Certificados/chaves locais
+server/.env
+server/.env.*
+client/.env
+client/.env.*
 *.pem
 *.key
 *.crt
-certs/
-**/certs/
-
-# Arquivos auxiliares que podem conter segredos
-*render_env*.txt
-*vitoriaregia*.env.txt
-*env_preenchido*.sh
-*AUTO_preenchido*.sh
-atualizar_render*.sh
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.sqlite
+*.sqlite3
+*.db
+backup-*.json
