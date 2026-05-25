@@ -1,0 +1,59 @@
+Build Command:
+npm install --no-audit --no-fund && npm run build
+
+Start Command:
+npm start
+
+Root Directory:
+deixe vazio
+
+Environment Variables:
+NODE_VERSION=20.19.0
+NODE_ENV=production
+DATABASE_URL=sua_url_postgresql
+DATABASE_SSL=auto
+DATABASE_SSL_MODE=auto
+JWT_SECRET=uma_senha_grande_e_forte
+APP_VERSION=Vitória Régia Pro v9.8
+MAIL_PROVIDER=sendgrid
+SENDGRID_API_KEY=sua_chave_sendgrid
+SENDGRID_FROM_EMAIL=email_remetente_verificado
+SENDGRID_FROM_NAME=Condomínio Vitória Régia
+SENDGRID_REPLY_TO=email_de_resposta
+SENDGRID_TO_DEFAULT=email_para_testes
+TELEGRAM_BOT_TOKEN=token_do_bot
+WHATSAPP_PROVIDER=manual_ou_api
+WHATSAPP_API_TOKEN=token_do_whatsapp
+ENABLE_EMAIL=true
+ENABLE_TELEGRAM=false
+ENABLE_WHATSAPP=false
+ENABLE_BROWSER_PUSH=true
+NPM_CONFIG_AUDIT=false
+NPM_CONFIG_FUND=false
+NPM_CONFIG_UPDATE_NOTIFIER=false
+APP_PUBLIC_URL=https://seu-sistema.onrender.com
+PUBLIC_APP_URL=https://seu-sistema.onrender.com
+
+Novas variáveis opcionais v9.8:
+BRUNO_EMAIL=seu_email_admin
+BRUNO_PASSWORD=sua_senha_forte
+ALLOW_MULTIPLE_RESIDENTS_PER_UNIT=false
+SHOW_UPDATES_TO_SINDICO=false
+DEVELOPED_BY=CrewCheck
+CREWCHECK_SITE=https://www.crewcheck.online/
+BANK_PROVIDER=manual
+BANK_API_BASE_URL=
+BANK_CLIENT_ID=
+BANK_CLIENT_SECRET=
+BANK_API_TOKEN=
+TELEGRAM_WEBHOOK_SECRET=
+TELEGRAM_BOT_USERNAME=
+WHATSAPP_API_VERSION=v19.0
+WHATSAPP_PHONE_NUMBER_ID=
+WHATSAPP_BUSINESS_ACCOUNT_ID=
+WHATSAPP_ACCESS_TOKEN=
+WHATSAPP_TEMPLATE_PACKAGE=
+WHATSAPP_TEMPLATE_RESERVATION=
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+VAPID_SUBJECT=

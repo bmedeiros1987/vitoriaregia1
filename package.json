@@ -1,8 +1,8 @@
 {
   "name": "vitoria-regia-pro",
-  "version": "9.7.0",
+  "version": "9.8.0",
   "private": true,
-  "description": "Sistema Vitória Régia Pro v9.7 com perfil editável, notificações profissionais, manuais internos e acessibilidade mobile",
+  "description": "Sistema Vitória Régia Pro v9.8 com confirmação de cadastro, busca automática por unidade, prevenção de duplicidade, auditoria, CrewCheck e notificações profissionais",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "npm --prefix client run dev",

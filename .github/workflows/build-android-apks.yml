@@ -43,20 +43,20 @@ jobs:
       - name: Organizar APKs
         run: |
           mkdir -p dist/android
-          cp android-morador/app/build/outputs/apk/debug/app-debug.apk dist/android/vitoria-regia-morador-v9.1.apk
-          cp android-sindico/app/build/outputs/apk/debug/app-debug.apk dist/android/vitoria-regia-sindico-v9.1.apk
-          cp android-portaria/app/build/outputs/apk/debug/app-debug.apk dist/android/vitoria-regia-portaria-v9.1.apk
+          cp android-morador/app/build/outputs/apk/debug/app-debug.apk dist/android/vitoria-regia-morador-v9.3.apk
+          cp android-sindico/app/build/outputs/apk/debug/app-debug.apk dist/android/vitoria-regia-sindico-v9.3.apk
+          cp android-portaria/app/build/outputs/apk/debug/app-debug.apk dist/android/vitoria-regia-portaria-v9.3.apk
           ls -lh dist/android
       - name: Disponibilizar APKs como artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: vitoria-regia-apks-v9.1
+          name: vitoria-regia-apks-v9.3
           path: dist/android/*.apk
       - name: Publicar APKs em release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: apps-v9.1
-          name: Aplicativos Vitória Régia Pro v9.1
+          tag_name: apps-v9.3
+          name: Aplicativos Vitória Régia Pro v9.3
           body: APKs gerados automaticamente para Morador, Síndico e Portaria.
           files: dist/android/*.apk
           make_latest: false
