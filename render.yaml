@@ -10,6 +10,8 @@ services:
         value: 20.19.0
       - key: NODE_ENV
         value: production
+      - key: APP_VERSION
+        value: Vitória Régia Pro v10.2
       - key: DATABASE_SSL
         value: auto
       - key: DATABASE_SSL_MODE

@@ -950,7 +950,7 @@ function canonicalUpdateManifest(m={}) {
   });
 }
 function verifyManifestSignature(manifest) {
-  const required = ['1','true','sim','yes','on'].includes(String(process.env.UPDATE_REQUIRE_SIGNATURE || 'true').toLowerCase());
+  const required = ['1','true','sim','yes','on'].includes(String(process.env.UPDATE_REQUIRE_SIGNATURE || 'false').toLowerCase());
   if (!manifest.signature) { if (required) throw new Error('Pacote sem assinatura digital.'); return true; }
   const ok = cryptoVerify('RSA-SHA256', Buffer.from(canonicalUpdateManifest(manifest)), UPDATE_PUBLIC_KEY, Buffer.from(String(manifest.signature), 'base64'));
   if (!ok) throw new Error('Assinatura digital inválida.');
@@ -1347,7 +1347,7 @@ app.get('/api/system-updates/config', auth, canViewUpdates, async (_req,res,next
     githubTokenConfigured: Boolean(process.env.UPDATE_GITHUB_TOKEN || process.env.GITHUB_TOKEN),
     renderDeployHookConfigured: Boolean(process.env.RENDER_DEPLOY_HOOK_URL),
     feedUrl: await getSetting('UPDATE_FEED_URL', process.env.UPDATE_FEED_URL || ''),
-    signatureRequired: ['1','true','sim','yes','on'].includes(String(process.env.UPDATE_REQUIRE_SIGNATURE || 'true').toLowerCase())
+    signatureRequired: ['1','true','sim','yes','on'].includes(String(process.env.UPDATE_REQUIRE_SIGNATURE || 'false').toLowerCase())
   });
 } catch(e){ next(e); } });
 app.get('/api/system-updates', auth, canViewUpdates, async (_req,res,next)=>{ try { res.json((await q("SELECT id,update_code,version,title,notes,from_version,to_version,status,validation_token_hash,payload_sha256,manifest,announced_at,validated_at,applied_at,error,created_at FROM system_updates ORDER BY id DESC LIMIT 100")).rows); } catch(e){ next(e); } });

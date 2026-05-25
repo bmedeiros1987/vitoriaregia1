@@ -1,0 +1,44 @@
+NODE_VERSION=20.19.0
+NODE_ENV=production
+APP_VERSION=Vitória Régia Pro v10.2
+DATABASE_URL=sua_url_postgresql
+DATABASE_SSL=auto
+DATABASE_SSL_MODE=auto
+JWT_SECRET=uma_senha_grande_e_forte
+
+# Notificações
+ENABLE_EMAIL=true
+ENABLE_TELEGRAM=true
+ENABLE_WHATSAPP=false
+ENABLE_BROWSER_PUSH=true
+
+# Telegram - configure no Render, não no GitHub
+TELEGRAM_ENABLED=true
+TELEGRAM_START_URL=https://t.me/vitoriaregia_bot
+TELEGRAM_BOT_USERNAME=vitoriaregia_bot
+TELEGRAM_BOT_TOKEN=novo_token_do_bot
+TELEGRAM_CHAT_ID=seu_chat_id
+TELEGRAM_WEBHOOK_SECRET=um_segredo_forte
+TELEGRAM_API_BASE_URL=https://api.telegram.org
+
+# Atualizações
+ENABLE_SYSTEM_UPDATES=true
+UPDATE_REQUIRE_SIGNATURE=true
+UPDATE_PUBLIC_KEY=cole_o_conteudo_do_arquivo_UPDATE_PUBLIC_KEY_VITORIAREGIA_V10_2_FINAL_txt_se_for_usar_a_central
+UPDATE_APPLY_MODE=github
+UPDATE_GITHUB_REPO=bmedeiros1987/vitoriaregia1
+UPDATE_GITHUB_BRANCH=main
+UPDATE_GITHUB_TOKEN=token_do_github_se_for_usar_atualizacao_automatica
+
+# Apps / PWA / APK
+ENABLE_APP_PORTARIA=true
+ENABLE_APP_SINDICO=true
+ENABLE_APP_MORADOR=true
+APK_PORTARIA_URL=
+APK_SINDICO_URL=
+APK_MORADOR_URL=
+
+# NPM
+NPM_CONFIG_AUDIT=false
+NPM_CONFIG_FUND=false
+NPM_CONFIG_UPDATE_NOTIFIER=false

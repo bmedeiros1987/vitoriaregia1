@@ -1,6 +1,6 @@
 {
   "name": "vitoria-regia-pro-client",
-  "version": "10.2.0",
+  "version": "10.3.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -20,5 +20,5 @@
   "engines": {
     "node": "20.19.0"
   },
-  "description": "Sistema Vitória Régia Pro v10.2 com layout premium baseado no prédio real, menu expansível e mobile responsivo"
+  "description": "Sistema Vitória Régia Pro v10.2 com layout premium redesenhado, foto real do prédio, menu expansível e mobile-first"
 }
