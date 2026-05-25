@@ -1,6 +1,6 @@
 {
   "name": "vitoria-regia-pro-server",
-  "version": "9.9.0",
+  "version": "10.0.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -24,5 +24,5 @@
   "engines": {
     "node": "20.19.0"
   },
-  "description": "Sistema Vitória Régia Pro v9.9 com correção de emergência, Telegram assistido, logo residencial e testes de notificações"
+  "description": "Sistema Vitória Régia Pro v10.0 com padronização premium, Telegram fallback, manuais estáticos, PWA e vínculo automático por unidade"
 }

@@ -17,7 +17,7 @@ import { randomBytes, createHash, verify as cryptoVerify } from 'node:crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v9.9';
+const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v10.0';
 const JWT_SECRET = process.env.JWT_SECRET || 'troque-este-segredo-em-producao';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/vitoriaregia';
 const DB_SSL_MODE = String(process.env.DATABASE_SSL_MODE || process.env.DATABASE_SSL || 'auto').trim().toLowerCase();
@@ -676,6 +676,7 @@ function loginEmailFromChannels(body={}) {
 function normalizeUnit(unit='') { return String(unit || '').trim().replace(/\s+/g,'').toUpperCase(); }
 function normalizeEmail(email='') { return String(email || '').trim().toLowerCase(); }
 function hasDuplicateMessage(kind) { return `${kind} já cadastrado. Confira o cadastro existente antes de gravar novamente.`; }
+function formatDeliveryPreference(v='') { const key=String(v||'').toLowerCase(); return ({ receber_elevador:'Gostaria de receber pelo elevador', elevador:'Gostaria de receber pelo elevador', retirar_portaria:'Gostaria de retirar na portaria', buscar_portaria:'Gostaria de retirar na portaria', portaria:'Gostaria de retirar na portaria', nao_informado:'Aguardando escolha do morador' }[key] || 'Aguardando escolha do morador'); }
 async function residentDuplicate(body={}, excludeId=null) {
   const unit = normalizeUnit(body.unit); const email = normalizeEmail(body.email); const doc = onlyDigits(body.document || '');
   const allowMultiple = boolValue(await getSetting('ALLOW_MULTIPLE_RESIDENTS_PER_UNIT','false'), false);
@@ -711,8 +712,10 @@ async function lookupResidentsForUnit({ unit='', recipient='' }={}) {
   const params=[]; let where=`COALESCE(active,true)=true`;
   if (unit) { params.push(normalizeUnit(unit)); where += ` AND upper(replace(coalesce(unit,''),' ',''))=$${params.length}`; }
   if (recipient) { params.push(`%${String(recipient).trim()}%`); where += ` AND lower(name) LIKE lower($${params.length})`; }
-  const rows=(await q(`SELECT id,name,unit,phone,whatsapp_phone,email,telegram_chat_id,document,vehicle,resident_tags,notification_preferences FROM residents WHERE ${where} ORDER BY name LIMIT 20`, params)).rows;
-  return rows;
+  const rows=(await q(`SELECT id,name,unit,phone,whatsapp_phone,email,telegram_chat_id,document,vehicle,resident_tags,notification_preferences,'resident' source FROM residents WHERE ${where} ORDER BY name LIMIT 20`, params)).rows;
+  if (rows.length || !unit) return rows;
+  const users=(await q("SELECT NULL::integer id,name,unit,phone,whatsapp_phone,email,telegram_chat_id,'' document,'' vehicle,'{}'::jsonb resident_tags,notification_preferences,'user' source FROM users WHERE upper(replace(coalesce(unit,''),' ',''))=$1 AND COALESCE(active,true)=true AND role NOT IN ('funcionario','portaria','financeiro') ORDER BY name LIMIT 20",[normalizeUnit(unit)])).rows;
+  return users;
 }
 
 function escapeHtml(v='') { return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }
@@ -722,7 +725,20 @@ async function professionalEmailHtml({ subject='', text='', html='' }={}) {
   const logo = base ? `${base}/logo-vitoria-regia.svg` : '';
   const crew = base ? `${base}/crewcheck-logo.svg` : '';
   const content = html || textToHtml(text);
-  return `<div style="margin:0;padding:24px;background:#eef5f2;font-family:Arial,Helvetica,sans-serif;color:#13231f"><div style="max-width:640px;margin:auto;background:#fff;border-radius:20px;overflow:hidden;border:1px solid #dbe7e3"><div style="padding:24px;background:linear-gradient(135deg,#0f5f55,#35b5a2);color:white;display:flex;align-items:center;gap:14px">${logo?`<img src="${logo}" alt="Vitória Régia" style="width:54px;height:54px;border-radius:14px;background:white;padding:6px"/>`:''}<div><h1 style="margin:0;font-size:20px">Condomínio Vitória Régia</h1><p style="margin:4px 0 0;font-size:14px;opacity:.9">${escapeHtml(subject)}</p></div></div><div style="padding:28px;font-size:15px;line-height:1.6">${content}</div><div style="padding:18px 24px;background:#f7faf9;font-size:12px;color:#64746f;border-top:1px solid #e5eeeb;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap"><span>Desenvolvido por CrewCheck - todos os direitos reservados.</span>${crew?`<img src="${crew}" alt="CrewCheck" style="height:24px"/>`:''}</div></div></div>`;
+  return `<div style="margin:0;padding:26px;background:#eef5f2;font-family:Arial,Helvetica,sans-serif;color:#13231f">
+    <div style="max-width:660px;margin:auto;background:#ffffff;border-radius:22px;overflow:hidden;border:1px solid #dbe7e3;box-shadow:0 16px 42px rgba(15,30,25,.10)">
+      <div style="padding:26px 28px;background:linear-gradient(135deg,#0f5f55,#35b5a2);color:white">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>
+          ${logo?`<td width="82" valign="middle"><img src="${logo}" alt="Vitória Régia" style="display:block;width:62px;height:62px;border-radius:16px;background:white;padding:8px;margin-right:18px"/></td>`:''}
+          <td valign="middle"><h1 style="margin:0 0 8px 0;font-size:20px;line-height:1.25">Condomínio Vitória Régia</h1><p style="margin:0;font-size:14px;line-height:1.45;opacity:.92">${escapeHtml(subject)}</p></td>
+        </tr></table>
+      </div>
+      <div style="padding:30px 30px 32px 30px;font-size:15px;line-height:1.65;color:#13231f">${content}</div>
+      <div style="padding:18px 26px;background:#f7faf9;font-size:12px;color:#64746f;border-top:1px solid #e5eeeb">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="line-height:1.45">Desenvolvido por CrewCheck - todos os direitos reservados.</td>${crew?`<td align="right"><img src="${crew}" alt="CrewCheck" style="display:block;height:26px;margin-left:16px"/></td>`:''}</tr></table>
+      </div>
+    </div>
+  </div>`;
 }
 function maskEmailList(value='') { return splitList(value).map(email => email.replace(/(^.).*(@.*$)/, '$1***$2')); }
 
@@ -780,9 +796,20 @@ async function telegramApi(method, body={}) {
   const token = await getSetting('TELEGRAM_BOT_TOKEN', process.env.TELEGRAM_BOT_TOKEN || '');
   if (!token) return { ok:false, skipped:true, reason:'Token do Telegram não configurado.' };
   const base = (await getSetting('TELEGRAM_API_BASE_URL', process.env.TELEGRAM_API_BASE_URL || 'https://api.telegram.org')).replace(/\/$/, '');
-  const r = await fetch(`${base}/bot${token}/${method}`, { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify(body) });
-  const data = await r.json().catch(()=>({}));
-  return { ok:r.ok && data.ok !== false, data, description:data.description || '' };
+  try {
+    const r = await fetch(`${base}/bot${token}/${method}`, { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify(body) });
+    const data = await r.json().catch(()=>({}));
+    if (r.ok && data.ok !== false) return { ok:true, data, description:data.description || '', transport:'post' };
+    if (method !== 'sendMessage') return { ok:false, data, description:data.description || '' };
+  } catch(e) {
+    if (method !== 'sendMessage') return { ok:false, error:e.message };
+  }
+  const chat = encodeURIComponent(body.chat_id || '');
+  const text = encodeURIComponent(body.text || '');
+  const url = `${base}/bot${token}/sendMessage?chat_id=${chat}&text=${text}`;
+  const r2 = await fetch(url);
+  const data2 = await r2.json().catch(()=>({}));
+  return { ok:r2.ok && data2.ok !== false, data:data2, description:data2.description || '', transport:'get_fallback' };
 }
 async function sendTelegramMessage(chatId, text, options={}) {
   if (!(await featureEnabled('telegram'))) return { ok:false, skipped:true, reason:'Telegram não liberado em Configurações.' };
@@ -793,7 +820,24 @@ async function sendTelegramMessage(chatId, text, options={}) {
   return telegramApi('sendMessage', payload);
 }
 async function sendWhatsAppText(phone, text) { if (!(await featureEnabled('whatsapp'))) return { ok:false, skipped:true, reason:'WhatsApp não liberado por Bruno.' }; const phoneId=await getSetting('WHATSAPP_PHONE_NUMBER_ID', process.env.WHATSAPP_PHONE_NUMBER_ID || ''); const token=await getSetting('WHATSAPP_ACCESS_TOKEN', process.env.WHATSAPP_ACCESS_TOKEN || process.env.WHATSAPP_API_TOKEN || ''); const version=await getSetting('WHATSAPP_API_VERSION', process.env.WHATSAPP_API_VERSION || 'v19.0'); const to = onlyDigits(phone); if (!phoneId || !token || !to) return { ok:false, skipped:true }; const r = await fetch(`https://graph.facebook.com/${version}/${phoneId}/messages`, { method:'POST', headers:{ 'content-type':'application/json', authorization:`Bearer ${token}` }, body: JSON.stringify({ messaging_product:'whatsapp', to, type:'text', text:{ body:text } }) }); return { ok:r.ok, data: await r.json().catch(()=>({})) }; }
-async function findResident({ unit='', recipient='', resident_id=null, user_id=null }={}) { if (resident_id) { const r=await q('SELECT * FROM residents WHERE id=$1 AND COALESCE(active,true)=true',[resident_id]); if (r.rowCount) return r.rows[0]; } if (user_id) { const r=await q('SELECT r.* FROM users u JOIN residents r ON r.id=u.resident_id WHERE u.id=$1',[user_id]); if (r.rowCount) return r.rows[0]; } if (unit) { const r=await q('SELECT * FROM residents WHERE lower(coalesce(unit,\'\'))=lower($1) ORDER BY id DESC LIMIT 1',[String(unit).trim()]); if (r.rowCount) return r.rows[0]; } if (recipient) { const r=await q('SELECT * FROM residents WHERE COALESCE(active,true)=true AND lower(name) LIKE lower($1) ORDER BY id DESC LIMIT 1',[`%${String(recipient).trim()}%`]); if (r.rowCount) return r.rows[0]; } return null; }
+async function findResident({ unit='', recipient='', resident_id=null, user_id=null }={}) {
+  if (resident_id) { const r=await q('SELECT * FROM residents WHERE id=$1 AND COALESCE(active,true)=true',[resident_id]); if (r.rowCount) return r.rows[0]; }
+  if (user_id) { const r=await q('SELECT r.* FROM users u JOIN residents r ON r.id=u.resident_id WHERE u.id=$1',[user_id]); if (r.rowCount) return r.rows[0]; }
+  if (unit) {
+    const normalized = normalizeUnit(unit);
+    const r=await q("SELECT * FROM residents WHERE upper(replace(coalesce(unit,''),' ',''))=$1 AND COALESCE(active,true)=true ORDER BY id DESC LIMIT 1",[normalized]);
+    if (r.rowCount) return r.rows[0];
+    const u=(await q("SELECT * FROM users WHERE upper(replace(coalesce(unit,''),' ',''))=$1 AND COALESCE(active,true)=true AND role NOT IN ('funcionario','portaria','financeiro') ORDER BY id DESC LIMIT 1",[normalized])).rows[0];
+    if (u) {
+      const created=(await q('INSERT INTO residents(name,unit,phone,whatsapp_phone,email,document,telegram_chat_id,notification_preferences) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',[u.name||u.email, u.unit||unit, u.phone||'', u.whatsapp_phone||u.phone||'', u.email||'', '', u.telegram_chat_id||'', JSON.stringify(parseJson(u.notification_preferences,{ app:true,browser:true,email:Boolean(u.email),telegram:Boolean(u.telegram_chat_id),whatsapp:Boolean(u.whatsapp_phone||u.phone) }))])).rows[0];
+      await q('UPDATE users SET resident_id=$1 WHERE id=$2 AND resident_id IS NULL',[created.id,u.id]).catch(()=>null);
+      await audit('sistema','criou morador a partir de usuário',`${created.name} unidade ${created.unit}`).catch(()=>null);
+      return created;
+    }
+  }
+  if (recipient) { const r=await q('SELECT * FROM residents WHERE COALESCE(active,true)=true AND lower(name) LIKE lower($1) ORDER BY id DESC LIMIT 1',[`%${String(recipient).trim()}%`]); if (r.rowCount) return r.rows[0]; }
+  return null;
+}
 async function createNotification({ resident_id=null, user_id=null, title, body, channel='app', channels={}, action_url='', payload={} }) { const r=await q('INSERT INTO notifications(user_id,resident_id,title,body,channel,channels,action_url,payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',[user_id,resident_id,title,body,channel,JSON.stringify(channels || {}),action_url,JSON.stringify(payload || {})]); return r.rows[0]; }
 async function notifyResident(resident, { title, body, channels={}, action_url='', payload={} }) {
   const prefs = await filterChannelsByPlan({ app:true, browser:true, email:true, telegram:false, whatsapp:false, ...parseJson(resident?.notification_preferences, {}) , ...channels });
@@ -1043,7 +1087,7 @@ app.put('/api/profile', auth, async (req,res,next)=>{ try {
 
 
 app.get('/api/dashboard', auth, can('dashboard.view'), async (req,res,next)=>{ try { const own = isResident(req.user) && req.user.resident_id; const [residents, packagesTotal, packagesPending, visitorsToday, reservationsPending, messagesNew, emergencyPending, boletosPending, weather] = await Promise.all([
-  q('SELECT COUNT(*)::int count FROM residents WHERE COALESCE(active,true)=true'), q(own?'SELECT COUNT(*)::int count FROM packages WHERE resident_id=$1 AND deleted_at IS NULL':'SELECT COUNT(*)::int count FROM packages WHERE deleted_at IS NULL', own?[req.user.resident_id]:[]), q(own?"SELECT COUNT(*)::int count FROM packages WHERE resident_id=$1 AND deleted_at IS NULL AND status <> 'entregue'":"SELECT COUNT(*)::int count FROM packages WHERE deleted_at IS NULL AND status <> 'entregue'", own?[req.user.resident_id]:[]), q("SELECT COUNT(*)::int count FROM visitors WHERE deleted_at IS NULL AND created_at::date=current_date"), q("SELECT COUNT(*)::int count FROM reservations WHERE deleted_at IS NULL AND status='pre_agendada'"), q(own?"SELECT COUNT(*)::int count FROM messages WHERE resident_id=$1 AND status <> 'fechada'":"SELECT COUNT(*)::int count FROM messages WHERE status='nova'", own?[req.user.resident_id]:[]), q("SELECT COUNT(*)::int count FROM emergency_requests WHERE status='pendente'"), q(own?"SELECT COUNT(*)::int count FROM boletos WHERE resident_id=$1 AND deleted_at IS NULL AND status <> 'pago'":"SELECT COUNT(*)::int count FROM boletos WHERE deleted_at IS NULL AND status <> 'pago'", own?[req.user.resident_id]:[]), getWeatherSafe()
+  q('SELECT COUNT(*)::int count FROM residents WHERE COALESCE(active,true)=true'), q(own?'SELECT COUNT(*)::int count FROM packages WHERE resident_id=$1 AND deleted_at IS NULL':'SELECT COUNT(*)::int count FROM packages WHERE deleted_at IS NULL', own?[req.user.resident_id]:[]), q(own?"SELECT COUNT(*)::int count FROM packages WHERE resident_id=$1 AND deleted_at IS NULL AND status <> 'entregue'":"SELECT COUNT(*)::int count FROM packages WHERE deleted_at IS NULL AND status <> 'entregue'", own?[req.user.resident_id]:[]), q(own?"SELECT COUNT(*)::int count FROM visitors WHERE deleted_at IS NULL AND created_at::date=current_date AND unit=(SELECT unit FROM residents WHERE id=$1)":"SELECT COUNT(*)::int count FROM visitors WHERE deleted_at IS NULL AND created_at::date=current_date", own?[req.user.resident_id]:[]), q(own?"SELECT COUNT(*)::int count FROM reservations WHERE resident_id=$1 AND deleted_at IS NULL AND status='pre_agendada'":"SELECT COUNT(*)::int count FROM reservations WHERE deleted_at IS NULL AND status='pre_agendada'", own?[req.user.resident_id]:[]), q(own?"SELECT COUNT(*)::int count FROM messages WHERE resident_id=$1 AND status <> 'fechada'":"SELECT COUNT(*)::int count FROM messages WHERE status='nova'", own?[req.user.resident_id]:[]), q("SELECT COUNT(*)::int count FROM emergency_requests WHERE status='pendente'"), q(own?"SELECT COUNT(*)::int count FROM boletos WHERE resident_id=$1 AND deleted_at IS NULL AND status <> 'pago'":"SELECT COUNT(*)::int count FROM boletos WHERE deleted_at IS NULL AND status <> 'pago'", own?[req.user.resident_id]:[]), getWeatherSafe()
 ]);
   res.json({ version:APP_VERSION, metrics:{ residents:residents.rows[0].count, packages:packagesTotal.rows[0].count, pendingPackages:packagesPending.rows[0].count, visitorsToday:visitorsToday.rows[0].count, reservationsPending:reservationsPending.rows[0].count, messagesNew:messagesNew.rows[0].count, emergencyPending:emergencyPending.rows[0].count, boletosPending:boletosPending.rows[0].count }, weather }); } catch(e){ next(e); } });
 
@@ -1146,7 +1190,7 @@ app.post('/api/messages/:id/respond', auth, can('messages.manage'), async (req,r
 
 app.get('/api/packages', auth, can('packages.view'), async (req,res,next)=>{ try { if (isResident(req.user) && req.user.resident_id) return res.json((await q('SELECT * FROM packages WHERE resident_id=$1 AND deleted_at IS NULL ORDER BY id DESC',[req.user.resident_id])).rows); res.json((await q('SELECT p.*, r.name resident_name, r.email resident_email, r.whatsapp_phone FROM packages p LEFT JOIN residents r ON r.id=p.resident_id WHERE p.deleted_at IS NULL ORDER BY p.id DESC')).rows); } catch(e){ next(e); } });
 app.post('/api/packages', auth, can('packages.manage'), async (req,res,next)=>{ try { requireFields(req.body,['tracking','recipient','unit']); await requireNoDuplicate('Encomenda', await packageDuplicate(req.body)); const resident=await findResident(req.body); const pickup=randomCode(6); const channels={ app:true, browser:true, ...parseJson(await getSetting('DELIVERY_DEFAULT_CHANNELS','{}'),{}), ...(req.body.notification_channels || {}) }; const r=await q('INSERT INTO packages(tracking,recipient,unit,resident_id,label,notes,extracted_text,pickup_code,notification_channels,notification_status,photo_url) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',[req.body.tracking,req.body.recipient,req.body.unit,resident?.id||null,req.body.label||req.body.tracking,req.body.notes||'',req.body.extracted_text||'',pickup,JSON.stringify(channels),resident?'enviando':'sem_vinculo',req.body.photo_url||'']); const pack=r.rows[0]; const action_url=`/#/encomendas?package=${pack.id}`; const body=`Sua encomenda ${pack.tracking} chegou na portaria. Código de retirada: ${pickup}. Responda no app se deseja receber pelo elevador ou retirar na portaria.`; if (resident) await notifyResident(resident,{ title:'Encomenda chegou', body, channels, action_url, payload:{ package_id:pack.id, pickup_code:pickup, telegram_reply_markup:{ inline_keyboard:[[ { text:'Receber pelo elevador', callback_data:`pkg:${pack.id}:receber_elevador` }, { text:'Buscar na portaria', callback_data:`pkg:${pack.id}:retirar_portaria` } ]] } } }).catch(()=>null); await audit(req.user.email,'registrou encomenda',`${pack.tracking} ${resident?'vinculada':'sem vínculo'}`); await q("UPDATE packages SET notification_status='enviada' WHERE id=$1",[pack.id]).catch(()=>null); res.json({ ...pack, resident, linked:Boolean(resident) }); } catch(e){ next(e); } });
-app.post('/api/packages/:id/preference', auth, async (req,res,next)=>{ try { const preference=req.body.delivery_preference || req.body.preference || 'retirar_portaria'; const r=await q('UPDATE packages SET delivery_preference=$1,resident_response_at=now() WHERE id=$2 RETURNING *',[preference,req.params.id]); await notifyStaff({ title:'Preferência de entrega informada', body:`Encomenda ${r.rows[0]?.tracking || req.params.id}: ${preference}`, action_url:`/#/encomendas` }).catch(()=>null); res.json(r.rows[0]||{}); } catch(e){ next(e); } });
+app.post('/api/packages/:id/preference', auth, async (req,res,next)=>{ try { const preference=req.body.delivery_preference || req.body.preference || 'retirar_portaria'; const r=await q('UPDATE packages SET delivery_preference=$1,resident_response_at=now() WHERE id=$2 RETURNING *',[preference,req.params.id]); await notifyStaff({ title:'Preferência de entrega informada', body:`Encomenda ${r.rows[0]?.tracking || req.params.id}: ${formatDeliveryPreference(preference)}`, action_url:`/#/encomendas` }).catch(()=>null); res.json(r.rows[0]||{}); } catch(e){ next(e); } });
 app.post('/api/packages/:id/deliver', auth, can('packages.manage'), async (req,res,next)=>{ try { const r=await q("UPDATE packages SET status='entregue',delivered_at=now() WHERE id=$1 RETURNING *",[req.params.id]); await audit(req.user.email,'entregou encomenda',req.params.id); res.json(r.rows[0]||{}); } catch(e){ next(e); } });
 app.delete('/api/packages/:id', auth, can('packages.manage'), async (req,res,next)=>{ try { await q("UPDATE packages SET status='removida',deleted_at=now() WHERE id=$1",[req.params.id]); await audit(req.user.email,'removeu encomenda',req.params.id); res.json({ ok:true }); } catch(e){ next(e); } });
 app.post('/api/ocr/parse-package', auth, can('packages.manage'), async (req,res)=>res.json(parsePackageText(req.body.text || '')));
@@ -1427,7 +1471,7 @@ app.post('/api/telegram/webhook', async (req,res,next)=>{ try {
   if (cb?.data && /^pkg:\d+:(receber_elevador|retirar_portaria)$/.test(cb.data)) {
     const [,id,pref]=cb.data.split(':');
     const r=await q('UPDATE packages SET delivery_preference=$1,resident_response_at=now() WHERE id=$2 RETURNING *',[pref,id]);
-    await notifyStaff({ title:'Preferência de entrega informada', body:`Encomenda ${r.rows[0]?.tracking || id}: ${pref}`, action_url:'/#/encomendas' }).catch(()=>null);
+    await notifyStaff({ title:'Preferência de entrega informada', body:`Encomenda ${r.rows[0]?.tracking || id}: ${formatDeliveryPreference(pref)}`, action_url:'/#/encomendas' }).catch(()=>null);
     await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text:'Preferência registrada.' }).catch(()=>null);
   }
   if (cb?.data && /^msg:\d+:recebido$/.test(cb.data)) {

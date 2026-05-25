@@ -1,0 +1,53 @@
+Build Command:
+npm install --no-audit --no-fund && npm run build
+
+Start Command:
+npm start
+
+Root Directory:
+(deixe vazio)
+
+Variáveis principais:
+NODE_VERSION=20.19.0
+NODE_ENV=production
+APP_VERSION=Vitória Régia Pro v10.0
+DATABASE_URL=sua_url_postgresql
+DATABASE_SSL=auto
+DATABASE_SSL_MODE=auto
+JWT_SECRET=uma_senha_grande_e_forte
+
+Telegram:
+ENABLE_TELEGRAM=true
+TELEGRAM_ENABLED=true
+TELEGRAM_START_URL=https://t.me/vitoriaregia_bot
+TELEGRAM_BOT_USERNAME=vitoriaregia_bot
+TELEGRAM_BOT_TOKEN=novo_token_do_bot
+TELEGRAM_CHAT_ID=chat_id_padrao
+TELEGRAM_WEBHOOK_SECRET=segredo_forte
+TELEGRAM_PARSE_MODE=
+
+E-mail:
+ENABLE_EMAIL=true
+EMAIL_PROVIDER=sendgrid
+SENDGRID_API_KEY=sua_chave_sendgrid
+SENDGRID_FROM_EMAIL=remetente_verificado
+SENDGRID_FROM_NAME=Condomínio Vitória Régia
+SENDGRID_REPLY_TO=email_de_resposta
+SENDGRID_TO_DEFAULT=email_teste
+
+WhatsApp:
+ENABLE_WHATSAPP=false
+WHATSAPP_API_VERSION=v19.0
+WHATSAPP_PHONE_NUMBER_ID=
+WHATSAPP_BUSINESS_ACCOUNT_ID=
+WHATSAPP_ACCESS_TOKEN=
+
+Apps:
+ENABLE_APP_PORTARIA=true
+ENABLE_APP_SINDICO=true
+ENABLE_APP_MORADOR=true
+APK_PORTARIA_URL=
+APK_SINDICO_URL=
+APK_MORADOR_URL=
+
+Não coloque DATABASE_URL, TELEGRAM_BOT_TOKEN, SENDGRID_API_KEY ou WHATSAPP_ACCESS_TOKEN no GitHub.
