@@ -17,7 +17,7 @@ import { randomBytes, createHash, verify as cryptoVerify } from 'node:crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v9.5';
+const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v9.6';
 const JWT_SECRET = process.env.JWT_SECRET || 'troque-este-segredo-em-producao';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/vitoriaregia';
 const DB_SSL_MODE = String(process.env.DATABASE_SSL_MODE || process.env.DATABASE_SSL || 'auto').trim().toLowerCase();
@@ -251,6 +251,9 @@ CREATE TABLE IF NOT EXISTS common_areas(
   rules_document TEXT,
   active BOOLEAN DEFAULT true,
   requires_approval BOOLEAN DEFAULT true,
+  max_guests INTEGER DEFAULT 30,
+  count_children BOOLEAN DEFAULT true,
+  count_infants BOOLEAN DEFAULT false,
   created_at TIMESTAMP DEFAULT now()
 );
 CREATE TABLE IF NOT EXISTS reservations(
@@ -283,6 +286,10 @@ CREATE TABLE IF NOT EXISTS reservation_visitors(
   document TEXT,
   phone TEXT,
   plate TEXT,
+  visitor_type TEXT DEFAULT 'convidado',
+  age_group TEXT DEFAULT 'adulto',
+  counts_as_guest BOOLEAN DEFAULT true,
+  notes TEXT,
   photo_data TEXT,
   created_at TIMESTAMP DEFAULT now()
 );
@@ -502,9 +509,9 @@ CREATE TABLE IF NOT EXISTS audit(
     ['visitors','name TEXT'], ['visitors','document TEXT'], ['visitors','unit TEXT'], ['visitors','authorized_by TEXT'], ['visitors','status TEXT DEFAULT \'autorizado\''], ['visitors','plate TEXT'], ['visitors','phone TEXT'], ['visitors','recurring BOOLEAN DEFAULT false'], ['visitors','weekdays JSONB DEFAULT \'[]\'::jsonb'], ['visitors','valid_from DATE'], ['visitors','valid_until DATE'], ['visitors','announce_required BOOLEAN DEFAULT true'], ['visitors','announcement_channel TEXT DEFAULT \'interfone\''], ['visitors','notification_channels JSONB DEFAULT \'{}\'::jsonb'], ['visitors','photo_data TEXT'], ['visitors','reservation_id INTEGER'], ['visitors','notes TEXT'], ['visitors','created_at TIMESTAMP DEFAULT now()'],
 
     // reservations / common areas / boletos / finance
-    ['common_areas','name TEXT'], ['common_areas','fee_amount NUMERIC(12,2) DEFAULT 0'], ['common_areas','rules_document TEXT'], ['common_areas','active BOOLEAN DEFAULT true'], ['common_areas','requires_approval BOOLEAN DEFAULT true'], ['common_areas','created_at TIMESTAMP DEFAULT now()'],
+    ['common_areas','name TEXT'], ['common_areas','fee_amount NUMERIC(12,2) DEFAULT 0'], ['common_areas','rules_document TEXT'], ['common_areas','active BOOLEAN DEFAULT true'], ['common_areas','requires_approval BOOLEAN DEFAULT true'], ['common_areas','max_guests INTEGER DEFAULT 30'], ['common_areas','count_children BOOLEAN DEFAULT true'], ['common_areas','count_infants BOOLEAN DEFAULT false'], ['common_areas','created_at TIMESTAMP DEFAULT now()'],
     ['reservations','area TEXT'], ['reservations','area_id INTEGER'], ['reservations','unit TEXT'], ['reservations','resident TEXT'], ['reservations','resident_id INTEGER'], ['reservations','reserved_for DATE'], ['reservations','start_time TEXT DEFAULT \'19:00\''], ['reservations','end_time TEXT DEFAULT \'23:00\''], ['reservations','shift TEXT'], ['reservations','status TEXT DEFAULT \'pre_agendada\''], ['reservations','fee_amount NUMERIC(12,2) DEFAULT 0'], ['reservations','boleto_id INTEGER'], ['reservations','document_text TEXT'], ['reservations','terms_accepted BOOLEAN DEFAULT false'], ['reservations','cancel_reason TEXT'], ['reservations','created_by INTEGER'], ['reservations','approved_by INTEGER'], ['reservations','created_at TIMESTAMP DEFAULT now()'], ['reservations','approved_at TIMESTAMP'], ['reservations','canceled_at TIMESTAMP'],
-    ['reservation_visitors','reservation_id INTEGER'], ['reservation_visitors','name TEXT'], ['reservation_visitors','document TEXT'], ['reservation_visitors','phone TEXT'], ['reservation_visitors','plate TEXT'], ['reservation_visitors','photo_data TEXT'], ['reservation_visitors','created_at TIMESTAMP DEFAULT now()'],
+    ['reservation_visitors','reservation_id INTEGER'], ['reservation_visitors','name TEXT'], ['reservation_visitors','document TEXT'], ['reservation_visitors','phone TEXT'], ['reservation_visitors','plate TEXT'], ['reservation_visitors',"visitor_type TEXT DEFAULT 'convidado'"], ['reservation_visitors',"age_group TEXT DEFAULT 'adulto'"], ['reservation_visitors','counts_as_guest BOOLEAN DEFAULT true'], ['reservation_visitors','notes TEXT'], ['reservation_visitors','photo_data TEXT'], ['reservation_visitors','created_at TIMESTAMP DEFAULT now()'],
     ['boletos','unit TEXT'], ['boletos','resident_id INTEGER'], ['boletos','title TEXT'], ['boletos','amount NUMERIC(12,2) DEFAULT 0'], ['boletos','due_date DATE'], ['boletos','status TEXT DEFAULT \'pendente\''], ['boletos','bank_name TEXT'], ['boletos','barcode TEXT'], ['boletos','digitable_line TEXT'], ['boletos','pdf_url TEXT'], ['boletos','payment_link TEXT'], ['boletos','provider TEXT DEFAULT \'manual\''], ['boletos','external_id TEXT'], ['boletos','source_type TEXT'], ['boletos','source_id INTEGER'], ['boletos','created_at TIMESTAMP DEFAULT now()'], ['boletos','paid_at TIMESTAMP'],
     ['finance','title TEXT'], ['finance','amount NUMERIC(12,2)'], ['finance','type TEXT'], ['finance','status TEXT DEFAULT \'pendente\''], ['finance','due_date DATE'], ['finance','unit TEXT'], ['finance','resident_id INTEGER'], ['finance','category TEXT DEFAULT \'geral\''], ['finance','boleto_id INTEGER'], ['finance','created_at TIMESTAMP DEFAULT now()'],
 
@@ -548,7 +555,8 @@ CREATE TABLE IF NOT EXISTS audit(
     TELEGRAM_BOT_TOKEN: '', TELEGRAM_CHAT_ID: '', WHATSAPP_PHONE_NUMBER_ID: '', WHATSAPP_ACCESS_TOKEN: '', WHATSAPP_API_VERSION: 'v19.0',
     DELIVERY_DEFAULT_CHANNELS: '{"app":true,"browser":true,"email":true,"telegram":false,"whatsapp":false}',
     RESERVATION_DEFAULT_RULES: 'Declaro que li e aceito as normas de uso do espaço comum, incluindo horários, limpeza, ruído, convidados e responsabilidade por danos.',
-    BOLETO_PROVIDER: 'manual', APK_BASE_URL: process.env.PUBLIC_APP_URL || 'https://vitoriaregia1.onrender.com',
+    RESERVATION_MAX_GUESTS_DEFAULT: '30', RESERVATION_COUNT_CHILDREN: 'true', RESERVATION_COUNT_INFANTS: 'false',
+    BOLETO_PROVIDER: 'manual', APK_BASE_URL: process.env.PUBLIC_APP_URL || 'https://vitoriaregia1.onrender.com', APK_PORTARIA_URL: '', APK_SINDICO_URL: '', APK_MORADOR_URL: '',
     ENABLE_EMAIL: 'true', ENABLE_TELEGRAM: 'false', ENABLE_WHATSAPP: 'false', ENABLE_BROWSER_PUSH: 'true',
     ENABLE_APP_PORTARIA: 'true', ENABLE_APP_SINDICO: 'true', ENABLE_APP_MORADOR: 'true',
     REGISTRATION_REQUIRE_EMAIL: 'true', REGISTRATION_REQUIRE_WHATSAPP: 'false', REGISTRATION_REQUIRE_TELEGRAM: 'false',
@@ -613,11 +621,11 @@ async function filterChannelsByPlan(channels={}) {
   out.browser = Boolean(out.browser) && await featureEnabled('browser');
   return out;
 }
-const PLATFORM_SETTING_KEYS = new Set(['ENABLE_EMAIL','ENABLE_TELEGRAM','ENABLE_WHATSAPP','ENABLE_BROWSER_PUSH','ENABLE_APP_PORTARIA','ENABLE_APP_SINDICO','ENABLE_APP_MORADOR','REGISTRATION_REQUIRE_EMAIL','REGISTRATION_REQUIRE_WHATSAPP','REGISTRATION_REQUIRE_TELEGRAM','BANK_PROVIDER','BANK_API_BASE_URL','BANK_CLIENT_ID','BANK_ACCOUNT','BANK_AGENCY','BANK_WALLET','BANK_CONTRACT','BANK_PIX_KEY','BOLETO_AUTO_GENERATE','BOLETO_PROVIDER','ENABLE_SYSTEM_UPDATES','UPDATE_CHANNEL','UPDATE_FEED_URL','UPDATE_APPLY_MODE','UPDATE_GITHUB_REPO','UPDATE_GITHUB_BRANCH']);
+const PLATFORM_SETTING_KEYS = new Set(['ENABLE_EMAIL','ENABLE_TELEGRAM','ENABLE_WHATSAPP','ENABLE_BROWSER_PUSH','ENABLE_APP_PORTARIA','ENABLE_APP_SINDICO','ENABLE_APP_MORADOR','REGISTRATION_REQUIRE_EMAIL','REGISTRATION_REQUIRE_WHATSAPP','REGISTRATION_REQUIRE_TELEGRAM','BANK_PROVIDER','BANK_API_BASE_URL','BANK_CLIENT_ID','BANK_ACCOUNT','BANK_AGENCY','BANK_WALLET','BANK_CONTRACT','BANK_PIX_KEY','BOLETO_AUTO_GENERATE','BOLETO_PROVIDER','ENABLE_SYSTEM_UPDATES','UPDATE_CHANNEL','UPDATE_FEED_URL','UPDATE_APPLY_MODE','UPDATE_GITHUB_REPO','UPDATE_GITHUB_BRANCH','APK_PORTARIA_URL','APK_SINDICO_URL','APK_MORADOR_URL','RESERVATION_MAX_GUESTS_DEFAULT','RESERVATION_COUNT_CHILDREN','RESERVATION_COUNT_INFANTS']);
 function containsProtectedSettings(body={}) { return Object.keys(body || {}).some(k => PLATFORM_SETTING_KEYS.has(k)); }
 async function publicSettingsObject() {
   const s = await getSettingsObject();
-  const keys = ['CONDO_NAME','APPEARANCE','THEME_ACCENT','ENABLE_EMAIL','ENABLE_TELEGRAM','ENABLE_WHATSAPP','ENABLE_BROWSER_PUSH','ENABLE_APP_PORTARIA','ENABLE_APP_SINDICO','ENABLE_APP_MORADOR','REGISTRATION_REQUIRE_EMAIL','REGISTRATION_REQUIRE_WHATSAPP','REGISTRATION_REQUIRE_TELEGRAM'];
+  const keys = ['CONDO_NAME','APPEARANCE','THEME_ACCENT','ENABLE_EMAIL','ENABLE_TELEGRAM','ENABLE_WHATSAPP','ENABLE_BROWSER_PUSH','ENABLE_APP_PORTARIA','ENABLE_APP_SINDICO','ENABLE_APP_MORADOR','REGISTRATION_REQUIRE_EMAIL','REGISTRATION_REQUIRE_WHATSAPP','REGISTRATION_REQUIRE_TELEGRAM','APK_PORTARIA_URL','APK_SINDICO_URL','APK_MORADOR_URL','RESERVATION_MAX_GUESTS_DEFAULT','RESERVATION_COUNT_CHILDREN','RESERVATION_COUNT_INFANTS'];
   return Object.fromEntries(keys.map(k => [k, s[k] ?? '']));
 }
 function loginEmailFromChannels(body={}) {
@@ -710,6 +718,36 @@ function parsePackageText(text='') { const clean=String(text||'').replace(/\r/g,
 function parseInvoiceText(text='') { const clean=String(text||'').replace(/\r/g,'\n'); const lines=clean.split('\n').map(l=>l.trim()).filter(Boolean); const access_key=(clean.match(/\b(\d{44})\b/)?.[1] || '').trim(); const document_number=(clean.match(/(?:NF\-?e|NFS\-?e|nota fiscal|n[úu]mero|nº|no\.)\s*[:\-]?\s*(\d{3,12})/i)?.[1] || clean.match(/\b(\d{6,12})\b/)?.[1] || '').trim(); const supplier=(clean.match(/(?:emitente|fornecedor|prestador)\s*[:\-]\s*([^\n]+)/i)?.[1] || lines.find(l => /LTDA|S\.A|MEI|EIRELI|SERVI|COMERC/i.test(l)) || lines[0] || '').trim(); const amount=parseCurrency(clean); const issue_date=normalizeDate(clean.match(/(?:emiss[aã]o|emitida em|data)\s*[:\-]?\s*([0-9\/\-.]+)/i)?.[1] || clean); const due_date=normalizeDate(clean.match(/(?:vencimento|venc\.?|pagar at[eé])\s*[:\-]?\s*([0-9\/\-.]+)/i)?.[1] || ''); return { supplier, document_number, access_key, amount, issue_date, due_date, category:'nota fiscal', raw:clean.slice(0,8000) }; }
 function googleCalendarUrl(res) { const date = String(res.reserved_for || '').replace(/-/g,''); const start = (res.start_time || '19:00').replace(':','') + '00'; const end = (res.end_time || '23:00').replace(':','') + '00'; const title=encodeURIComponent(`Reserva ${res.area || ''} - Unidade ${res.unit || ''}`); const details=encodeURIComponent(`Reserva Vitória Régia\nMorador: ${res.resident || ''}\nStatus: ${res.status || ''}`); return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${date}T${start}/${date}T${end}&details=${details}&location=${encodeURIComponent(res.area || '')}`; }
 function icsContent(res) { const date=String(res.reserved_for||'').replace(/-/g,''); const start=(res.start_time||'19:00').replace(':','')+'00'; const end=(res.end_time||'23:00').replace(':','')+'00'; const uid=`reserva-${res.id}@vitoriaregia`; return ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Vitoria Regia Pro//Reservas//PT-BR','BEGIN:VEVENT',`UID:${uid}`,`DTSTAMP:${new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'')}`,`DTSTART:${date}T${start}`,`DTEND:${date}T${end}`,`SUMMARY:Reserva ${res.area || ''} - Unidade ${res.unit || ''}`,`DESCRIPTION:Morador ${res.resident || ''} - Status ${res.status || ''}`,`LOCATION:${res.area || ''}`,'END:VEVENT','END:VCALENDAR'].join('\r\n'); }
+
+function reservationStatusInfo(status='pre_agendada', res={}) {
+  const label = ({ pre_agendada:'pré-agendada', pendente_pagamento:'pendente pagamento', pendente_aceite_regras:'pendente aceite das regras de utilização', confirmada:'confirmada', cancelada:'cancelada' }[status] || status || 'atualizada');
+  const when = res.reserved_for ? new Date(res.reserved_for).toLocaleDateString('pt-BR', { timeZone:'UTC' }) : 'data informada';
+  const base = `Reserva do espaço ${res.area || ''} para ${when}, das ${res.start_time || '--'} às ${res.end_time || '--'}, unidade ${res.unit || '-'}.`;
+  const messages = {
+    pre_agendada: `Sua reserva está pré-agendada. ${base} A data está bloqueada enquanto a administração confere pagamento, aceite das regras e disponibilidade operacional.`,
+    pendente_pagamento: `Sua reserva está pendente de pagamento. ${base} Acesse Financeiro/Boletos para conferir a cobrança ou aguarde o envio pelo condomínio.`,
+    pendente_aceite_regras: `Sua reserva está pendente de aceite das regras de utilização do espaço. ${base} Leia o documento digital e confirme que está de acordo com as normas.`,
+    confirmada: `Sua reserva foi confirmada. ${base} Apresente-se conforme as normas do condomínio e mantenha a lista de convidados atualizada.`,
+    cancelada: `Sua reserva foi cancelada. ${base}${res.cancel_reason ? ' Motivo: ' + res.cancel_reason : ''}`
+  };
+  return { label, title:`Reserva ${label} - Vitória Régia`, body: messages[status] || `Sua reserva foi atualizada. ${base}` };
+}
+async function residentForReservation(res={}) {
+  return await findResident({ resident_id:res.resident_id, unit:res.unit, recipient:res.resident });
+}
+async function notifyReservationUpdate(res, status=res.status, extra={}) {
+  const resident = await residentForReservation(res);
+  if (!resident) return { ok:false, skipped:true, reason:'Morador não localizado para a reserva.' };
+  const info = reservationStatusInfo(status, { ...res, ...extra });
+  return notifyResident(resident, { title:info.title, body:info.body, channels:{ app:true,browser:true,email:true,telegram:true,whatsapp:true }, action_url:'/#/reservas', payload:{ reservation_id:res.id, status } });
+}
+function guestCountsInLimit(v={}, settings={}) {
+  const age = String(v.age_group || 'adulto').toLowerCase();
+  if (age === 'bebe') return boolValue(settings.RESERVATION_COUNT_INFANTS, false) && v.counts_as_guest !== false;
+  if (age === 'crianca') return boolValue(settings.RESERVATION_COUNT_CHILDREN, true) && v.counts_as_guest !== false;
+  return v.counts_as_guest !== false;
+}
+
 async function createBoleto({ unit, resident_id, title, amount, due_date, source_type, source_id, provider='auto', bank_name='', digitable_line='', barcode='', pdf_url='', payment_link='' }) {
   let providerToUse = provider && provider !== 'auto' ? provider : await getSetting('BOLETO_PROVIDER', 'manual');
   const bankProvider = await getSetting('BANK_PROVIDER', providerToUse || 'manual');
@@ -917,16 +955,85 @@ app.post('/api/visitors', auth, can('visitors.manage'), async (req,res,next)=>{ 
 app.delete('/api/visitors/:id', auth, can('visitors.manage'), async (req,res,next)=>{ try { await q('DELETE FROM visitors WHERE id=$1',[req.params.id]); res.json({ ok:true }); } catch(e){ next(e); } });
 
 app.get('/api/common-areas', auth, async (_req,res,next)=>{ try { res.json((await q('SELECT * FROM common_areas WHERE active=true ORDER BY name')).rows); } catch(e){ next(e); } });
-app.post('/api/common-areas', auth, can('settings.manage'), async (req,res,next)=>{ try { requireFields(req.body,['name']); const r=await q('INSERT INTO common_areas(name,fee_amount,rules_document,active,requires_approval) VALUES($1,$2,$3,$4,$5) ON CONFLICT(name) DO UPDATE SET fee_amount=$2,rules_document=$3,active=$4,requires_approval=$5 RETURNING *',[req.body.name,req.body.fee_amount||0,req.body.rules_document||'',req.body.active!==false,req.body.requires_approval!==false]); res.json(r.rows[0]); } catch(e){ next(e); } });
-app.get('/api/reservations', auth, can('reservations.view'), async (req,res,next)=>{ try { if (isResident(req.user) && req.user.resident_id) return res.json((await q('SELECT r.*, b.digitable_line, b.payment_link FROM reservations r LEFT JOIN boletos b ON b.id=r.boleto_id WHERE r.resident_id=$1 ORDER BY reserved_for DESC NULLS LAST,id DESC',[req.user.resident_id])).rows); res.json((await q('SELECT r.*, b.digitable_line, b.payment_link FROM reservations r LEFT JOIN boletos b ON b.id=r.boleto_id ORDER BY reserved_for DESC NULLS LAST,id DESC')).rows); } catch(e){ next(e); } });
-app.post('/api/reservations', auth, can('reservations.manage'), async (req,res,next)=>{ try { requireFields(req.body,['area','unit','reserved_for']); if (isResident(req.user) && req.body.terms_accepted !== true) return res.status(400).json({ error:'Aceite as normas do espaço para solicitar a reserva.' }); const resident=await findResident({ resident_id:req.user.resident_id, unit:req.body.unit, recipient:req.body.resident }); const area=(await q('SELECT * FROM common_areas WHERE lower(name)=lower($1) LIMIT 1',[req.body.area])).rows[0]; const start=req.body.start_time || (req.body.shift === 'manha' ? '08:00' : req.body.shift === 'tarde' ? '14:00' : '19:00'); const end=req.body.end_time || (req.body.shift === 'manha' ? '12:00' : req.body.shift === 'tarde' ? '18:00' : '23:00'); const fee=Number(req.body.fee_amount ?? area?.fee_amount ?? 0); const status=isStaff(req.user) && req.body.status ? req.body.status : 'pre_agendada'; const r=await q('INSERT INTO reservations(area,area_id,unit,resident,resident_id,reserved_for,start_time,end_time,shift,status,fee_amount,document_text,terms_accepted,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',[req.body.area,area?.id||null,req.body.unit,req.body.resident||resident?.name||req.user.name,resident?.id||req.user.resident_id||null,req.body.reserved_for,start,end,req.body.shift||'noite',status,fee,req.body.document_text || area?.rules_document || await getSetting('RESERVATION_DEFAULT_RULES'),req.body.terms_accepted===true,req.user.id]); let reserva=r.rows[0]; if (fee > 0) { const boleto=await createBoleto({ unit:reserva.unit, resident_id:reserva.resident_id, title:`Taxa de reserva - ${reserva.area}`, amount:fee, due_date:req.body.due_date || reserva.reserved_for, source_type:'reservation', source_id:reserva.id }); await q('UPDATE reservations SET boleto_id=$1 WHERE id=$2',[boleto.id,reserva.id]); await q('INSERT INTO finance(title,amount,type,status,due_date,unit,resident_id,category,boleto_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)', [`Taxa de reserva - ${reserva.area}`, fee, 'receita', 'pendente', boleto.due_date, reserva.unit, reserva.resident_id, 'reserva', boleto.id]); reserva={...reserva,boleto_id:boleto.id,digitable_line:boleto.digitable_line,payment_link:boleto.payment_link}; }
-  if (resident) await notifyResident(resident,{ title:'Reserva pré-agendada', body:`Sua reserva de ${reserva.area} para ${reserva.reserved_for} foi pré-agendada.`, channels:{ app:true,browser:true,email:true }, action_url:'/#/reservas' }).catch(()=>null); await audit(req.user.email,'criou reserva',req.body.area); res.json({ ...reserva, google_calendar_url: googleCalendarUrl(reserva) }); } catch(e){ if (/idx_reservation_slot|duplicate key/i.test(String(e.message))) return res.status(409).json({ error:'Essa data e horário já estão bloqueados para o espaço selecionado.' }); next(e); } });
-app.post('/api/reservations/:id/cancel', auth, can('reservations.manage'), async (req,res,next)=>{ try { const r=await q("UPDATE reservations SET status='cancelada',cancel_reason=$1,canceled_at=now() WHERE id=$2 RETURNING *",[req.body.reason||'',req.params.id]); await audit(req.user.email,'cancelou reserva',req.params.id); res.json(r.rows[0]||{}); } catch(e){ next(e); } });
-app.post('/api/reservations/:id/approve', auth, can('reservations.manage'), async (req,res,next)=>{ try { const r=await q("UPDATE reservations SET status='confirmada',approved_by=$1,approved_at=now() WHERE id=$2 RETURNING *",[req.user.id,req.params.id]); const reserva=r.rows[0]; if (reserva?.resident_id) await createNotification({ resident_id:reserva.resident_id, title:'Reserva confirmada', body:`Sua reserva de ${reserva.area} foi confirmada.`, channel:'app', action_url:'/#/reservas' }).catch(()=>null); res.json(reserva || {}); } catch(e){ next(e); } });
+app.post('/api/common-areas', auth, can('settings.manage'), async (req,res,next)=>{ try { requireFields(req.body,['name']); const r=await q('INSERT INTO common_areas(name,fee_amount,rules_document,active,requires_approval,max_guests,count_children,count_infants) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(name) DO UPDATE SET fee_amount=$2,rules_document=$3,active=$4,requires_approval=$5,max_guests=$6,count_children=$7,count_infants=$8 RETURNING *',[req.body.name,req.body.fee_amount||0,req.body.rules_document||'',req.body.active!==false,req.body.requires_approval!==false,req.body.max_guests||30,req.body.count_children!==false,req.body.count_infants===true]); res.json(r.rows[0]); } catch(e){ next(e); } });
+
+app.get('/api/reservations', auth, can('reservations.view'), async (req,res,next)=>{ try {
+  const own = isResident(req.user) && req.user.resident_id;
+  const rows = own
+    ? (await q('SELECT r.*, b.digitable_line, b.payment_link FROM reservations r LEFT JOIN boletos b ON b.id=r.boleto_id WHERE r.resident_id=$1 ORDER BY reserved_for DESC NULLS LAST,id DESC',[req.user.resident_id])).rows
+    : (await q('SELECT r.*, b.digitable_line, b.payment_link FROM reservations r LEFT JOIN boletos b ON b.id=r.boleto_id ORDER BY reserved_for DESC NULLS LAST,id DESC')).rows;
+  const ids = rows.map(r=>r.id);
+  let visitorsBy = {};
+  if (ids.length) {
+    const visitors = (await q('SELECT * FROM reservation_visitors WHERE reservation_id = ANY($1::int[]) ORDER BY id DESC',[ids])).rows;
+    visitorsBy = visitors.reduce((acc,v)=>{ (acc[v.reservation_id] ||= []).push(v); return acc; }, {});
+  }
+  res.json(rows.map(r => ({ ...r, visitors: visitorsBy[r.id] || [] })));
+} catch(e){ next(e); } });
+app.post('/api/reservations', auth, can('reservations.manage'), async (req,res,next)=>{ try {
+  requireFields(req.body,['area','unit','resident','reserved_for','start_time','end_time']);
+  const resident=await findResident({ resident_id:req.user.resident_id, unit:req.body.unit, recipient:req.body.resident });
+  const area=(await q('SELECT * FROM common_areas WHERE lower(name)=lower($1) LIMIT 1',[req.body.area])).rows[0];
+  const start=req.body.start_time || '19:00'; const end=req.body.end_time || '23:00';
+  const fee=Number(req.body.fee_amount ?? area?.fee_amount ?? 0);
+  const termsAccepted=req.body.terms_accepted===true;
+  let status = req.body.status || 'pre_agendada';
+  if (!termsAccepted) status='pendente_aceite_regras';
+  else if (fee > 0) status='pendente_pagamento';
+  const r=await q('INSERT INTO reservations(area,area_id,unit,resident,resident_id,reserved_for,start_time,end_time,shift,status,fee_amount,document_text,terms_accepted,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',[req.body.area,area?.id||null,req.body.unit,req.body.resident||resident?.name||req.user.name,resident?.id||req.user.resident_id||null,req.body.reserved_for,start,end,req.body.shift||'noite',status,fee,req.body.document_text || area?.rules_document || await getSetting('RESERVATION_DEFAULT_RULES'),termsAccepted,req.user.id]);
+  let reserva=r.rows[0];
+  if (fee > 0) {
+    const boleto=await createBoleto({ unit:reserva.unit, resident_id:reserva.resident_id, title:`Taxa de reserva - ${reserva.area}`, amount:fee, due_date:req.body.due_date || reserva.reserved_for, source_type:'reservation', source_id:reserva.id });
+    await q('UPDATE reservations SET boleto_id=$1 WHERE id=$2',[boleto.id,reserva.id]);
+    await q('INSERT INTO finance(title,amount,type,status,due_date,unit,resident_id,category,boleto_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)', [`Taxa de reserva - ${reserva.area}`, fee, 'receita', 'pendente', boleto.due_date, reserva.unit, reserva.resident_id, 'reserva', boleto.id]);
+    reserva={...reserva,boleto_id:boleto.id,digitable_line:boleto.digitable_line,payment_link:boleto.payment_link};
+  }
+  await notifyReservationUpdate(reserva,'pre_agendada').catch(()=>null);
+  if (status === 'pendente_aceite_regras') await notifyReservationUpdate(reserva,'pendente_aceite_regras').catch(()=>null);
+  if (status === 'pendente_pagamento') await notifyReservationUpdate(reserva,'pendente_pagamento').catch(()=>null);
+  await audit(req.user.email,'criou reserva',req.body.area);
+  res.json({ ...reserva, google_calendar_url: googleCalendarUrl(reserva) });
+} catch(e){ if (/idx_reservation_slot|duplicate key/i.test(String(e.message))) return res.status(409).json({ error:'Essa data e horário já estão bloqueados para o espaço selecionado.' }); next(e); } });
+app.post('/api/reservations/:id/status', auth, can('reservations.manage'), async (req,res,next)=>{ try {
+  const status = String(req.body.status || '').trim();
+  if (!['pre_agendada','pendente_pagamento','pendente_aceite_regras','confirmada','cancelada'].includes(status)) return res.status(400).json({ error:'Status inválido para reserva.' });
+  const r=await q('UPDATE reservations SET status=$1, cancel_reason=CASE WHEN $1=$2 THEN $3 ELSE cancel_reason END, canceled_at=CASE WHEN $1=$2 THEN now() ELSE canceled_at END, approved_by=CASE WHEN $1=$4 THEN $5 ELSE approved_by END, approved_at=CASE WHEN $1=$4 THEN now() ELSE approved_at END WHERE id=$6 RETURNING *',[status,'cancelada',req.body.reason||'', 'confirmada', req.user.id, req.params.id]);
+  const reserva=r.rows[0]; if (!reserva) return res.status(404).json({ error:'Reserva não encontrada.' });
+  await notifyReservationUpdate(reserva,status,{ cancel_reason:req.body.reason||reserva.cancel_reason }).catch(()=>null);
+  await audit(req.user.email,'atualizou reserva',`${req.params.id}:${status}`);
+  res.json(reserva);
+} catch(e){ next(e); } });
+app.post('/api/reservations/:id/cancel', auth, can('reservations.manage'), async (req,res,next)=>{ try {
+  const r=await q("UPDATE reservations SET status='cancelada',cancel_reason=$1,canceled_at=now() WHERE id=$2 RETURNING *",[req.body.reason||'',req.params.id]);
+  const reserva=r.rows[0]; if (reserva) await notifyReservationUpdate(reserva,'cancelada',{ cancel_reason:req.body.reason||'' }).catch(()=>null);
+  await audit(req.user.email,'cancelou reserva',req.params.id); res.json(reserva||{});
+} catch(e){ next(e); } });
+app.post('/api/reservations/:id/approve', auth, can('reservations.manage'), async (req,res,next)=>{ try {
+  const r=await q("UPDATE reservations SET status='confirmada',approved_by=$1,approved_at=now() WHERE id=$2 RETURNING *",[req.user.id,req.params.id]);
+  const reserva=r.rows[0]; if (reserva) await notifyReservationUpdate(reserva,'confirmada').catch(()=>null);
+  res.json(reserva || {});
+} catch(e){ next(e); } });
 app.get('/api/reservations/:id/google', auth, can('reservations.view'), async (req,res,next)=>{ try { const r=(await q('SELECT * FROM reservations WHERE id=$1',[req.params.id])).rows[0]; if (!r) return res.status(404).json({ error:'Reserva não encontrada.' }); res.json({ url: googleCalendarUrl(r) }); } catch(e){ next(e); } });
 app.get('/api/reservations/:id/ics', auth, can('reservations.view'), async (req,res,next)=>{ try { const r=(await q('SELECT * FROM reservations WHERE id=$1',[req.params.id])).rows[0]; if (!r) return res.status(404).send('Reserva não encontrada.'); res.setHeader('Content-Type','text/calendar; charset=utf-8'); res.setHeader('Content-Disposition',`attachment; filename="reserva-${r.id}.ics"`); res.send(icsContent(r)); } catch(e){ next(e); } });
 app.get('/api/reservations/:id/visitors', auth, can('reservations.view'), async (req,res,next)=>{ try { res.json((await q('SELECT * FROM reservation_visitors WHERE reservation_id=$1 ORDER BY id DESC',[req.params.id])).rows); } catch(e){ next(e); } });
-app.post('/api/reservations/:id/visitors', auth, can('reservations.manage'), async (req,res,next)=>{ try { const created=[]; const list=Array.isArray(req.body.visitors) ? req.body.visitors : String(req.body.bulk||'').split('\n').map(line=>{ const [name,document,phone,plate]=line.split(/[;,]/).map(x=>x?.trim()||''); return { name, document, phone, plate }; }).filter(x=>x.name); for (const v of list) { const r=await q('INSERT INTO reservation_visitors(reservation_id,name,document,phone,plate,photo_data) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',[req.params.id,v.name,v.document||'',v.phone||'',v.plate||'',v.photo_data||'']); created.push(r.rows[0]); } res.json(created); } catch(e){ next(e); } });
+app.post('/api/reservations/:id/visitors', auth, can('reservations.manage'), async (req,res,next)=>{ try {
+  const reservation=(await q('SELECT r.*, ca.max_guests, ca.count_children, ca.count_infants FROM reservations r LEFT JOIN common_areas ca ON ca.id=r.area_id WHERE r.id=$1',[req.params.id])).rows[0];
+  if (!reservation) return res.status(404).json({ error:'Reserva não encontrada.' });
+  const settings=await getSettingsObject();
+  const maxGuests=Number(reservation.max_guests || settings.RESERVATION_MAX_GUESTS_DEFAULT || 30);
+  const existing=(await q('SELECT * FROM reservation_visitors WHERE reservation_id=$1',[req.params.id])).rows;
+  let count=existing.filter(v => guestCountsInLimit(v, settings)).length;
+  const list=Array.isArray(req.body.visitors) ? req.body.visitors : String(req.body.bulk||'').split('\n').map(line=>{ const [name,document,phone,plate,age_group='adulto']=line.split(/[;,]/).map(x=>x?.trim()||''); return { name, document, phone, plate, age_group, visitor_type:'convidado' }; }).filter(x=>x.name);
+  const created=[];
+  for (const v of list) {
+    const normalized={ ...v, age_group:v.age_group || 'adulto', visitor_type:v.visitor_type || 'convidado' };
+    if (guestCountsInLimit(normalized, settings)) count += 1;
+    if (count > maxGuests) return res.status(400).json({ error:`Limite de ${maxGuests} convidados excedido para esta reserva.` });
+    const r=await q('INSERT INTO reservation_visitors(reservation_id,name,document,phone,plate,visitor_type,age_group,counts_as_guest,notes,photo_data) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',[req.params.id,normalized.name,normalized.document||'',normalized.phone||'',normalized.plate||'',normalized.visitor_type||'convidado',normalized.age_group||'adulto',normalized.counts_as_guest!==false,normalized.notes||'',normalized.photo_data||'']);
+    created.push(r.rows[0]);
+  }
+  res.json(created);
+} catch(e){ next(e); } });
 
 app.get('/api/finance', auth, can('finance.view'), async (req,res,next)=>{ try { if (isResident(req.user) && req.user.resident_id) return res.json((await q('SELECT f.*, b.digitable_line, b.payment_link FROM finance f LEFT JOIN boletos b ON b.id=f.boleto_id WHERE f.resident_id=$1 OR f.unit=(SELECT unit FROM residents WHERE id=$1) ORDER BY f.due_date DESC NULLS LAST,f.id DESC',[req.user.resident_id])).rows); res.json((await q('SELECT f.*, b.digitable_line, b.payment_link FROM finance f LEFT JOIN boletos b ON b.id=f.boleto_id ORDER BY f.due_date DESC NULLS LAST,f.id DESC')).rows); } catch(e){ next(e); } });
 app.post('/api/finance', auth, can('finance.manage'), async (req,res,next)=>{ try { requireFields(req.body,['title','amount','type']); const resident=await findResident(req.body); let boleto_id=req.body.boleto_id||null; if (req.body.generate_boleto) { const boleto=await createBoleto({ unit:req.body.unit, resident_id:resident?.id||null, title:req.body.title, amount:req.body.amount, due_date:req.body.due_date, bank_name:req.body.bank_name||'', digitable_line:req.body.digitable_line||'', pdf_url:req.body.pdf_url||'', payment_link:req.body.payment_link||'', source_type:'finance' }); boleto_id=boleto.id; } const r=await q('INSERT INTO finance(title,amount,type,status,due_date,unit,resident_id,category,boleto_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',[req.body.title,req.body.amount,req.body.type,req.body.status||'pendente',req.body.due_date||null,req.body.unit||'',resident?.id||null,req.body.category||'geral',boleto_id]); await audit(req.user.email,'lançou financeiro',req.body.title); res.json(r.rows[0]); } catch(e){ next(e); } });
@@ -955,6 +1062,19 @@ app.get('/api/notifications', auth, async (req,res,next)=>{ try { const rows = i
 app.post('/api/notifications/:id/read', auth, async (req,res,next)=>{ try { const r=await q("UPDATE notifications SET status='lida',read_at=now() WHERE id=$1 RETURNING *",[req.params.id]); res.json(r.rows[0]||{}); } catch(e){ next(e); } });
 app.get('/api/push/vapid-public-key', auth, async (_req,res)=>res.json({ publicKey: process.env.VAPID_PUBLIC_KEY || '' }));
 app.post('/api/push/subscribe', auth, async (req,res,next)=>{ try { if (!req.body.endpoint) return res.status(400).json({ error:'Endpoint não informado.' }); await q('INSERT INTO push_subscriptions(user_id,endpoint,payload) VALUES($1,$2,$3) ON CONFLICT(endpoint) DO UPDATE SET payload=$3',[req.user.id,req.body.endpoint,JSON.stringify(req.body)]); res.json({ ok:true }); } catch(e){ next(e); } });
+
+
+app.get('/api/apps/download/:kind', auth, async (req,res,next)=>{ try {
+  const kind=String(req.params.kind||'').toLowerCase();
+  const allowed={ portaria:'ENABLE_APP_PORTARIA', sindico:'ENABLE_APP_SINDICO', morador:'ENABLE_APP_MORADOR' };
+  if (!allowed[kind]) return res.status(404).send('Aplicativo não encontrado.');
+  if (!(isMaster(req.user) || boolValue(await getSetting(allowed[kind], 'true'), true))) return res.status(403).send('Aplicativo bloqueado pelo Master.');
+  const configured=await getSetting(`APK_${kind.toUpperCase()}_URL`, '');
+  if (configured) return res.redirect(configured);
+  const file=path.join(__dirname,'..','apks',`vitoria-regia-${kind}.apk`);
+  try { await fs.access(file); } catch { return res.status(404).send('APK ainda não foi gerado. Gere pelo GitHub Actions ou configure a URL do APK em Configurações → Apps.'); }
+  res.download(file, `vitoria-regia-${kind}.apk`);
+} catch(e){ next(e); } });
 
 app.get('/api/settings', auth, async (_req,res,next)=>{ try { res.json(await getSettingsObject()); } catch(e){ next(e); } });
 app.post('/api/settings', auth, can('settings.manage'), async (req,res,next)=>{ try {
