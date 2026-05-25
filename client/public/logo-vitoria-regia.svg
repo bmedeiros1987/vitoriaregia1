@@ -1,26 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Condomínio Vitória Régia">
   <defs>
-    <linearGradient id="bg" x1="70" y1="24" x2="442" y2="490" gradientUnits="userSpaceOnUse"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#edf5f1"/></linearGradient>
-    <linearGradient id="tower" x1="113" y1="68" x2="389" y2="414" gradientUnits="userSpaceOnUse"><stop stop-color="#f5f1ea"/><stop offset=".55" stop-color="#cfc4ba"/><stop offset="1" stop-color="#a99f96"/></linearGradient>
-    <linearGradient id="glass" x1="151" y1="113" x2="361" y2="354" gradientUnits="userSpaceOnUse"><stop stop-color="#244a56"/><stop offset="1" stop-color="#0e2730"/></linearGradient>
-    <linearGradient id="accent" x1="104" y1="383" x2="414" y2="462" gradientUnits="userSpaceOnUse"><stop stop-color="#105f55"/><stop offset="1" stop-color="#2cc6a5"/></linearGradient>
-    <filter id="s" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#0f332d" flood-opacity=".18"/></filter>
+    <linearGradient id="a" x1="116" y1="56" x2="404" y2="452" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0b4e6f"/><stop offset=".48" stop-color="#0a7b7b"/><stop offset="1" stop-color="#26c2a8"/>
+    </linearGradient>
+    <linearGradient id="b" x1="88" y1="404" x2="424" y2="462" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#032845"/><stop offset="1" stop-color="#0fa58f"/>
+    </linearGradient>
+    <filter id="s" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#032845" flood-opacity=".18"/></filter>
   </defs>
-  <rect width="512" height="512" rx="106" fill="url(#bg)"/>
-  <g filter="url(#s)">
-    <path d="M99 407h314c22 0 40 18 40 40v8H59v-8c0-22 18-40 40-40z" fill="#ffffff"/>
-    <path d="M83 444h346v38H83z" fill="url(#accent)"/>
-    <path d="M132 92c0-18 15-33 33-33h54v344h-87z" fill="url(#tower)"/>
-    <path d="M293 59h54c18 0 33 15 33 33v311h-87z" fill="url(#tower)"/>
-    <path d="M208 111c0-15 12-27 27-27h42c15 0 27 12 27 27v292h-96z" fill="#eee8df"/>
-    <path d="M235 85h42v318h-42z" fill="#d6ccc2"/>
-    <g fill="url(#glass)">
-      <rect x="154" y="116" width="48" height="16" rx="3"/><rect x="154" y="154" width="48" height="16" rx="3"/><rect x="154" y="192" width="48" height="16" rx="3"/><rect x="154" y="230" width="48" height="16" rx="3"/><rect x="154" y="268" width="48" height="16" rx="3"/><rect x="154" y="306" width="48" height="16" rx="3"/><rect x="154" y="344" width="48" height="16" rx="3"/>
-      <rect x="310" y="116" width="48" height="16" rx="3"/><rect x="310" y="154" width="48" height="16" rx="3"/><rect x="310" y="192" width="48" height="16" rx="3"/><rect x="310" y="230" width="48" height="16" rx="3"/><rect x="310" y="268" width="48" height="16" rx="3"/><rect x="310" y="306" width="48" height="16" rx="3"/><rect x="310" y="344" width="48" height="16" rx="3"/>
-      <rect x="222" y="132" width="68" height="17" rx="3"/><rect x="222" y="174" width="68" height="17" rx="3"/><rect x="222" y="216" width="68" height="17" rx="3"/><rect x="222" y="258" width="68" height="17" rx="3"/><rect x="222" y="300" width="68" height="17" rx="3"/><rect x="222" y="342" width="68" height="17" rx="3"/>
-    </g>
-    <path d="M123 407h81v38h-81zM308 407h81v38h-81z" fill="#dfe8e5"/>
-    <path d="M226 407h60c16 0 29 13 29 29v46H197v-46c0-16 13-29 29-29z" fill="#173b35"/>
-    <path d="M95 445c26-35 71-35 98 0M319 445c26-35 71-35 98 0" fill="none" stroke="#34c29f" stroke-width="14" stroke-linecap="round"/>
+  <rect width="512" height="512" rx="110" fill="none"/>
+  <g filter="url(#s)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M106 421h300" stroke="url(#b)" stroke-width="25"/>
+    <path d="M142 396V188l88-72v280" stroke="url(#a)" stroke-width="25"/>
+    <path d="M230 396V93l74 58v245" stroke="url(#a)" stroke-width="25"/>
+    <path d="M304 396V184l66 50v162" stroke="url(#a)" stroke-width="25"/>
+    <path d="M169 223h37M169 268h37M169 313h37M169 358h37M257 165h36M257 212h36M257 259h36M257 306h36M257 353h36M329 248h28M329 292h28M329 336h28" stroke="#032845" stroke-opacity=".82" stroke-width="14"/>
+    <path d="M121 442c43-35 91-35 135 0 43-35 91-35 135 0" stroke="#1bb99d" stroke-width="15"/>
   </g>
 </svg>
