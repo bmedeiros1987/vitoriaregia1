@@ -1,6 +1,6 @@
 {
   "name": "vitoria-regia-pro-server",
-  "version": "9.1.0",
+  "version": "9.3.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -17,7 +17,9 @@
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^6.9.16",
     "pg": "^8.13.1",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "adm-zip": "^0.5.16",
+    "multer": "^1.4.5-lts.1"
   },
   "engines": {
     "node": "20.19.0"
