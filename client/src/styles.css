@@ -155,3 +155,170 @@ aside nav{gap:7px;padding:8px 0;scrollbar-width:thin}aside nav button,.sideBotto
   .menu-closed .brand.brandCompact{min-height:104px!important;padding:12px 52px 14px 52px!important}
   .menu-closed .brandCompact .brandLogo{width:58px!important}
 }
+
+/* v10.4 — hotfix: menu integrado ao layout, sem máscara/card segregado */
+:root{
+  --sidebarW:286px;
+  --sidebarClosedW:86px;
+  --navy:#072743;
+  --navy2:#03192f;
+  --teal:#109a8a;
+  --teal2:#1bbfa5;
+}
+body{
+  background:
+    radial-gradient(circle at 12% 8%, rgba(16,154,138,.16), transparent 28%),
+    linear-gradient(135deg,#edf5f7 0%,#f7fbfd 44%,#eaf4f3 100%)!important;
+}
+.appShell{
+  min-height:100vh!important;
+  background:
+    linear-gradient(90deg, rgba(3,25,47,.98) 0 var(--sidebarW), transparent var(--sidebarW)),
+    linear-gradient(135deg,#eef6f8,#f9fcfd)!important;
+}
+.appShell:before,
+.content:before,
+.appShell:after,
+.content:after{
+  display:none!important;
+  content:none!important;
+}
+.appShell aside{
+  left:0!important;
+  top:0!important;
+  bottom:0!important;
+  width:var(--sidebarW)!important;
+  border-radius:0!important;
+  border:0!important;
+  box-shadow:none!important;
+  background:linear-gradient(180deg,var(--navy),var(--navy2))!important;
+  color:#fff!important;
+  padding:18px 14px!important;
+  overflow:hidden!important;
+}
+.content{
+  padding:28px 28px 18px calc(var(--sidebarW) + 28px)!important;
+  background:transparent!important;
+}
+.menu-closed .appShell,
+.appShell.menu-closed{
+  background:
+    linear-gradient(90deg, rgba(3,25,47,.98) 0 var(--sidebarClosedW), transparent var(--sidebarClosedW)),
+    linear-gradient(135deg,#eef6f8,#f9fcfd)!important;
+}
+.menu-closed aside{width:var(--sidebarClosedW)!important;padding:16px 10px!important;}
+.menu-closed .content{padding-left:calc(var(--sidebarClosedW) + 28px)!important;}
+.brand.brandCompact{
+  display:grid!important;
+  grid-template-columns:1fr 42px!important;
+  grid-template-areas:'logo toggle' 'text toggle'!important;
+  align-items:center!important;
+  justify-items:center!important;
+  min-height:116px!important;
+  padding:8px 0 16px!important;
+  border-bottom:1px solid rgba(255,255,255,.14)!important;
+  gap:4px!important;
+  text-align:center!important;
+}
+.brandCompact .brandLogo{
+  grid-area:logo!important;
+  width:64px!important;
+  height:64px!important;
+  object-fit:contain!important;
+  margin:0!important;
+  filter:drop-shadow(0 8px 18px rgba(0,0,0,.18));
+}
+.brandText{
+  grid-area:text!important;
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:center!important;
+  justify-content:center!important;
+  width:100%!important;
+  min-width:0!important;
+  text-align:center!important;
+}
+.brandText b{
+  display:block!important;
+  color:#fff!important;
+  font-size:17px!important;
+  font-weight:900!important;
+  letter-spacing:.02em!important;
+  text-transform:none!important;
+  white-space:nowrap!important;
+  line-height:1.1!important;
+}
+.brandText small{
+  display:block!important;
+  color:rgba(226,245,250,.78)!important;
+  font-size:10.5px!important;
+  white-space:nowrap!important;
+  margin-top:4px!important;
+}
+.insideClose.menuToggle{
+  grid-area:toggle!important;
+  position:static!important;
+  margin:0!important;
+  width:40px!important;
+  height:40px!important;
+  border-radius:14px!important;
+  background:rgba(255,255,255,.11)!important;
+  border:1px solid rgba(255,255,255,.18)!important;
+  color:#fff!important;
+  display:grid!important;
+  place-items:center!important;
+}
+.insideClose.menuToggle:hover{background:rgba(255,255,255,.18)!important;}
+.insideClose.menuToggle svg{width:19px!important;height:19px!important;}
+aside nav{padding:16px 0!important;gap:7px!important;overflow:auto!important;}
+aside nav button,.sideBottom button{
+  color:rgba(233,247,250,.78)!important;
+  border-radius:16px!important;
+  padding:12px 13px!important;
+  min-height:46px!important;
+  background:transparent!important;
+  border:1px solid transparent!important;
+}
+aside nav button.active,aside nav button:hover,.sideBottom button:hover{
+  background:linear-gradient(135deg,rgba(18,179,158,.98),rgba(28,124,197,.68))!important;
+  color:#fff!important;
+  box-shadow:0 12px 26px rgba(0,0,0,.18)!important;
+}
+.sideBottom{
+  border-top:1px solid rgba(255,255,255,.14)!important;
+  margin-top:auto!important;
+  padding-top:12px!important;
+}
+.menuHint{display:none!important;visibility:hidden!important;height:0!important;min-height:0!important;padding:0!important;margin:0!important;overflow:hidden!important;}
+.menu-closed .brand.brandCompact{
+  grid-template-columns:1fr!important;
+  grid-template-areas:'logo' 'toggle'!important;
+  min-height:118px!important;
+  padding:10px 0!important;
+  gap:10px!important;
+}
+.menu-closed .brandCompact .brandLogo{width:48px!important;height:48px!important;}
+.menu-closed .brandText{display:none!important;}
+.menu-closed .insideClose.menuToggle{width:46px!important;height:42px!important;}
+.menu-closed aside nav button,.menu-closed .sideBottom button{
+  justify-content:center!important;
+  padding:11px 0!important;
+}
+.menu-closed aside nav button span,.menu-closed .sideBottom button span{display:none!important;}
+.panel,.settingsCard,.subpanel,.dashboardHero,.permissionsCard,.appsShowcase,.moduleCard,.metric{
+  background:rgba(255,255,255,.88)!important;
+}
+@media(max-width:760px){
+  .appShell{background:linear-gradient(135deg,#eef6f8,#f9fcfd)!important;}
+  .appShell aside{
+    left:0!important;top:0!important;bottom:0!important;width:min(86vw,338px)!important;
+    border-radius:0 28px 28px 0!important;transform:translateX(-108%)!important;transition:.24s ease!important;
+  }
+  .appShell.mobile-open aside{transform:translateX(0)!important;}
+  .brand.brandCompact{min-height:104px!important;grid-template-columns:1fr 42px!important;grid-template-areas:'logo toggle' 'text toggle'!important;padding:10px 10px 12px!important;}
+  .brandCompact .brandLogo{width:56px!important;height:56px!important;}
+  .brandText{display:flex!important;}
+  .content,.menu-closed .content,.menu-floating .content,.menu-horizontal .content{padding:76px 14px 92px!important;}
+  .overlay{display:none!important;}
+  .mobile-open .overlay{display:block!important;position:fixed!important;inset:0!important;background:rgba(1,11,22,.48)!important;z-index:50!important;}
+}

@@ -55,12 +55,36 @@ const post = (path, body) => request(path, { method:'POST', body:JSON.stringify(
 const put = (path, body) => request(path, { method:'PUT', body:JSON.stringify(body) });
 const del = (path) => request(path, { method:'DELETE' });
 
+const routeDefaults = { portaria:'encomendas', cadastros:'moradores', financeiro:'movimentos', comunicacao:'notificacoes', central:'apps', configuracoes:'aparencia' };
+const routeAliases = {
+  encomendas:['portaria','encomendas'], visitantes:['portaria','visitantes'], escalas:['portaria','escalas'], mensagens:['portaria','mensagens'], portaria:['portaria','encomendas'],
+  boletos:['financeiro','boletos'], movimentos:['financeiro','movimentos'], financeiro:['financeiro','movimentos'],
+  moradores:['cadastros','moradores'], usuarios:['cadastros','usuarios'], solicitacoes:['cadastros','solicitacoes'], cadastros:['cadastros','moradores'],
+  notificacoes:['comunicacao','notificacoes'], comunicados:['comunicacao','comunicados'], testes:['comunicacao','testes'], comunicacao:['comunicacao','notificacoes'],
+  apps:['central','apps'], updates:['central','updates'], manuais:['central','manuais'], central:['central','apps'],
+  aparencia:['configuracoes','aparencia'], menu:['configuracoes','menu'], notificacao:['configuracoes','notificacoes'], telegram:['configuracoes','telegram'], whatsapp:['configuracoes','whatsapp'], email:['configuracoes','email'], banco:['configuracoes','banco'], auditoria:['configuracoes','auditoria'], configuracoes:['configuracoes','aparencia']
+};
+function routeState(raw='dashboard', explicitSub){
+  const cleanRoute = String(raw || 'dashboard').replace(/^#?\/?/, '').replace(/^\//, '');
+  const [first, second] = cleanRoute.split('/').filter(Boolean);
+  const key = first || 'dashboard';
+  if(routeAliases[key]){
+    const [active, aliasSub] = routeAliases[key];
+    return { active, sub: explicitSub || second || aliasSub || routeDefaults[active] };
+  }
+  return { active:key, sub: explicitSub || second || routeDefaults[key] };
+}
+function routeHash(active, sub){
+  return '/' + active + (sub && routeDefaults[active] ? '/' + sub : '');
+}
+
 function App(){
   const [session,setSession] = useState(() => JSON.parse(localStorage.getItem('vr_user') || 'null'));
   const [forms,setForms] = useState(initialForms());
   const [data,setData] = useState(emptyData());
-  const [active,setActive] = useState(() => location.hash.replace(/^#\/?/,'') || 'dashboard');
-  const [sub,setSub] = useState('encomendas');
+  const initialRoute = routeState(location.hash || 'dashboard');
+  const [active,setActive] = useState(initialRoute.active);
+  const [sub,setSub] = useState(initialRoute.sub || 'encomendas');
   const [configTab,setConfigTab] = useState('aparencia');
   const [loginMode,setLoginMode] = useState('login');
   const [menuOpen,setMenuOpen] = useState(false);
@@ -85,7 +109,7 @@ function App(){
     document.querySelector('meta[name=theme-color]')?.setAttribute('content', accent);
   }, [settings.APPEARANCE, settings.UI_DENSITY, settings.THEME_TEXT_SIZE, settings.THEME_ACCENT, settings.THEME_ACCENT_2, settings.THEME_SECONDARY]);
   useEffect(() => { if(session) loadAll(); else request('/api/public-config').then(s => setData(d => ({ ...d, settings:s }))).catch(()=>null); }, [session]);
-  useEffect(() => { const fn=()=>setActive(location.hash.replace(/^#\/?/,'') || 'dashboard'); window.addEventListener('hashchange', fn); return()=>window.removeEventListener('hashchange', fn); }, []);
+  useEffect(() => { const fn=()=>{ const r=routeState(location.hash || 'dashboard'); setActive(r.active); if(r.sub) setSub(r.sub); }; window.addEventListener('hashchange', fn); return()=>window.removeEventListener('hashchange', fn); }, []);
 
   function setForm(group, patch){ setForms(f => ({ ...f, [group]:{ ...f[group], ...patch } })); }
   function notify(message, fail=false){ setToast(message); if(fail) document.body.classList.add('shake'); setTimeout(()=>{ setToast(''); document.body.classList.remove('shake'); }, 3800); }
@@ -102,7 +126,7 @@ function App(){
   async function action(path, body, message, method='POST'){ try { method === 'PUT' ? await put(path, body) : await post(path, body); notify(message); await loadAll(); return true; } catch(e){ notify(e.message, true); return false; } }
   function openConfirm(title, fields, fn){ setConfirm({ title, fields, fn }); }
   async function confirmRun(){ const c=confirm; setConfirm(null); if(c?.fn) await c.fn(); }
-  function go(tab, newSub){ const defaults={ portaria:'encomendas', cadastros:'moradores', financeiro:'movimentos', comunicacao:'notificacoes', central:'apps', configuracoes:'aparencia' }; setActive(tab); if(newSub) setSub(newSub); else if(defaults[tab]) setSub(defaults[tab]); location.hash='/'+tab; setMenuOpen(false); }
+  function go(tab, newSub){ const r=routeState(tab, newSub); setActive(r.active); if(r.sub) setSub(r.sub); location.hash=routeHash(r.active, r.sub); setMenuOpen(false); }
   async function lookupUnit(group, unit, maybeName=''){
     if(!unit) return null;
     try { const res = await request('/api/residents/lookup?unit='+encodeURIComponent(unit)+'&name='+encodeURIComponent(maybeName||'')); setLookup(l=>({ ...l, [group]:res })); const resident=res.primary || res.residents?.[0];
@@ -120,7 +144,7 @@ function App(){
   const props = { data, forms, setForm, action, notify, loadAll, settings, session, can, openConfirm, lookup, lookupUnit, prefillResidentFromContext, readImage, reading, fileToData, setActive:go, sub, setSub, isBruno, configTab, setConfigTab, del, logout };
   return <div className={shellClass}>
     <button className="mobileMenu" onClick={()=>setMenuOpen(true)}><Menu /></button>{menuOpen && <div className="overlay" onClick={()=>setMenuOpen(false)} />}
-    <aside><div className="brand brandCompact"><img src="/logo-vitoria-regia.svg" className="brandLogo"/><div className="brandText"><b>Vitória Régia</b><small>{VERSION}</small></div><button className="insideClose menuToggle" title={menuOpen ? 'Fechar menu' : (menuClosed?'Expandir menu':'Recolher menu')} onClick={()=>{ if(window.innerWidth < 861) setMenuOpen(false); else setMenuClosed(!menuClosed); }}>{window.innerWidth < 861 ? <X/> : (menuClosed ? <ChevronRight/> : <PanelLeft/>)}</button></div><nav>{menuItems.map(([key,label,Icon]) => <button key={key} className={active===key?'active':''} onClick={()=>go(key)}><Icon /><span>{label}</span></button>)}</nav><div className="sideBottom"><button onClick={()=>go('perfil')}><UserCheck/><span>Meu perfil</span></button><button onClick={logout}><LogOut/><span>Sair</span></button></div></aside>
+    <aside><div className="brand brandCompact"><img src="/logo-vitoria-regia.svg" className="brandLogo"/><div className="brandText"><b>Vitória Régia</b><small>{VERSION}</small></div><button className="insideClose menuToggle" title={menuOpen ? 'Fechar menu' : (menuClosed?'Expandir menu':'Recolher menu')} onClick={()=>{ if(window.innerWidth < 861) setMenuOpen(false); else setMenuClosed(!menuClosed); }}>{window.innerWidth < 861 ? <X/> : (menuClosed ? <ChevronRight/> : <PanelLeft/>)}</button></div><nav>{menuItems.map(([key,label,Icon]) => <button key={key} className={active===key?'active':''} aria-current={active===key?'page':undefined} onClick={()=>go(key)}><Icon /><span>{label}</span></button>)}</nav><div className="sideBottom"><button onClick={()=>go('perfil')}><UserCheck/><span>Meu perfil</span></button><button onClick={logout}><LogOut/><span>Sair</span></button></div></aside>
     {can('emergency.use') && <button className="floatingEmergency" onClick={()=>go('emergencia')}><Siren/><span>Emergência</span></button>}
     <main className="content"><Topbar session={session} settings={settings}/>{toast && <div className="toast">{toast}</div>}
       {active==='dashboard' && <Dashboard {...props}/>} {active==='portaria' && <Portaria {...props}/>} {active==='reservas' && <Reservations {...props}/>} {active==='financeiro' && <Financeiro {...props}/>} {active==='cadastros' && <Cadastros {...props}/>} {active==='comunicacao' && <Comunicacao {...props}/>} {active==='emergencia' && <Emergency {...props}/>} {active==='configuracoes' && <SettingsPage {...props}/>} {active==='central' && <CentralPro {...props}/>} {active==='perfil' && <Profile {...props}/>} 
