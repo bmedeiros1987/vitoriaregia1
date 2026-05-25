@@ -17,7 +17,7 @@ import { randomBytes, createHash, verify as cryptoVerify } from 'node:crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v10.0';
+const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v10.1';
 const JWT_SECRET = process.env.JWT_SECRET || 'troque-este-segredo-em-producao';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/vitoriaregia';
 const DB_SSL_MODE = String(process.env.DATABASE_SSL_MODE || process.env.DATABASE_SSL || 'auto').trim().toLowerCase();
@@ -1389,7 +1389,7 @@ app.post('/api/system-updates/:id/apply', auth, masterOnly, async (req,res,next)
   await q("UPDATE system_updates SET status=$1, applied_by=$2, applied_at=now(), error=NULL WHERE id=$3", [mode === 'manual' ? 'validado' : 'aplicado', req.user.id, req.params.id]);
   await notifyUpdateAvailable({ ...validation.manifest, title:`Atualização ${validation.manifest.version || validation.manifest.update_code} aplicada` }, req.user.email).catch(()=>null);
   await audit(req.user.email, 'aplicou atualização', validation.manifest.update_code);
-  res.json({ ok:true, mode, result, message: mode === 'github' ? 'Atualização enviada ao GitHub. O Render fará novo deploy pelo repositório/deploy hook.' : 'Atualização processada.' });
+  res.json({ ok:true, mode, result, requires_relogin:true, message: mode === 'github' ? 'Atualização enviada ao GitHub. O Render fará novo deploy pelo repositório/deploy hook. Entre novamente após o deploy para carregar a nova versão.' : 'Atualização processada. Entre novamente para carregar a nova versão.' });
 } catch(e){ await q('UPDATE system_updates SET status=$1,error=$2 WHERE id=$3',['erro',e.message,req.params.id]).catch(()=>null); next(e); } });
 app.post('/api/system-updates/check-feed', auth, masterOnly, async (req,res,next)=>{ try {
   const feedUrl = req.body?.feed_url || await getSetting('UPDATE_FEED_URL','');
@@ -1430,12 +1430,12 @@ app.get('/api/notify/config', auth, can('settings.manage'), async (_req,res,next
   const telegramToken = await getSetting('TELEGRAM_BOT_TOKEN', process.env.TELEGRAM_BOT_TOKEN || '');
   const whatsToken = await getSetting('WHATSAPP_ACCESS_TOKEN', process.env.WHATSAPP_ACCESS_TOKEN || process.env.WHATSAPP_API_TOKEN || '');
   const smtpPass = await getSetting('SMTP_PASS', process.env.SMTP_PASS || '');
+  const sendgridKey = process.env.SENDGRID_API_KEY || await getSetting('SENDGRID_API_KEY','');
   res.json({
-    email: { provider: await getSetting('EMAIL_PROVIDER', process.env.SENDGRID_API_KEY ? 'sendgrid' : 'smtp'), sendgridApiKeyConfigured: safeBool(process.env.SENDGRID_API_KEY || await getSetting('SENDGRID_API_KEY','')), sendgridFromEmail: await getSetting('SENDGRID_FROM_EMAIL', process.env.SENDGRID_FROM_EMAIL || ''), sendgridFromName: await getSetting('SENDGRID_FROM_NAME', 'Condomínio Vitória Régia'), smtpHost: await getSetting('SMTP_HOST',''), smtpPort: await getSetting('SMTP_PORT','587'), smtpUser: await getSetting('SMTP_USER',''), smtpPassConfigured: safeBool(smtpPass), mailFrom: await getSetting('MAIL_FROM','') },
-    telegram: { configured: safeBool(telegramToken), enabled: await featureEnabled('telegram'), token: maskSecretSetting(telegramToken), chatDefaultConfigured: safeBool(await getSetting('TELEGRAM_CHAT_ID', process.env.TELEGRAM_CHAT_ID || '')), botUsername: await getSetting('TELEGRAM_BOT_USERNAME', process.env.TELEGRAM_BOT_USERNAME || ''), startUrl: await getSetting('TELEGRAM_START_URL', process.env.TELEGRAM_START_URL || ''), webhookSecretConfigured: safeBool(await getSetting('TELEGRAM_WEBHOOK_SECRET', process.env.TELEGRAM_WEBHOOK_SECRET || '')) },
-    whatsapp: { configured: safeBool(await getSetting('WHATSAPP_PHONE_NUMBER_ID', process.env.WHATSAPP_PHONE_NUMBER_ID || '')) && safeBool(whatsToken), token: maskSecretSetting(whatsToken), phoneNumberId: await getSetting('WHATSAPP_PHONE_NUMBER_ID',''), businessAccountId: await getSetting('WHATSAPP_BUSINESS_ACCOUNT_ID',''), apiVersion: await getSetting('WHATSAPP_API_VERSION','v19.0') },
-    browser: { configured: safeBool(await getSetting('VAPID_PUBLIC_KEY', process.env.VAPID_PUBLIC_KEY || '')) && safeBool(await getSetting('VAPID_PRIVATE_KEY', process.env.VAPID_PRIVATE_KEY || '')), publicKeyConfigured: safeBool(await getSetting('VAPID_PUBLIC_KEY', process.env.VAPID_PUBLIC_KEY || '')) },
-    enabled: { email: await featureEnabled('email'), telegram: await featureEnabled('telegram'), whatsapp: await featureEnabled('whatsapp'), browser: await featureEnabled('browser') }
+    email: { enabled: await featureEnabled('email'), provider: await getSetting('MAIL_PROVIDER', await getSetting('EMAIL_PROVIDER', sendgridKey ? 'sendgrid' : 'smtp')), sendgridApiKeyConfigured: safeBool(sendgridKey), sendgridApiKey: maskSecretSetting(sendgridKey), sendgridFromEmail: await getSetting('SENDGRID_FROM_EMAIL', process.env.SENDGRID_FROM_EMAIL || ''), sendgridFromName: await getSetting('SENDGRID_FROM_NAME', 'Condomínio Vitória Régia'), replyTo: await getSetting('SENDGRID_REPLY_TO',''), smtpHost: await getSetting('SMTP_HOST',''), smtpPort: await getSetting('SMTP_PORT','587'), smtpUser: await getSetting('SMTP_USER',''), smtpPassConfigured: safeBool(smtpPass) },
+    telegram: { enabled: await featureEnabled('telegram'), configured: safeBool(telegramToken), token: maskSecretSetting(telegramToken), chatDefaultConfigured: safeBool(await getSetting('TELEGRAM_CHAT_ID', process.env.TELEGRAM_CHAT_ID || '')), chatDefault: maskSecretSetting(await getSetting('TELEGRAM_CHAT_ID', process.env.TELEGRAM_CHAT_ID || '')), botUsername: await getSetting('TELEGRAM_BOT_USERNAME', process.env.TELEGRAM_BOT_USERNAME || ''), startUrl: await getSetting('TELEGRAM_START_URL', process.env.TELEGRAM_START_URL || ''), apiBaseUrl: await getSetting('TELEGRAM_API_BASE_URL', process.env.TELEGRAM_API_BASE_URL || 'https://api.telegram.org'), webhookSecretConfigured: safeBool(await getSetting('TELEGRAM_WEBHOOK_SECRET', process.env.TELEGRAM_WEBHOOK_SECRET || '')) },
+    whatsapp: { enabled: await featureEnabled('whatsapp'), configured: safeBool(await getSetting('WHATSAPP_PHONE_NUMBER_ID', process.env.WHATSAPP_PHONE_NUMBER_ID || '')) && safeBool(whatsToken), token: maskSecretSetting(whatsToken), phoneNumberId: await getSetting('WHATSAPP_PHONE_NUMBER_ID',''), businessAccountId: await getSetting('WHATSAPP_BUSINESS_ACCOUNT_ID',''), apiVersion: await getSetting('WHATSAPP_API_VERSION','v19.0'), apiBaseUrl: await getSetting('WHATSAPP_API_BASE_URL','https://graph.facebook.com') },
+    browser: { enabled: await featureEnabled('browser'), configured: safeBool(await getSetting('VAPID_PUBLIC_KEY', process.env.VAPID_PUBLIC_KEY || '')) && safeBool(await getSetting('VAPID_PRIVATE_KEY', process.env.VAPID_PRIVATE_KEY || '')), publicKeyConfigured: safeBool(await getSetting('VAPID_PUBLIC_KEY', process.env.VAPID_PUBLIC_KEY || '')) }
   });
 } catch(e){ next(e); } });
 app.post('/api/notify/test', auth, can('settings.manage'), async (req,res,next)=>{ try {

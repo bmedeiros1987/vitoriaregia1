@@ -10,7 +10,7 @@ Root Directory:
 Variáveis principais:
 NODE_VERSION=20.19.0
 NODE_ENV=production
-APP_VERSION=Vitória Régia Pro v10.0
+APP_VERSION=Vitória Régia Pro v10.1
 DATABASE_URL=sua_url_postgresql
 DATABASE_SSL=auto
 DATABASE_SSL_MODE=auto

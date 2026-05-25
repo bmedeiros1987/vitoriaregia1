@@ -1,4 +1,4 @@
-# Vitória Régia Pro v10.0
+# Vitória Régia Pro v10.1
 
 Versão de padronização premium com foco em operação real no celular.
 
@@ -45,5 +45,5 @@ Build Command: npm install --no-audit --no-fund && npm run build
 Start Command: npm start
 Root Directory: vazio
 NODE_VERSION=20.19.0
-APP_VERSION=Vitória Régia Pro v10.0
+APP_VERSION=Vitória Régia Pro v10.1
 ```

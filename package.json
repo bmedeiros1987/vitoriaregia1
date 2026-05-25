@@ -1,8 +1,8 @@
 {
   "name": "vitoria-regia-pro",
-  "version": "10.0.0",
+  "version": "10.1.0",
   "private": true,
-  "description": "Sistema Vitória Régia Pro v10.0 com padronização premium, Telegram fallback, manuais estáticos, PWA e vínculo automático por unidade",
+  "description": "Sistema Vitória Régia Pro v10.1 TOP com visual premium, cores funcionais, Telegram, testes de mensagens e atualização com progresso",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "npm --prefix client run dev",

@@ -1,0 +1,25 @@
+NODE_VERSION=20.19.0
+NODE_ENV=production
+APP_VERSION=Vitória Régia Pro v10.1
+DATABASE_SSL=auto
+DATABASE_SSL_MODE=auto
+
+# Notificações
+ENABLE_EMAIL=true
+ENABLE_TELEGRAM=true
+ENABLE_WHATSAPP=false
+ENABLE_BROWSER_PUSH=true
+
+# Telegram - configure no Render, não no GitHub
+TELEGRAM_ENABLED=true
+TELEGRAM_START_URL=https://t.me/vitoriaregia_bot
+TELEGRAM_BOT_USERNAME=vitoriaregia_bot
+TELEGRAM_BOT_TOKEN=novo_token_do_bot
+TELEGRAM_CHAT_ID=seu_chat_id
+TELEGRAM_WEBHOOK_SECRET=um_segredo_forte
+TELEGRAM_API_BASE_URL=https://api.telegram.org
+
+# Atualizações
+ENABLE_SYSTEM_UPDATES=true
+UPDATE_REQUIRE_SIGNATURE=true
+UPDATE_APPLY_MODE=github
