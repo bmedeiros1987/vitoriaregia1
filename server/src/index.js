@@ -454,6 +454,17 @@ CREATE TABLE IF NOT EXISTS push_subscriptions(
   payload JSONB,
   created_at TIMESTAMP DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS error_logs(
+  id SERIAL PRIMARY KEY,
+  actor TEXT,
+  method TEXT,
+  path TEXT,
+  message TEXT,
+  stack TEXT,
+  payload JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMP DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS system_updates(
   id SERIAL PRIMARY KEY,
   update_code TEXT UNIQUE NOT NULL,
@@ -1059,7 +1070,10 @@ app.get('/api/health', (_req,res)=>res.json({ ok:true, version:APP_VERSION }));
 app.get('/api/public-config', async (_req,res,next)=>{ try { res.json(await publicSettingsObject()); } catch(e){ next(e); } });
 app.post('/api/login', async (req,res,next)=>{ try { requireFields(req.body,['email','password']); const r=await q('SELECT * FROM users WHERE lower(email)=lower($1)',[req.body.email]); const user=r.rows[0]; if (!user || user.active === false) return res.status(401).json({ error:'Usuário não encontrado ou inativo.' }); const ok=await bcrypt.compare(req.body.password, user.password_hash || ''); if (!ok) return res.status(401).json({ error:'Senha inválida.' }); const clean=sanitizeUser(user); await q('UPDATE users SET last_login=now() WHERE id=$1',[clean.id]).catch(()=>null); const token=jwt.sign(clean, JWT_SECRET, { expiresIn:'12h' }); res.json({ token, user:clean, version:APP_VERSION }); } catch(e){ next(e); } });
 app.post('/api/register', async (req,res,next)=>{ try {
-  requireFields(req.body,['name','unit']);
+  requireFields(req.body,['name']);
+  const requestedRole = ['morador','sindico','portaria','funcionario'].includes(String(req.body.role||'').toLowerCase()) ? String(req.body.role).toLowerCase() : 'morador';
+  const requiresUnit = ['morador','sindico'].includes(requestedRole);
+  if (requiresUnit && !String(req.body.unit || '').trim()) { const err=new Error('Informe a unidade/apartamento para solicitar este tipo de cadastro.'); err.status=400; throw err; }
   const emailEnabled = await featureEnabled('email'); const whatsappEnabled = await featureEnabled('whatsapp'); const telegramEnabled = await featureEnabled('telegram');
   const hasEmail = Boolean(String(req.body.email || '').trim()); const hasWhats = Boolean(onlyDigits(req.body.whatsapp_phone || req.body.phone || '')); const hasTelegram = Boolean(String(req.body.telegram_chat_id || '').trim());
   if (boolValue(await getSetting('REGISTRATION_REQUIRE_EMAIL','true'), true) && emailEnabled && !hasEmail) { const err=new Error('Informe o e-mail para solicitar cadastro.'); err.status=400; throw err; }
@@ -1070,7 +1084,7 @@ app.post('/api/register', async (req,res,next)=>{ try {
   if (hasWhats && !whatsappEnabled) { const err=new Error('Cadastro por WhatsApp ainda não está liberado neste condomínio.'); err.status=400; throw err; }
   if (hasTelegram && !telegramEnabled) { const err=new Error('Cadastro por Telegram ainda não está liberado neste condomínio.'); err.status=400; throw err; }
   const channels = await filterChannelsByPlan({ email:hasEmail, whatsapp:hasWhats, telegram:hasTelegram, app:true, browser:true });
-  const r=await q('INSERT INTO registration_requests(name,email,phone,whatsapp_phone,telegram_chat_id,preferred_channels,unit,document,role,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id,status', [req.body.name, req.body.email || '', req.body.phone || req.body.whatsapp_phone || '', req.body.whatsapp_phone || req.body.phone || '', req.body.telegram_chat_id || '', JSON.stringify(channels), req.body.unit || '', req.body.document || '', req.body.role || 'morador', req.body.notes || '']);
+  const r=await q('INSERT INTO registration_requests(name,email,phone,whatsapp_phone,telegram_chat_id,preferred_channels,unit,document,role,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id,status', [req.body.name, req.body.email || '', req.body.phone || req.body.whatsapp_phone || '', req.body.whatsapp_phone || req.body.phone || '', req.body.telegram_chat_id || '', JSON.stringify(channels), requiresUnit ? (req.body.unit || '') : (req.body.unit || ''), req.body.document || '', requestedRole, req.body.notes || '']);
   await audit(req.body.email || req.body.phone || req.body.telegram_chat_id || 'cadastro', 'solicitou cadastro', req.body.unit || '');
   res.json({ ok:true, message:'Solicitação enviada para aprovação do síndico.', request:r.rows[0] });
 } catch(e){ next(e); } });
@@ -1184,7 +1198,27 @@ app.post('/api/users/:id/reset-password', auth, can('users.manage'), async (req,
 } catch(e){ next(e); } });
 
 app.get('/api/registration-requests', auth, can('users.manage'), async (_req,res,next)=>{ try { res.json((await q('SELECT * FROM registration_requests ORDER BY id DESC')).rows); } catch(e){ next(e); } });
-app.post('/api/registration-requests/:id/approve', auth, can('users.manage'), async (req,res,next)=>{ try { const rr=(await q('SELECT * FROM registration_requests WHERE id=$1',[req.params.id])).rows[0]; if (!rr) return res.status(404).json({ error:'Solicitação não encontrada.' }); let resident=await findResident({ unit: rr.unit, recipient: rr.name }); const prefs=await filterChannelsByPlan(parseJson(rr.preferred_channels,{ email:Boolean(rr.email), whatsapp:Boolean(rr.whatsapp_phone || rr.phone), telegram:Boolean(rr.telegram_chat_id), app:true, browser:true })); if (!resident) resident=(await q('INSERT INTO residents(name,unit,phone,whatsapp_phone,email,document,telegram_chat_id,notification_preferences) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',[rr.name,rr.unit,rr.phone||rr.whatsapp_phone||'',rr.whatsapp_phone||rr.phone||'',rr.email||'',rr.document,rr.telegram_chat_id||'',JSON.stringify(prefs)])).rows[0]; const temp=randomCode(8); const email=loginEmailFromChannels(rr); const user=(await q('INSERT INTO users(name,email,password_hash,role,user_type,unit,resident_id,phone,whatsapp_phone,telegram_chat_id,notification_preferences,permissions,active,force_password_change) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,true) ON CONFLICT(email) DO UPDATE SET active=true,resident_id=EXCLUDED.resident_id RETURNING *',[rr.name,email,await bcrypt.hash(temp,10),rr.role||'morador',rr.role||'morador',rr.unit,resident.id,rr.phone||rr.whatsapp_phone||'',rr.whatsapp_phone||rr.phone||'',rr.telegram_chat_id||'',JSON.stringify(prefs),JSON.stringify(rolePermissions(rr.role||'morador'))])).rows[0]; await q("UPDATE registration_requests SET status='aprovada',approved_by=$1,approved_at=now() WHERE id=$2",[req.user.id,rr.id]); if (prefs.email && rr.email) await sendEmailSmart({ to:rr.email, subject:'Cadastro aprovado - Vitória Régia', text:`Seu cadastro foi aprovado. Usuário: ${email}. Senha temporária: ${temp}` }).catch(()=>null); if (prefs.telegram && rr.telegram_chat_id) await sendTelegramMessage(rr.telegram_chat_id, `Cadastro aprovado no Vitória Régia. Usuário: ${email}. Senha temporária: ${temp}`).catch(()=>null); if (prefs.whatsapp && (rr.whatsapp_phone || rr.phone)) await sendWhatsAppText(rr.whatsapp_phone || rr.phone, `Cadastro aprovado no Vitória Régia. Usuário: ${email}. Senha temporária: ${temp}`).catch(()=>null); await audit(req.user.email,'aprovou cadastro',email); res.json({ ok:true, user:sanitizeUser(user) }); } catch(e){ next(e); } });
+app.post('/api/registration-requests/:id/approve', auth, can('users.manage'), async (req,res,next)=>{ try {
+  const rr=(await q('SELECT * FROM registration_requests WHERE id=$1',[req.params.id])).rows[0];
+  if (!rr) return res.status(404).json({ error:'Solicitação não encontrada.' });
+  const role = ['morador','sindico','portaria','funcionario'].includes(String(rr.role||'').toLowerCase()) ? String(rr.role).toLowerCase() : 'morador';
+  const needsResident = ['morador','sindico'].includes(role) && String(rr.unit || '').trim();
+  const prefs=await filterChannelsByPlan(parseJson(rr.preferred_channels,{ email:Boolean(rr.email), whatsapp:Boolean(rr.whatsapp_phone || rr.phone), telegram:Boolean(rr.telegram_chat_id), app:true, browser:true }));
+  let resident=null;
+  if (needsResident) {
+    resident=await findResident({ unit: rr.unit, recipient: rr.name });
+    if (!resident) resident=(await q('INSERT INTO residents(name,unit,phone,whatsapp_phone,email,document,telegram_chat_id,notification_preferences) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',[rr.name,rr.unit,rr.phone||rr.whatsapp_phone||'',rr.whatsapp_phone||rr.phone||'',rr.email||'',rr.document,rr.telegram_chat_id||'',JSON.stringify(prefs)])).rows[0];
+  }
+  const temp=randomCode(8);
+  const email=loginEmailFromChannels(rr);
+  const user=(await q('INSERT INTO users(name,email,password_hash,role,user_type,unit,resident_id,phone,whatsapp_phone,telegram_chat_id,notification_preferences,permissions,active,force_password_change) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,true) ON CONFLICT(email) DO UPDATE SET active=true,resident_id=EXCLUDED.resident_id, unit=EXCLUDED.unit, phone=EXCLUDED.phone, whatsapp_phone=EXCLUDED.whatsapp_phone, telegram_chat_id=EXCLUDED.telegram_chat_id RETURNING *',[rr.name,email,await bcrypt.hash(temp,10),role,role,rr.unit || '',resident?.id || null,rr.phone||rr.whatsapp_phone||'',rr.whatsapp_phone||rr.phone||'',rr.telegram_chat_id||'',JSON.stringify(prefs),JSON.stringify(rolePermissions(role))])).rows[0];
+  await q("UPDATE registration_requests SET status='aprovada',approved_by=$1,approved_at=now() WHERE id=$2",[req.user.id,rr.id]);
+  if (prefs.email && rr.email) await sendEmailSmart({ to:rr.email, subject:'Cadastro aprovado - Vitória Régia', text:`Seu cadastro foi aprovado. Usuário: ${email}. Senha temporária: ${temp}` }).catch(()=>null);
+  if (prefs.telegram && rr.telegram_chat_id) await sendTelegramMessage(rr.telegram_chat_id, `Cadastro aprovado no Vitória Régia. Usuário: ${email}. Senha temporária: ${temp}`).catch(()=>null);
+  if (prefs.whatsapp && (rr.whatsapp_phone || rr.phone)) await sendWhatsAppText(rr.whatsapp_phone || rr.phone, `Cadastro aprovado no Vitória Régia. Usuário: ${email}. Senha temporária: ${temp}`).catch(()=>null);
+  await audit(req.user.email,'aprovou cadastro',email);
+  res.json({ ok:true, user:sanitizeUser(user) });
+} catch(e){ next(e); } });
 app.post('/api/registration-requests/:id/reject', auth, can('users.manage'), async (req,res,next)=>{ try { await q("UPDATE registration_requests SET status='rejeitada',approved_by=$1,approved_at=now(),notes=COALESCE(notes,'') || $2 WHERE id=$3",[req.user.id, `\nRejeitada: ${req.body.note||''}`, req.params.id]); res.json({ ok:true }); } catch(e){ next(e); } });
 
 app.get('/api/employees', auth, can('employees.manage'), async (_req,res,next)=>{ try { res.json((await q('SELECT * FROM employees ORDER BY active DESC,name')).rows); } catch(e){ next(e); } });
@@ -1521,5 +1555,9 @@ const fallbackStatic = path.join(__dirname, '../../client/dist');
 app.use(express.static(staticDir));
 app.use(express.static(fallbackStatic));
 app.get(/.*/, (_req,res)=>{ const file = path.join(staticDir,'index.html'); res.sendFile(file, err => { if (err) res.sendFile(path.join(fallbackStatic,'index.html')); }); });
-app.use((err,_req,res,_next)=>{ console.error(err); res.status(err.status || 500).json({ error: err.message || 'Erro interno' }); });
+
+app.get('/api/error-logs', auth, masterOnly, async (req,res,next)=>{ try { const r=await q('SELECT id,actor,method,path,message,created_at FROM error_logs ORDER BY id DESC LIMIT 200'); res.json(r.rows); } catch(e){ next(e); } });
+app.delete('/api/error-logs', auth, masterOnly, async (req,res,next)=>{ try { await q('DELETE FROM error_logs'); await audit(req.user.email,'limpou logs de erro','todos'); res.json({ ok:true }); } catch(e){ next(e); } });
+
+app.use(async (err,req,res,_next)=>{ console.error(err); try { await q('INSERT INTO error_logs(actor,method,path,message,stack,payload) VALUES($1,$2,$3,$4,$5,$6)', [req.user?.email || '', req.method, req.originalUrl || req.url, err.message || 'Erro interno', err.stack || '', JSON.stringify({ body:req.body ? Object.keys(req.body).reduce((o,k)=>{ o[k]=/token|senha|password|secret|key/i.test(k)?'***':req.body[k]; return o; },{}) : {} })]); } catch(_){} res.status(err.status || 500).json({ error: err.message || 'Erro interno' }); });
 createConnectedPool().then(p=>{ pool=p; return init(); }).then(()=>app.listen(process.env.PORT || 3000,()=>console.log(`${APP_VERSION} online na porta ${process.env.PORT || 3000}`))).catch(error=>{ console.error('Falha ao iniciar:', error); process.exit(1); });

@@ -1,8 +1,8 @@
 {
   "name": "vitoria-regia-pro",
-  "version": "10.6.0",
+  "version": "10.8.0",
   "private": true,
-  "description": "Sistema Vitória Régia Pro v10.6 com layout premium redesenhado, foto real do prédio, menu expansível e mobile-first",
+  "description": "Sistema Vitória Régia Pro v10.7 com layout premium redesenhado, foto real do prédio, menu expansível e mobile-first",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "npm --prefix client run dev",

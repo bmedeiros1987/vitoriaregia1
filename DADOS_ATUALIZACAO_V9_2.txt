@@ -1,9 +1,0 @@
-Atualização oficial gerada
-
-Arquivo ZIP de atualização: atualizacao_vitoriaregia_pro_v9_2_VRUPD-9.2-20260525-B5C3BA69.zip
-Código: VRUPD-9.2-20260525-B5C3BA69
-Token interno do pacote: VRTK-16D029-DF6489-99AA3D-B801DE
-SHA-256 do payload: 2eeba95f93ae32adc55ba1772ca84af56908c72288daba8a7b89c498af6b8ab4
-
-O token acima também está dentro do arquivo vr-update.json do ZIP de atualização.
-A chave privada de assinatura NÃO está neste pacote.

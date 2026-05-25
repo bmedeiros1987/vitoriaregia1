@@ -322,3 +322,63 @@ aside nav button.active,aside nav button:hover,.sideBottom button:hover{
   .overlay{display:none!important;}
   .mobile-open .overlay{display:block!important;position:fixed!important;inset:0!important;background:rgba(1,11,22,.48)!important;z-index:50!important;}
 }
+
+/* v10.7 — cadastro inicial mais claro, sem campos vazios/confusos */
+.cleanAccess .premiumLoginCard.accessCard{
+  max-width:560px!important;
+  padding:28px!important;
+}
+.loginBrandBlock{
+  display:grid;
+  justify-items:center;
+  gap:5px;
+  margin-bottom:18px;
+  text-align:center;
+}
+.loginBrandBlock .loginLogo{width:118px!important;max-height:92px;object-fit:contain}
+.loginBrandBlock b{font-size:18px;font-weight:950;color:var(--text);letter-spacing:.02em}
+.registerIntro{margin-top:-8px!important;color:var(--muted);line-height:1.45}
+.registerStep{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:12px 14px;
+  border-radius:18px;
+  background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 10%, var(--panel2)),var(--panel));
+  border:1px solid var(--line);
+  margin:4px 0 2px;
+}
+.registerStep span{
+  width:32px;height:32px;border-radius:999px;
+  display:grid;place-items:center;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  color:white;font-weight:950;flex:0 0 auto;
+}
+.registerStep b{display:block;font-size:14px}.registerStep small{display:block;color:var(--muted);font-size:12px;line-height:1.25}
+.registerGrid{margin:0!important;grid-template-columns:repeat(2,minmax(0,1fr))!important}
+.loginCard select{
+  width:100%;border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:16px;padding:13px 14px;outline:0;
+}
+.channelPreview{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 4px}
+.channelPreview span{display:inline-flex;align-items:center;gap:7px;padding:8px 10px;border-radius:999px;font-weight:900;font-size:12px;border:1px solid var(--line);background:var(--panel2);color:var(--muted)}
+.channelPreview span.ok{background:color-mix(in srgb,var(--accent) 12%, var(--panel));color:var(--accent);border-color:color-mix(in srgb,var(--accent) 24%, var(--line))}
+.channelPreview span.off{opacity:.45;text-decoration:line-through}
+.channelPreview svg{width:15px;height:15px}.loginHelpGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.loginHelpGrid .textLink{margin:0!important;min-height:42px}
+.noticeBox.warn{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:16px;padding:12px;display:grid;gap:2px;grid-column:1/-1}.noticeBox.warn small{color:#9a3412}
+.registerForm button[disabled]{opacity:.55;cursor:not-allowed;filter:grayscale(.2)}
+@media(max-width:760px){
+  .cleanAccess .premiumLoginCard.accessCard{width:min(100%,420px)!important;padding:22px 18px!important;max-height:calc(100svh - 36px);overflow:auto}
+  .loginBrandBlock .loginLogo{width:92px!important}.loginBrandBlock{margin-bottom:12px}.loginBrandBlock b{font-size:16px}
+  .registerGrid{grid-template-columns:1fr!important}.registerStep{padding:10px 12px}.loginHelpGrid{grid-template-columns:1fr}
+}
+
+/* v10.8 - dark mode completo, mobile premium e emergência objetiva */
+body[data-appearance="dark"], body[data-appearance="dark"] .content{background:#07120f!important;color:#edf8f4!important}
+body[data-appearance="dark"] .topbar,body[data-appearance="dark"] .panel,body[data-appearance="dark"] .settingsCard,body[data-appearance="dark"] .subpanel,body[data-appearance="dark"] .moduleCard,body[data-appearance="dark"] .metric,body[data-appearance="dark"] .tableWrap,body[data-appearance="dark"] .loginCard,body[data-appearance="dark"] .appsShowcase,body[data-appearance="dark"] .permissionsCard{background:rgba(12,24,21,.92)!important;border-color:#243a34!important;color:#edf8f4!important}
+body[data-appearance="dark"] h1,body[data-appearance="dark"] h2,body[data-appearance="dark"] h3,body[data-appearance="dark"] b,body[data-appearance="dark"] .moduleCard b{color:#f3fff9!important}
+body[data-appearance="dark"] small,body[data-appearance="dark"] p,body[data-appearance="dark"] .topbar small,body[data-appearance="dark"] .moduleCard small{color:#aec3bd!important}
+body[data-appearance="dark"] input,body[data-appearance="dark"] select,body[data-appearance="dark"] textarea{background:#111f1b!important;color:#effff9!important;border-color:#2d4740!important}
+.mobileAlignedTopbar .topBell{border-radius:999px!important;background:linear-gradient(135deg,var(--accent),var(--accent2))!important;color:#fff!important;box-shadow:0 12px 26px rgba(18,107,95,.24)}
+.mobileAlignedTopbar .profileBadge span{display:grid;line-height:1.05}.mobileAlignedTopbar .profileBadge svg{width:19px;height:19px}
+.compactEmergencyGrid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.emergency.compact{display:grid;gap:7px;text-align:left;min-height:126px;padding:14px;cursor:pointer}.emergency.compact b{font-size:14px}.emergency.compact small{font-size:12px;line-height:1.25}.emergency.compact.selected{outline:3px solid color-mix(in srgb,var(--accent) 24%,transparent);border-color:var(--accent)}.cleanEmergencyForm{align-items:end}.elevatorContact{grid-column:1/-1}.elevatorContact .buttonlike{margin-top:8px;width:max-content}.emergencyStatusColumns{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:16px}.emergencyStatusColumns .subpanel h3{margin-top:0}.topActions{display:flex;align-items:center}
+@media(max-width:860px){.mobileAlignedTopbar{display:flex!important;align-items:center!important;gap:10px!important;padding-left:66px!important}.mobileAlignedTopbar .topActions{margin-left:auto}.mobileAlignedTopbar .notificationBell{order:1;width:46px!important;height:46px!important}.mobileAlignedTopbar .profileBadge{display:none!important}.compactEmergencyGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.emergency.compact{min-height:104px;padding:12px}.emergency.compact small{display:none}.emergencyStatusColumns{grid-template-columns:1fr}.bottomNav{box-shadow:0 -12px 36px rgba(5,20,18,.12)}}
