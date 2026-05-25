@@ -1,6 +1,6 @@
 {
   "name": "vitoria-regia-pro-client",
-  "version": "9.8.0",
+  "version": "9.9.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -20,5 +20,5 @@
   "engines": {
     "node": "20.19.0"
   },
-  "description": "Sistema Vitória Régia Pro v9.8 com confirmação de cadastro, busca automática por unidade, prevenção de duplicidade, auditoria, CrewCheck e notificações profissionais"
+  "description": "Sistema Vitória Régia Pro v9.9 com correção de emergência, Telegram assistido, logo residencial e testes de notificações"
 }
