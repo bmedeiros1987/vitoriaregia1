@@ -35,3 +35,28 @@ input[type="checkbox"]{width:19px!important;height:19px!important;min-width:19px
 @media(max-width:900px){.split{grid-template-columns:1fr}.settingsGrid{grid-template-columns:1fr}.metricStrip.aligned{grid-template-columns:repeat(2,minmax(0,1fr))}.code{max-width:170px}.reservationActions{min-width:220px}}
 @media(max-width:760px){.subTabs{position:sticky;top:76px;z-index:5;background:color-mix(in srgb,var(--panel) 92%, transparent);backdrop-filter:blur(12px)}.subTabs button{flex:1 1 135px;justify-content:center}.formGrid label{font-size:14px}.reservationActions{min-width:0}.actions button{flex:1 1 110px}.appActions a{width:100%}.tableWrap{border:0;background:transparent;overflow:visible}.tableWrap table,.tableWrap tbody,.tableWrap tr,.tableWrap td{display:block;width:100%}.tableWrap tr{background:var(--panel);border:1px solid var(--line);border-radius:18px;margin-bottom:10px;box-shadow:0 8px 24px rgba(15,30,25,.05);overflow:hidden}.tableWrap td{border-bottom:0!important;padding:11px 13px;min-width:0}.tableWrap td.actions{display:flex;flex-wrap:wrap;gap:8px}.code{max-width:100%;white-space:normal}.miniRow{display:grid;grid-template-columns:1fr}.miniRow small{text-align:left}.updateDrop{border-radius:22px}.metricStrip.aligned{grid-template-columns:1fr 1fr}.guestManager{padding:14px;border-radius:20px}.reservationRules{font-size:13px}.panelHead{align-items:flex-start}.panelHead>div{max-width:100%}}
 @media(max-width:430px){.metricStrip.aligned{grid-template-columns:1fr}.subTabs{top:72px}.subTabs button{flex-basis:100%;padding:11px}.actions button{flex:1 1 100%}.weekLabels span{font-size:10px}.calendarGrid button{min-height:68px}.updateDrop p{font-size:13px}.settingsCard{padding:15px}.formGrid label{font-size:13.5px}.panel{padding:16px}.topActions button{font-size:13px}.topActions{display:grid;grid-template-columns:1fr 1fr}.topActions button{justify-content:center}}
+
+
+/* v9.7 - ajustes de perfil, notificações, manuais e checkboxes */
+.criteriaBox, .manualUpload, .wideForm { grid-column: 1 / -1; border: 1px solid rgba(15,23,42,.08); border-radius: 18px; padding: 16px; background: rgba(255,255,255,.72); display: grid; gap: 10px; }
+.criteriaBox b { display:block; color: var(--ink); }
+.criteriaBox small { color: var(--muted); display:block; }
+.check { min-height: 44px; align-items: flex-start !important; gap: 12px !important; line-height: 1.35; padding: 10px 0; }
+.check input[type="checkbox"] { width: 20px !important; height: 20px !important; min-width: 20px; margin-top: 2px; accent-color: var(--accent); }
+.channels { grid-column: 1 / -1; display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+.channels label { min-height: 42px; display:flex; align-items:center; gap:8px; padding:8px 12px; border-radius: 999px; background: rgba(18,107,95,.08); }
+.channels input { width:18px; height:18px; accent-color: var(--accent); }
+.chipList { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+.chipList span { display:inline-flex; gap:8px; align-items:center; padding:8px 10px; border-radius:999px; background: rgba(18,107,95,.10); font-size:.92rem; }
+.chipList button { width:24px; height:24px; border-radius:50%; padding:0; display:grid; place-items:center; }
+.buttonlike.secondary, button.secondary { background: transparent; color: var(--accent); border: 1px solid rgba(18,107,95,.25); box-shadow:none; }
+.manualUpload .formGrid { align-items:end; }
+@media (max-width: 720px) {
+  .formGrid { grid-template-columns: 1fr !important; gap: 14px; }
+  .settingsGrid { grid-template-columns: 1fr !important; }
+  .split { grid-template-columns: 1fr !important; }
+  .check { font-size: .92rem; padding: 12px 0; }
+  .criteriaBox { padding: 14px; }
+  .channels label { width: 100%; justify-content:flex-start; }
+  .appCards.downloadApps { grid-template-columns: 1fr !important; }
+}
