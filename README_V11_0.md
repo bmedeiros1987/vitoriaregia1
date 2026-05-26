@@ -1,10 +1,10 @@
-# Vitória Régia Pro v11.1
+# Vitória Régia Pro v11.3
 
 Correções principais:
 
 - Telegram enviado primeiro nos fluxos de encomendas, reservas, emergências, cadastros e notificações, reduzindo a demora percebida.
 - Telegram ativo por padrão nos cadastros e preferências.
-- Versão atualizada para Vitória Régia Pro v11.1.
+- Versão atualizada para Vitória Régia Pro v11.3.
 - Logo ampliada no menu e login.
 - Alinhamento geral de botões, ações e cards.
 - Emergências com local configurável pelo síndico: Corredor, Vizinho, Elevador, Garagem, Salão de Festas, Brinquedoteca, Sauna, Piscina e outros.

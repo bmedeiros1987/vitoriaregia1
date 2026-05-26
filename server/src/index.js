@@ -17,7 +17,7 @@ import { randomBytes, createHash, verify as cryptoVerify } from 'node:crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v11.1';
+const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v11.4';
 const JWT_SECRET = process.env.JWT_SECRET || 'troque-este-segredo-em-producao';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/vitoriaregia';
 const DB_SSL_MODE = String(process.env.DATABASE_SSL_MODE || process.env.DATABASE_SSL || 'auto').trim().toLowerCase();
@@ -200,6 +200,7 @@ CREATE TABLE IF NOT EXISTS shifts(
   end_time TEXT,
   temporary_for_employee_id INTEGER,
   allow_employee_edit BOOLEAN DEFAULT false,
+  substitution_reason TEXT DEFAULT '',
   created_at TIMESTAMP DEFAULT now()
 );
 CREATE TABLE IF NOT EXISTS messages(
@@ -381,6 +382,9 @@ CREATE TABLE IF NOT EXISTS notifications(
   channel TEXT DEFAULT 'app',
   channels JSONB DEFAULT '{}'::jsonb,
   status TEXT DEFAULT 'nova',
+  delivery_status JSONB DEFAULT '{}'::jsonb,
+  delivery_started_at TIMESTAMP,
+  delivery_finished_at TIMESTAMP,
   action_url TEXT,
   payload JSONB DEFAULT '{}'::jsonb,
   read_at TIMESTAMP,
@@ -549,7 +553,7 @@ CREATE TABLE IF NOT EXISTS audit(
 
     // employees / shifts / messages
     ['employees','name TEXT'], ['employees','role TEXT DEFAULT \'portaria\''], ['employees','phone TEXT'], ['employees','email TEXT'], ['employees','active BOOLEAN DEFAULT true'], ['employees','notes TEXT'], ['employees','created_at TIMESTAMP DEFAULT now()'],
-    ['shifts','employee_id INTEGER'], ['shifts','role TEXT DEFAULT \'portaria\''], ['shifts','starts_at TIMESTAMP'], ['shifts','ends_at TIMESTAMP'], ['shifts','status TEXT DEFAULT \'programada\''], ['shifts','notes TEXT'], ['shifts','created_at TIMESTAMP DEFAULT now()'], ['shifts','shift_type TEXT DEFAULT \'custom\''], ['shifts','recurrence_type TEXT DEFAULT \'single\''], ['shifts','weekdays JSONB DEFAULT \'[]\'::jsonb'], ['shifts','month_days TEXT'], ['shifts','start_time TEXT'], ['shifts','end_time TEXT'], ['shifts','temporary_for_employee_id INTEGER'], ['shifts','allow_employee_edit BOOLEAN DEFAULT false'],
+    ['shifts','employee_id INTEGER'], ['shifts','role TEXT DEFAULT \'portaria\''], ['shifts','starts_at TIMESTAMP'], ['shifts','ends_at TIMESTAMP'], ['shifts','status TEXT DEFAULT \'programada\''], ['shifts','notes TEXT'], ['shifts','created_at TIMESTAMP DEFAULT now()'], ['shifts','shift_type TEXT DEFAULT \'custom\''], ['shifts','recurrence_type TEXT DEFAULT \'single\''], ['shifts','weekdays JSONB DEFAULT \'[]\'::jsonb'], ['shifts','month_days TEXT'], ['shifts','start_time TEXT'], ['shifts','end_time TEXT'], ['shifts','temporary_for_employee_id INTEGER'], ['shifts','allow_employee_edit BOOLEAN DEFAULT false'], ['shifts',"substitution_reason TEXT DEFAULT ''"],
     ['messages','resident_id INTEGER'], ['messages','user_id INTEGER'], ['messages','unit TEXT'], ['messages','subject TEXT'], ['messages','body TEXT'], ['messages','assigned_employee_id INTEGER'], ['messages','status TEXT DEFAULT \'nova\''], ['messages','response TEXT'], ['messages','responded_by TEXT'], ['messages','created_at TIMESTAMP DEFAULT now()'], ['messages','responded_at TIMESTAMP'],
 
     // packages / visitors
@@ -678,6 +682,8 @@ function isSecretSetting(key='') { return SECRET_SETTING_KEYS.has(String(key).to
 function maskSecretSetting(value='') { const s=String(value || ''); if (!s) return ''; if (s.includes('***')) return s; return s.length < 9 ? 'configurado' : `${s.slice(0,3)}***${s.slice(-3)}`; }
 async function getSettingsObject({ maskSecrets=false }={}) { const rows=(await q('SELECT key,value FROM settings ORDER BY key')).rows; return rows.reduce((acc,r)=>{ acc[r.key] = maskSecrets && isSecretSetting(r.key) ? maskSecretSetting(r.value) : r.value; return acc; }, {}); }
 async function getSetting(key, fallback='') { const r=await q('SELECT value FROM settings WHERE key=$1',[key]); const dbValue=r.rowCount ? String(r.rows[0].value ?? '') : ''; return dbValue !== '' ? dbValue : (process.env[key] || fallback); }
+function withTimeout(promise, ms=8000, label='operação') { return Promise.race([promise, new Promise(resolve => setTimeout(() => resolve({ ok:false, timeout:true, error:`Tempo limite excedido em ${label}` }), ms))]); }
+function channelResultSummary(result) { if (!result) return 'não solicitado'; if (result.ok) return 'enviado'; if (result.skipped) return 'ignorado'; if (result.timeout) return 'tempo esgotado'; return 'erro'; }
 
 function isMaster(user) { return user?.role === 'master' || user?.role === 'admin'; }
 function masterOnly(req, res, next) { return isMaster(req.user) ? next() : res.status(403).json({ error: 'Apenas Bruno pode alterar funcionalidades liberadas, apps, banco e atualizações.' }); }
@@ -853,20 +859,28 @@ async function telegramApi(method, body={}) {
   const token = await getSetting('TELEGRAM_BOT_TOKEN', process.env.TELEGRAM_BOT_TOKEN || '');
   if (!token) return { ok:false, skipped:true, reason:'Token do Telegram não configurado.' };
   const base = (await getSetting('TELEGRAM_API_BASE_URL', process.env.TELEGRAM_API_BASE_URL || 'https://api.telegram.org')).replace(/\/$/, '');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Number(process.env.TELEGRAM_TIMEOUT_MS || 6500));
   try {
-    const r = await fetch(`${base}/bot${token}/${method}`, { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify(body) });
+    const r = await fetch(`${base}/bot${token}/${method}`, { method:'POST', signal:controller.signal, headers:{ 'content-type':'application/json', connection:'keep-alive' }, body: JSON.stringify(body) });
     const data = await r.json().catch(()=>({}));
-    if (r.ok && data.ok !== false) return { ok:true, data, description:data.description || '', transport:'post' };
+    if (r.ok && data.ok !== false) return { ok:true, data, description:data.description || '', transport:'post', delivered_at:new Date().toISOString() };
     if (method !== 'sendMessage') return { ok:false, data, description:data.description || '' };
   } catch(e) {
-    if (method !== 'sendMessage') return { ok:false, error:e.message };
-  }
+    if (method !== 'sendMessage') return { ok:false, error:e.name === 'AbortError' ? 'Tempo limite do Telegram excedido.' : e.message };
+  } finally { clearTimeout(timer); }
   const chat = encodeURIComponent(body.chat_id || '');
   const text = encodeURIComponent(body.text || '');
   const url = `${base}/bot${token}/sendMessage?chat_id=${chat}&text=${text}`;
-  const r2 = await fetch(url);
-  const data2 = await r2.json().catch(()=>({}));
-  return { ok:r2.ok && data2.ok !== false, data:data2, description:data2.description || '', transport:'get_fallback', ajuda: (r2.ok && data2.ok !== false) ? '' : 'Verifique se TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID e ENABLE_TELEGRAM estão corretos no Render. Se houver webhook antigo com conflito, reconfigure o webhook pelo painel.' };
+  const controller2 = new AbortController();
+  const timer2 = setTimeout(() => controller2.abort(), Number(process.env.TELEGRAM_TIMEOUT_MS || 6500));
+  try {
+    const r2 = await fetch(url, { signal:controller2.signal, headers:{ connection:'keep-alive' } });
+    const data2 = await r2.json().catch(()=>({}));
+    return { ok:r2.ok && data2.ok !== false, data:data2, description:data2.description || '', transport:'get_fallback', delivered_at:new Date().toISOString(), ajuda: (r2.ok && data2.ok !== false) ? '' : 'Verifique se TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID e ENABLE_TELEGRAM estão corretos no Render.' };
+  } catch(e) {
+    return { ok:false, error:e.name === 'AbortError' ? 'Tempo limite do Telegram excedido.' : e.message, transport:'get_fallback' };
+  } finally { clearTimeout(timer2); }
 }
 async function sendTelegramMessage(chatId, text, options={}) {
   if (!(await featureEnabled('telegram'))) return { ok:false, skipped:true, reason:'Telegram não liberado em Configurações.' };
@@ -895,25 +909,48 @@ async function findResident({ unit='', recipient='', resident_id=null, user_id=n
   if (recipient) { const r=await q('SELECT * FROM residents WHERE COALESCE(active,true)=true AND lower(name) LIKE lower($1) ORDER BY id DESC LIMIT 1',[`%${String(recipient).trim()}%`]); if (r.rowCount) return r.rows[0]; }
   return null;
 }
-async function createNotification({ resident_id=null, user_id=null, title, body, channel='app', channels={}, action_url='', payload={} }) { const r=await q('INSERT INTO notifications(user_id,resident_id,title,body,channel,channels,action_url,payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',[user_id,resident_id,title,body,channel,JSON.stringify(channels || {}),action_url,JSON.stringify(payload || {})]); return r.rows[0]; }
+async function createNotification({ resident_id=null, user_id=null, title, body, channel='app', channels={}, action_url='', payload={}, status='enviando' }) {
+  const r=await q('INSERT INTO notifications(user_id,resident_id,title,body,channel,channels,status,delivery_status,delivery_started_at,action_url,payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,now(),$9,$10) RETURNING *',[user_id,resident_id,title,body,channel,JSON.stringify(channels || {}),status,JSON.stringify({ app:'registrada' }),action_url,JSON.stringify(payload || {})]);
+  return r.rows[0];
+}
+async function updateNotificationDelivery(id, delivery={}) {
+  if (!id) return null;
+  const hasError = Object.values(delivery).some(v => v && typeof v === 'object' && !v.ok && !v.skipped);
+  const finished = Object.values(delivery).some(v => v && typeof v === 'object' && (v.ok || v.skipped || v.error || v.timeout));
+  const status = hasError ? 'erro_envio' : (finished ? 'enviada' : 'enviando');
+  await q('UPDATE notifications SET delivery_status=$1,status=$2,delivery_finished_at=now() WHERE id=$3',[JSON.stringify(delivery),status,id]).catch(()=>null);
+  return { status, delivery };
+}
 async function notifyResident(resident, { title, body, channels={}, action_url='', payload={} }) {
   const prefs = await filterChannelsByPlan({ app:true, browser:true, email:true, telegram:true, whatsapp:false, ...parseJson(resident?.notification_preferences, {}) , ...channels });
-  await createNotification({ resident_id: resident?.id || null, title, body, channel:'app', channels:prefs, action_url, payload }).catch(()=>null);
-  // Telegram é enviado primeiro para reduzir a demora percebida pelo morador/portaria.
-  const telegramResult = prefs.telegram ? await sendTelegramMessage(resident?.telegram_chat_id || '', body, payload?.telegram_reply_markup ? { reply_markup: payload.telegram_reply_markup, disable_web_page_preview:true } : { disable_web_page_preview:true }).catch(e=>({ ok:false, error:e.message })) : null;
-  const jobs=[];
-  if (prefs.email && resident?.email) jobs.push(sendEmailSmart({ to: resident.email, subject:title, text:body, actionUrl: action_url, actionLabel:'Abrir no sistema' }).catch(e=>({ ok:false, error:e.message })));
-  if (prefs.browser && resident?.id) jobs.push(sendBrowserPushToResident(resident.id, title, body, action_url || '/', payload).catch(e=>({ ok:false, error:e.message })));
-  if (prefs.whatsapp && (resident?.whatsapp_phone || resident?.phone)) jobs.push(sendWhatsAppText(resident.whatsapp_phone || resident.phone, body).catch(e=>({ ok:false, error:e.message })));
-  const results = await Promise.all(jobs);
-  return { ok:true, telegram:telegramResult, results };
+  const notification = await createNotification({ resident_id: resident?.id || null, title, body, channel:'app', channels:prefs, action_url, payload, status:'enviando' }).catch(()=>null);
+  const jobs = {};
+  if (prefs.telegram) jobs.telegram = withTimeout(sendTelegramMessage(resident?.telegram_chat_id || '', body, payload?.telegram_reply_markup ? { reply_markup: payload.telegram_reply_markup, disable_web_page_preview:true } : { disable_web_page_preview:true }).catch(e=>({ ok:false, error:e.message })), Number(process.env.TELEGRAM_TIMEOUT_MS || 6500), 'Telegram');
+  if (prefs.email && resident?.email) jobs.email = withTimeout(sendEmailSmart({ to: resident.email, subject:title, text:body, actionUrl: action_url, actionLabel:'Abrir no sistema' }).catch(e=>({ ok:false, error:e.message })), Number(process.env.EMAIL_TIMEOUT_MS || 12000), 'E-mail');
+  if (prefs.browser && resident?.id) jobs.browser = sendBrowserPushToResident(resident.id, title, body, action_url || '/', payload).catch(e=>({ ok:false, error:e.message }));
+  if (prefs.whatsapp && (resident?.whatsapp_phone || resident?.phone)) jobs.whatsapp = sendWhatsAppText(resident.whatsapp_phone || resident.phone, body).catch(e=>({ ok:false, error:e.message }));
+  const entries = await Promise.all(Object.entries(jobs).map(async ([k,p]) => [k, await p]));
+  const delivery = Object.fromEntries(entries);
+  await updateNotificationDelivery(notification?.id, delivery);
+  return { ok: !Object.values(delivery).some(v=>v && !v.ok && !v.skipped), notification_id:notification?.id || null, delivery, resumo:Object.fromEntries(Object.entries(delivery).map(([k,v])=>[k,channelResultSummary(v)])) };
 }
 async function notifyStaff({ title, body, action_url='', channels={} }) {
   const staff = (await q("SELECT * FROM users WHERE role IN ('master','sindico','admin','portaria') AND active=true")).rows;
-  for (const user of staff) await createNotification({ user_id:user.id, title, body, channel:'app', channels:{ app:true, browser:true, ...channels }, action_url }).catch(()=>null);
-  if (await featureEnabled('telegram')) await sendTelegramMessage('', `${title}\n\n${body}`, { disable_web_page_preview:true }).catch(()=>null);
+  const notifIds=[];
+  for (const user of staff) {
+    const n = await createNotification({ user_id:user.id, title, body, channel:'app', channels:{ app:true, browser:true, telegram:true, email:true, ...channels }, action_url, status:'enviando' }).catch(()=>null);
+    if (n?.id) notifIds.push(n.id);
+  }
+  const jobs = {};
+  if (await featureEnabled('telegram')) jobs.telegram = withTimeout(sendTelegramMessage('', `${title}
+
+${body}`, { disable_web_page_preview:true }).catch(e=>({ ok:false, error:e.message })), Number(process.env.TELEGRAM_TIMEOUT_MS || 6500), 'Telegram');
   const emails = staff.map(u=>u.email).filter(Boolean);
-  if (emails.length && await featureEnabled('email')) await sendEmailSmart({ to: emails.join(','), subject:title, text:body, actionUrl: action_url, actionLabel:'Abrir no sistema' }).catch(()=>null);
+  if (emails.length && await featureEnabled('email')) jobs.email = withTimeout(sendEmailSmart({ to: emails.join(','), subject:title, text:body, actionUrl: action_url, actionLabel:'Abrir no sistema' }).catch(e=>({ ok:false, error:e.message })), Number(process.env.EMAIL_TIMEOUT_MS || 12000), 'E-mail');
+  const entries = await Promise.all(Object.entries(jobs).map(async ([k,p]) => [k, await p]));
+  const delivery = Object.fromEntries(entries);
+  for (const id of notifIds) await updateNotificationDelivery(id, delivery);
+  return { ok: !Object.values(delivery).some(v=>v && !v.ok && !v.skipped), delivery };
 }
 async function notifyAllResidents({ title, body, channels={}, action_url='', payload={} }) { const residents=(await q('SELECT * FROM residents WHERE email IS NOT NULL OR phone IS NOT NULL')).rows; for (const r of residents) await notifyResident(r, { title, body, channels:{ app:true, browser:true, ...channels }, action_url, payload }).catch(()=>null); }
 
@@ -933,13 +970,14 @@ function normalizeDate(value='') { const s=String(value||''); const m=s.match(/(
 function parseCurrency(value='') { const matches=[...String(value||'').matchAll(/(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2})/g)].map(m=>m[1]); if (!matches.length) return ''; const nums=matches.map(x=>Number(x.replace(/\./g,'').replace(',','.'))).filter(Number.isFinite); return nums.length ? String(Math.max(...nums).toFixed(2)) : ''; }
 function parsePackageText(text='') { const clean=String(text||'').replace(/\r/g,'\n'); const lines=clean.split('\n').map(l=>l.trim()).filter(Boolean); const tracking=(clean.match(/\b([A-Z]{2}\d{9}[A-Z]{2})\b/i)?.[1] || clean.match(/\b(\d{10,18})\b/)?.[1] || '').toUpperCase(); const unit=(clean.match(/(?:apto|apartamento|unidade|unid\.?|ap\.?|bloco)\s*[:\-]?\s*([A-Z0-9\- ]{1,12})/i)?.[1] || '').trim(); const recipient=(clean.match(/(?:destinat[aá]rio|recebedor|morador|nome)\s*[:\-]\s*([^\n]+)/i)?.[1] || lines.find(l => /^[A-ZÀ-Ú][A-ZÀ-Ú\s]{5,}$/.test(l)) || '').trim(); const carrier=(clean.match(/(correios|jadlog|loggi|total express|mercado livre|amazon|shopee|magalu)/i)?.[1] || '').trim(); return { tracking, recipient, unit, label: carrier || tracking || lines[0] || '', notes:'', raw:clean.slice(0,5000) }; }
 function parseInvoiceText(text='') { const clean=String(text||'').replace(/\r/g,'\n'); const lines=clean.split('\n').map(l=>l.trim()).filter(Boolean); const access_key=(clean.match(/\b(\d{44})\b/)?.[1] || '').trim(); const document_number=(clean.match(/(?:NF\-?e|NFS\-?e|nota fiscal|n[úu]mero|nº|no\.)\s*[:\-]?\s*(\d{3,12})/i)?.[1] || clean.match(/\b(\d{6,12})\b/)?.[1] || '').trim(); const supplier=(clean.match(/(?:emitente|fornecedor|prestador)\s*[:\-]\s*([^\n]+)/i)?.[1] || lines.find(l => /LTDA|S\.A|MEI|EIRELI|SERVI|COMERC/i.test(l)) || lines[0] || '').trim(); const amount=parseCurrency(clean); const issue_date=normalizeDate(clean.match(/(?:emiss[aã]o|emitida em|data)\s*[:\-]?\s*([0-9\/\-.]+)/i)?.[1] || clean); const due_date=normalizeDate(clean.match(/(?:vencimento|venc\.?|pagar at[eé])\s*[:\-]?\s*([0-9\/\-.]+)/i)?.[1] || ''); return { supplier, document_number, access_key, amount, issue_date, due_date, category:'nota fiscal', raw:clean.slice(0,8000) }; }
-function googleCalendarUrl(res) { const date = String(res.reserved_for || '').replace(/-/g,''); const start = (res.start_time || '19:00').replace(':','') + '00'; const end = (res.end_time || '23:00').replace(':','') + '00'; const title=encodeURIComponent(`Reserva ${res.area || ''} - Unidade ${res.unit || ''}`); const details=encodeURIComponent(`Reserva Vitória Régia\nMorador: ${res.resident || ''}\nStatus: ${res.status || ''}`); return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${date}T${start}/${date}T${end}&details=${details}&location=${encodeURIComponent(res.area || '')}`; }
-function icsContent(res) { const date=String(res.reserved_for||'').replace(/-/g,''); const start=(res.start_time||'19:00').replace(':','')+'00'; const end=(res.end_time||'23:00').replace(':','')+'00'; const uid=`reserva-${res.id}@vitoriaregia`; return ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Vitoria Regia Pro//Reservas//PT-BR','BEGIN:VEVENT',`UID:${uid}`,`DTSTAMP:${new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'')}`,`DTSTART:${date}T${start}`,`DTEND:${date}T${end}`,`SUMMARY:Reserva ${res.area || ''} - Unidade ${res.unit || ''}`,`DESCRIPTION:Morador ${res.resident || ''} - Status ${res.status || ''}`,`LOCATION:${res.area || ''}`,'END:VEVENT','END:VCALENDAR'].join('\r\n'); }
+function googleCalendarUrl(res) { const date = String(res.reserved_for || '').replace(/-/g,''); const start = (res.all_day ? '0000' : (res.start_time || '19:00').replace(':','')) + '00'; const end = (res.all_day ? '2359' : (res.end_time || '23:00').replace(':','')) + '00'; const title=encodeURIComponent(`Reserva ${res.area || ''} - Unidade ${res.unit || ''}`); const details=encodeURIComponent(`Reserva Vitória Régia\nMorador: ${res.resident || ''}\nStatus: ${res.status || ''}`); return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${date}T${start}/${date}T${end}&details=${details}&location=${encodeURIComponent(res.area || '')}`; }
+function icsContent(res) { const date=String(res.reserved_for||'').replace(/-/g,''); const start=(res.all_day?'0000':(res.start_time||'19:00').replace(':',''))+'00'; const end=(res.all_day?'2359':(res.end_time||'23:00').replace(':',''))+'00'; const uid=`reserva-${res.id}@vitoriaregia`; return ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Vitoria Regia Pro//Reservas//PT-BR','BEGIN:VEVENT',`UID:${uid}`,`DTSTAMP:${new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'')}`,`DTSTART:${date}T${start}`,`DTEND:${date}T${end}`,`SUMMARY:Reserva ${res.area || ''} - Unidade ${res.unit || ''}`,`DESCRIPTION:Morador ${res.resident || ''} - Status ${res.status || ''}`,`LOCATION:${res.area || ''}`,'END:VEVENT','END:VCALENDAR'].join('\r\n'); }
 
 function reservationStatusInfo(status='pre_agendada', res={}) {
   const label = ({ pre_agendada:'pré-agendada', pendente_pagamento:'pendente pagamento', pendente_aceite_regras:'pendente aceite das regras de utilização', confirmada:'confirmada', cancelada:'cancelada' }[status] || status || 'atualizada');
   const when = res.reserved_for ? new Date(res.reserved_for).toLocaleDateString('pt-BR', { timeZone:'UTC' }) : 'data informada';
-  const base = `Reserva do espaço ${res.area || ''} para ${when}, das ${res.start_time || '--'} às ${res.end_time || '--'}, unidade ${res.unit || '-'}.`;
+  const timeText = res.all_day ? 'durante o dia todo' : `das ${res.start_time || '--'} às ${res.end_time || '--'}`;
+  const base = `Reserva do espaço ${res.area || ''} para ${when}, ${timeText}, unidade ${res.unit || '-'}.`;
   const messages = {
     pre_agendada: `Sua reserva está pré-agendada. ${base} A data está bloqueada enquanto a administração confere pagamento, aceite das regras e disponibilidade operacional.`,
     pendente_pagamento: `Sua reserva está pendente de pagamento. ${base} Acesse Financeiro/Boletos para conferir a cobrança ou aguarde o envio pelo condomínio.`,
@@ -1253,7 +1291,7 @@ app.post('/api/registration-requests/:id/reject', auth, can('users.manage'), asy
 app.get('/api/employees', auth, can('employees.manage'), async (_req,res,next)=>{ try { res.json((await q('SELECT * FROM employees ORDER BY active DESC,name')).rows); } catch(e){ next(e); } });
 app.post('/api/employees', auth, can('employees.manage'), async (req,res,next)=>{ try { requireFields(req.body,['name']); const r=await q('INSERT INTO employees(name,role,phone,email,active,notes) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',[req.body.name,req.body.role||'portaria',req.body.phone||'',req.body.email||'',req.body.active!==false,req.body.notes||'']); res.json(r.rows[0]); } catch(e){ next(e); } });
 app.get('/api/shifts', auth, async (req,res,next)=>{ try { const full = hasPermission(req.user,'shifts.manage') || req.user.role==='sindico' || req.user.role==='master'; const base = full ? '' : 'WHERE s.starts_at::date BETWEEN current_date - interval \'7 days\' AND current_date + interval \'45 days\''; res.json((await q(`SELECT s.*, e.name employee_name, e.email employee_email, e.phone employee_phone, rep.name temporary_for_employee_name FROM shifts s LEFT JOIN employees e ON e.id=s.employee_id LEFT JOIN employees rep ON rep.id=s.temporary_for_employee_id ${base} ORDER BY starts_at DESC LIMIT 300`)).rows); } catch(e){ next(e); } });
-app.post('/api/shifts', auth, can('shifts.manage'), async (req,res,next)=>{ try { requireFields(req.body,['employee_id','starts_at','ends_at']); const payload=[req.body.employee_id,req.body.role||'portaria',req.body.starts_at,req.body.ends_at,req.body.status||'programada',req.body.notes||'',req.body.shift_type||'custom',req.body.recurrence_type||'single',JSON.stringify(req.body.weekdays||[]),req.body.month_days||'',req.body.start_time||'',req.body.end_time||'',req.body.temporary_for_employee_id||null,req.body.allow_employee_edit===true]; const r=await q('INSERT INTO shifts(employee_id,role,starts_at,ends_at,status,notes,shift_type,recurrence_type,weekdays,month_days,start_time,end_time,temporary_for_employee_id,allow_employee_edit) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',payload); const created=r.rows[0]; const emp=(await q('SELECT * FROM employees WHERE id=$1',[created.employee_id])).rows[0]; const rep=created.temporary_for_employee_id?(await q('SELECT * FROM employees WHERE id=$1',[created.temporary_for_employee_id])).rows[0]:null; const text=`Escala Vitória Régia\nFunção: ${created.role}\nPeríodo: ${new Date(created.starts_at).toLocaleString('pt-BR')} até ${new Date(created.ends_at).toLocaleString('pt-BR')}\n${created.notes||''}`; if(emp?.email) await sendEmailSmart({to:emp.email,subject:'Sua escala foi atualizada - Vitória Régia',text}).catch(()=>null); if(await featureEnabled('telegram')) await sendTelegramMessage('', `${emp?.name||'Funcionário'}, sua escala foi atualizada.\n${text}`).catch(()=>null); if(rep){ if(rep.email) await sendEmailSmart({to:rep.email,subject:'Substituição de escala registrada - Vitória Régia',text:`Você foi substituído temporariamente.\n${text}`}).catch(()=>null); if(await featureEnabled('telegram')) await sendTelegramMessage('', `${rep.name}, há uma substituição temporária na sua escala.\n${text}`).catch(()=>null); } await audit(req.user.email,'cadastrou escala',`${emp?.name||created.employee_id} ${created.starts_at}`); res.json(created); } catch(e){ next(e); } });
+app.post('/api/shifts', auth, can('shifts.manage'), async (req,res,next)=>{ try { requireFields(req.body,['employee_id','starts_at','ends_at']); const payload=[req.body.employee_id,req.body.role||'portaria',req.body.starts_at,req.body.ends_at,req.body.status||'programada',req.body.notes||'',req.body.shift_type||'custom',req.body.recurrence_type||'single',JSON.stringify(req.body.weekdays||[]),Array.isArray(req.body.month_days)?req.body.month_days.join(','):(req.body.month_days||''),req.body.start_time||'',req.body.end_time||'',req.body.temporary_for_employee_id||null,req.body.allow_employee_edit===true,req.body.substitution_reason||'']; const r=await q('INSERT INTO shifts(employee_id,role,starts_at,ends_at,status,notes,shift_type,recurrence_type,weekdays,month_days,start_time,end_time,temporary_for_employee_id,allow_employee_edit,substitution_reason) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *',payload); const created=r.rows[0]; const emp=(await q('SELECT * FROM employees WHERE id=$1',[created.employee_id])).rows[0]; const rep=created.temporary_for_employee_id?(await q('SELECT * FROM employees WHERE id=$1',[created.temporary_for_employee_id])).rows[0]:null; const text=`Escala Vitória Régia\nFunção: ${created.role}\nPeríodo: ${new Date(created.starts_at).toLocaleString('pt-BR')} até ${new Date(created.ends_at).toLocaleString('pt-BR')}\n${created.substitution_reason ? 'Motivo da substituição: '+created.substitution_reason+'\n' : ''}${created.notes||''}`; if(emp?.email) await sendEmailSmart({to:emp.email,subject:'Sua escala foi atualizada - Vitória Régia',text}).catch(()=>null); if(await featureEnabled('telegram')) await sendTelegramMessage('', `${emp?.name||'Funcionário'}, sua escala foi atualizada.\n${text}`).catch(()=>null); if(rep){ if(rep.email) await sendEmailSmart({to:rep.email,subject:'Substituição de escala registrada - Vitória Régia',text:`Você foi substituído temporariamente.\n${text}`}).catch(()=>null); if(await featureEnabled('telegram')) await sendTelegramMessage('', `${rep.name}, há uma substituição temporária na sua escala.\n${text}`).catch(()=>null); } await audit(req.user.email,'cadastrou escala',`${emp?.name||created.employee_id} ${created.starts_at}`); res.json(created); } catch(e){ next(e); } });
 app.get('/api/shifts/on-duty', auth, async (req,res,next)=>{ try { res.json(await currentOnDuty(req.query.role || 'portaria') || {}); } catch(e){ next(e); } });
 app.get('/api/shifts/:id/google', auth, async (req,res,next)=>{ try { const s=(await q('SELECT s.*, e.name employee_name FROM shifts s LEFT JOIN employees e ON e.id=s.employee_id WHERE s.id=$1',[req.params.id])).rows[0]; if(!s) return res.status(404).json({error:'Escala não encontrada.'}); const fmt=d=>new Date(d).toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z/,'Z'); const title=encodeURIComponent(`Escala ${s.role||''} - ${s.employee_name||''}`); const details=encodeURIComponent(`Escala Vitória Régia\nFunção: ${s.role||''}\nObservações: ${s.notes||''}`); res.json({url:`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${fmt(s.starts_at)}/${fmt(s.ends_at)}&details=${details}&location=${encodeURIComponent('Condomínio Vitória Régia')}`}); } catch(e){ next(e); } });
 
@@ -1301,17 +1339,20 @@ app.get('/api/reservations', auth, can('reservations.view'), async (req,res,next
   res.json(rows.map(r => ({ ...r, visitors: visitorsBy[r.id] || [] })));
 } catch(e){ next(e); } });
 app.post('/api/reservations', auth, can('reservations.manage'), async (req,res,next)=>{ try {
-  requireFields(req.body,['area','unit','resident','reserved_for','start_time','end_time']);
-  await requireNoDuplicate('Reserva', await reservationDuplicate(req.body));
+  const isAllDay = req.body.all_day === true || ['dia_todo','dia todo','diatodo'].includes(String(req.body.reservation_mode || req.body.period_label || req.body.shift || '').toLowerCase());
+  requireFields(req.body, isAllDay ? ['area','unit','resident','reserved_for'] : ['area','unit','resident','reserved_for','start_time','end_time']);
+  const startForDuplicate = isAllDay ? '00:00' : (req.body.start_time || '19:00');
+  const endForDuplicate = isAllDay ? '23:59' : (req.body.end_time || '23:00');
+  await requireNoDuplicate('Reserva', await reservationDuplicate({ ...req.body, start_time:startForDuplicate, end_time:endForDuplicate }));
   const resident=await findResident({ resident_id:req.user.resident_id, unit:req.body.unit, recipient:req.body.resident });
   const area=(await q('SELECT * FROM common_areas WHERE lower(name)=lower($1) LIMIT 1',[req.body.area])).rows[0];
-  const start=req.body.start_time || '19:00'; const end=req.body.end_time || '23:00';
+  const start=startForDuplicate; const end=endForDuplicate;
   const fee=Number(req.body.fee_amount ?? area?.fee_amount ?? 0);
   const termsAccepted=req.body.terms_accepted===true;
   let status = req.body.status || 'pre_agendada';
   if (!termsAccepted) status='pendente_aceite_regras';
   else if (fee > 0) status='pendente_pagamento';
-  const r=await q('INSERT INTO reservations(area,area_id,unit,resident,resident_id,reserved_for,start_time,end_time,shift,reservation_mode,period_label,all_day,status,fee_amount,document_text,terms_accepted,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *',[req.body.area,area?.id||null,req.body.unit,req.body.resident||resident?.name||req.user.name,resident?.id||req.user.resident_id||null,req.body.reserved_for,start,end,req.body.shift||req.body.reservation_mode||'horario',req.body.reservation_mode||req.body.shift||'horario',req.body.period_label||'',req.body.all_day===true,status,fee,req.body.document_text || area?.rules_document || await getSetting('RESERVATION_DEFAULT_RULES'),termsAccepted,req.user.id]);
+  const r=await q('INSERT INTO reservations(area,area_id,unit,resident,resident_id,reserved_for,start_time,end_time,shift,reservation_mode,period_label,all_day,status,fee_amount,document_text,terms_accepted,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *',[req.body.area,area?.id||null,req.body.unit,req.body.resident||resident?.name||req.user.name,resident?.id||req.user.resident_id||null,req.body.reserved_for,start,end,req.body.shift||req.body.reservation_mode||'horario',req.body.reservation_mode||req.body.shift||'horario',req.body.period_label||'',isAllDay,status,fee,req.body.document_text || area?.rules_document || await getSetting('RESERVATION_DEFAULT_RULES'),termsAccepted,req.user.id]);
   let reserva=r.rows[0];
   if (fee > 0) {
     const boleto=await createBoleto({ unit:reserva.unit, resident_id:reserva.resident_id, title:`Taxa de reserva - ${reserva.area}`, amount:fee, due_date:req.body.due_date || reserva.reserved_for, source_type:'reservation', source_id:reserva.id });
@@ -1388,12 +1429,17 @@ app.post('/api/emergency-types', auth, can('settings.manage'), async (req,res,ne
 async function handleEmergencyRequest(req,res,next){ try {
   const code=req.body.type || req.body.code || 'geral';
   const type=(await q('SELECT * FROM emergency_types WHERE code=$1',[code])).rows[0] || { code, label:'Emergência', notify_all:false, phone:'', supplier:'', instructions:'' };
-  const loginUnit=req.user?.unit || (req.user?.role ? req.user.role : '');
-  const loc=req.body.occurrence_location || req.body.location_type || req.body.location || '';
+  let loginUnit=req.user?.unit || '';
+  if (!loginUnit && req.user?.resident_id) {
+    const residentRow = await q('SELECT unit FROM residents WHERE id=$1',[req.user.resident_id]).catch(()=>({ rows:[] }));
+    loginUnit = residentRow.rows?.[0]?.unit || '';
+  }
+  const roleLocation = ['portaria','zeladoria','limpeza','manutencao','seguranca'].includes(String(req.user?.role||'')) ? roleLabel(req.user.role).toLowerCase() : '';
+  const loc=req.body.occurrence_location || req.body.location_type || req.body.location || (loginUnit ? 'Minha unidade' : roleLocation);
   const neighbor=req.body.neighbor_unit || '';
   const floor=req.body.floor || '';
-  const finalLocation = loc === 'Minha unidade' ? (loginUnit || req.body.unit || '') : loc === 'Vizinho' ? `Vizinho - unidade ${neighbor || 'não informada'}` : loc === 'Corredor' ? `Corredor - andar ${floor || 'não informado'}` : (loc || req.body.unit || loginUnit || '');
-  const unit=req.body.unit || loginUnit || '';
+  const finalLocation = loc === 'Minha unidade' ? (loginUnit || req.body.unit || '') : loc === 'Vizinho' ? `Vizinho - unidade ${neighbor || 'não informada'}` : loc === 'Corredor' ? `Corredor - andar ${floor || 'não informado'}` : (loc || req.body.unit || loginUnit || roleLocation || '');
+  const unit=req.body.unit || loginUnit || roleLocation || '';
   const message=req.body.message || '';
   const notify_all=Boolean(type.notify_all);
   const r=await q('INSERT INTO emergency_requests(type_code,type_label,unit,message,requested_by,requested_role,status,notify_all,occurrence_location,location_type,neighbor_unit,floor) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',[code,type.label,unit,message,req.user.id,req.user.role,'pendente',notify_all,finalLocation,loc,neighbor,floor]);

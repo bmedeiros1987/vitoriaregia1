@@ -1,6 +1,6 @@
 NODE_VERSION=20.19.0
 NODE_ENV=production
-APP_VERSION=Vitória Régia Pro v11.1
+APP_VERSION=Vitória Régia Pro v11.4
 DATABASE_SSL=auto
 DATABASE_SSL_MODE=auto
 
