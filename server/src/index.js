@@ -17,7 +17,7 @@ import { randomBytes, createHash, verify as cryptoVerify } from 'node:crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v11.8';
+const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v12.2';
 const JWT_SECRET = process.env.JWT_SECRET || 'troque-este-segredo-em-producao';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/vitoriaregia';
 const DB_SSL_MODE = String(process.env.DATABASE_SSL_MODE || process.env.DATABASE_SSL || 'auto').trim().toLowerCase();
@@ -603,7 +603,7 @@ CREATE TABLE IF NOT EXISTS audit(
   await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_reservation_slot ON reservations(area, reserved_for, start_time, end_time) WHERE status <> 'cancelada'").catch(e => console.warn('Índice de reservas ignorado:', e.message));
 
   const defaultSettings = {
-    THEME_ACCENT: '#126b5f', THEME_TEXT_SIZE: 'comfort', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light', APP_VERSION:'Vitória Régia Pro v11.8',
+    THEME_ACCENT: '#126b5f', THEME_TEXT_SIZE: 'comfort', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light', APP_VERSION:'Vitória Régia Pro v12.2',
     CONDO_NAME: 'Condomínio Vitória Régia', DEVELOPED_BY: 'CrewCheck', CREWCHECK_SITE: 'https://www.crewcheck.online/', CREWCHECK_FOOTER: 'Desenvolvido por CrewCheck - todos os direitos reservados', CONDO_ADDRESS: '', WEATHER_CITY: 'João Pessoa', WEATHER_LAT: '-7.1195', WEATHER_LON: '-34.8450',
     ELEVATOR_OPERATOR_NAME: 'Operadora do elevador', ELEVATOR_EMERGENCY_PHONE: '', EMERGENCY_EMAILS: process.env.SENDGRID_TO_DEFAULT || '',
     EMERGENCY_APPROVAL_REQUIRED: 'true', FOOTER_MODE: 'minimal', EMAIL_PROVIDER: process.env.MAIL_PROVIDER || 'sendgrid',
@@ -990,11 +990,116 @@ async function sendTemporaryPasswordToUser(user, temp, title='Senha temporária 
   return Promise.all(jobs);
 }
 
+async function sendRegistrationAcknowledgement(request={}) {
+  if (!request?.email || !(await featureEnabled('email'))) return { ok:false, skipped:true, reason:'E-mail não informado ou canal de e-mail desativado.' };
+  const roleName = String(request.role || 'morador') === 'funcionario' ? 'funcionário do condomínio' : 'morador';
+  const unitLine = request.unit ? `\nUnidade/setor informado: ${request.unit}` : '';
+  const text = `Olá, ${request.name || 'usuário'}.
+
+Recebemos sua solicitação de cadastro como ${roleName} no Sistema Vitória Régia.${unitLine}
+
+Seu cadastro será analisado pela administração em até 48 horas.
+
+Se aprovado, você receberá um novo aviso com seu usuário de acesso e uma senha temporária. No primeiro acesso, o sistema solicitará a alteração da senha para sua segurança.
+
+Esta é uma mensagem automática de confirmação.`;
+  return sendEmailSmart({
+    to: request.email,
+    subject: 'Solicitação de cadastro recebida - Vitória Régia',
+    text,
+    actionUrl: '',
+    actionLabel: 'Acessar sistema'
+  });
+}
+
 async function currentOnDuty(role='portaria') { const r = await q("SELECT s.*, e.name employee_name, e.email employee_email, e.phone employee_phone FROM shifts s JOIN employees e ON e.id=s.employee_id WHERE e.active=true AND s.status <> 'cancelada' AND now() BETWEEN s.starts_at AND s.ends_at AND ($1='' OR s.role=$1 OR e.role=$1) ORDER BY s.starts_at DESC LIMIT 1", [role || '']); return r.rows[0] || null; }
 function normalizeDate(value='') { const s=String(value||''); const m=s.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/); if (!m) return null; const year=m[3].length===2?'20'+m[3]:m[3]; return `${year}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`; }
 function parseCurrency(value='') { const matches=[...String(value||'').matchAll(/(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2})/g)].map(m=>m[1]); if (!matches.length) return ''; const nums=matches.map(x=>Number(x.replace(/\./g,'').replace(',','.'))).filter(Number.isFinite); return nums.length ? String(Math.max(...nums).toFixed(2)) : ''; }
-function parsePackageText(text='') { const clean=String(text||'').replace(/\r/g,'\n'); const lines=clean.split('\n').map(l=>l.trim()).filter(Boolean); const tracking=(clean.match(/\b([A-Z]{2}\d{9}[A-Z]{2})\b/i)?.[1] || clean.match(/\b(\d{10,18})\b/)?.[1] || '').toUpperCase(); const unit=(clean.match(/(?:apto|apartamento|unidade|unid\.?|ap\.?|bloco)\s*[:\-]?\s*([A-Z0-9\- ]{1,12})/i)?.[1] || '').trim(); const recipient=(clean.match(/(?:destinat[aá]rio|recebedor|morador|nome)\s*[:\-]\s*([^\n]+)/i)?.[1] || lines.find(l => /^[A-ZÀ-Ú][A-ZÀ-Ú\s]{5,}$/.test(l)) || '').trim(); const carrier=(clean.match(/(correios|jadlog|loggi|total express|mercado livre|amazon|shopee|magalu)/i)?.[1] || '').trim(); return { tracking, recipient, unit, label: carrier || tracking || lines[0] || '', notes:'', raw:clean.slice(0,5000) }; }
-function parseInvoiceText(text='') { const clean=String(text||'').replace(/\r/g,'\n'); const lines=clean.split('\n').map(l=>l.trim()).filter(Boolean); const access_key=(clean.match(/\b(\d{44})\b/)?.[1] || '').trim(); const document_number=(clean.match(/(?:NF\-?e|NFS\-?e|nota fiscal|n[úu]mero|nº|no\.)\s*[:\-]?\s*(\d{3,12})/i)?.[1] || clean.match(/\b(\d{6,12})\b/)?.[1] || '').trim(); const supplier=(clean.match(/(?:emitente|fornecedor|prestador)\s*[:\-]\s*([^\n]+)/i)?.[1] || lines.find(l => /LTDA|S\.A|MEI|EIRELI|SERVI|COMERC/i.test(l)) || lines[0] || '').trim(); const amount=parseCurrency(clean); const issue_date=normalizeDate(clean.match(/(?:emiss[aã]o|emitida em|data)\s*[:\-]?\s*([0-9\/\-.]+)/i)?.[1] || clean); const due_date=normalizeDate(clean.match(/(?:vencimento|venc\.?|pagar at[eé])\s*[:\-]?\s*([0-9\/\-.]+)/i)?.[1] || ''); return { supplier, document_number, access_key, amount, issue_date, due_date, category:'nota fiscal', raw:clean.slice(0,8000) }; }
+function normalizeOcrText(text='') {
+  return String(text || '')
+    .replace(/\r/g, '\n')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/\u00a0/g, ' ')
+    .replace(/[|]+/g, ' ')
+    .replace(/\s+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+function firstMatch(text, patterns) {
+  for (const p of patterns) {
+    const m = text.match(p);
+    if (m?.[1]) return String(m[1]).trim();
+  }
+  return '';
+}
+function normalizeOcrUnit(raw='') {
+  const s = String(raw || '').toUpperCase().replace(/[^0-9A-Z]/g, '');
+  const num = (s.match(/(11(?:01|02|03)|10(?:01|02|03)|[1-9]0[1-3]|[1-9][0-9]{2})/) || [,''])[1] || '';
+  if (!num) return '';
+  const n = Number(num);
+  if ([101,102,103].includes(n) || (/^[2-9]0[1-3]$/.test(num)) || (/^10(?:01|02|03)$/.test(num)) || (/^11(?:01|02|03)$/.test(num))) return num;
+  return num;
+}
+function parsePackageText(text='') {
+  const clean = normalizeOcrText(text);
+  const upper = clean.toUpperCase();
+  const lines = clean.split('\n').map(l => l.trim()).filter(Boolean);
+  const carriers = [
+    ['J&T Express', /\bJ\s*&\s*T\s*(?:EXPRESS)?\b|\bJNT\b/i],
+    ['Correios', /\bCORREIOS\b|SEDEX|PAC\b/i],
+    ['Jadlog', /\bJADLOG\b/i],
+    ['Loggi', /\bLOGGI\b/i],
+    ['Total Express', /\bTOTAL\s+EXPRESS\b/i],
+    ['Mercado Livre', /MERCADO\s*LIVRE|MELI|MERCADO\s*ENVIOS/i],
+    ['Amazon', /\bAMAZON\b/i],
+    ['Shopee', /\bSHOPEE\b|SPX\b/i],
+    ['Magalu', /MAGALU|MAGAZINE\s+LUIZA/i],
+    ['DHL', /\bDHL\b/i],
+    ['FedEx', /\bFEDEX\b/i],
+    ['UPS', /\bUPS\b/i]
+  ];
+  const carrier = (carriers.find(([,re]) => re.test(clean)) || [''])[0] || '';
+  const jntCode = firstMatch(upper, [ /\b([A-Z]{2}\s*\d{3}\s*[-–]?\s*\d{2}\s*\d{3})\b/, /\b([A-Z]{2}\s*\d{3}\s*[-–]?\s*\d{5,6})\b/ ]).replace(/\s+/g, ' ').trim();
+  const postalCode = firstMatch(upper, [/\b([A-Z]{2}\d{9}[A-Z]{2})\b/]);
+  const longBarcode = firstMatch(upper, [/\b(\d{12,18})\b/]);
+  const tracking = (jntCode || postalCode || longBarcode || firstMatch(upper, [/\b([A-Z]{1,4}\d{8,16})\b/])).replace(/\s/g,'').replace(/[-–]/g,'-');
+  const order_number = firstMatch(clean, [/(?:Pedido|Order|Pedido nº|Pedido n[ºo])\s*[:\-]?\s*([A-Z0-9\-\.\/]+)/i]);
+  const invoice_number = firstMatch(clean, [/(?:NFe|NF-e|NF\s*n[ºo]|Nota Fiscal)\s*(?:N[ºo]\.?\s*)?[:\-]?\s*(\d{3,12})/i]);
+  const barcode = longBarcode || '';
+  let recipient = firstMatch(clean, [ /DESTINAT[ÁA]RIO\s*\n\s*([^\n]+)/i, /(?:Destinat[áa]rio|Recebedor|Nome do destinat[áa]rio|Cliente|Nome)\s*[:\-]\s*([^\n]+)/i ]);
+  if (!recipient) { const idx = lines.findIndex(l => /DESTINAT[ÁA]RIO/i.test(l)); if (idx >= 0) recipient = (lines[idx+1] || '').trim(); }
+  if (!recipient) recipient = lines.find(l => /^[A-ZÀ-Ú][A-Za-zÀ-ÿ'´`\s]{6,}$/.test(l) && !/LTDA|EXPRESS|COMERCIAL|REMETENTE|DESTINAT/i.test(l)) || '';
+  let unit = firstMatch(clean, [
+    /(?:apto|apartamento|unidade|unid\.?|ap\.?|apto\.|apart\.?|apt\.?|sala|cs|casa)\s*[:\-]?\s*(11(?:01|02|03)|10(?:01|02|03)|[1-9]0[1-3]|[1-9][0-9]{2})/i,
+    /(?:Vit[óo]ria\s+R[ée]gia|Edif[ií]cio\s+Vit[óo]ria\s+R[ée]gia|Condom[ií]nio\s+Vit[óo]ria\s+R[ée]gia)[^\n;,.]*[;,\s]+(?:SN|N|N[ºo])?\s*(11(?:01|02|03)|10(?:01|02|03)|[1-9]0[1-3]|[1-9][0-9]{2})/i,
+    /(?:Lote|Bloco|Torre|Edif[ií]cio)[^\n]*?(11(?:01|02|03)|10(?:01|02|03)|[1-9]0[1-3]|[1-9][0-9]{2})/i,
+    /\b(?:CS|SN|AP|APT|APTO)\s*(11(?:01|02|03)|10(?:01|02|03)|[1-9]0[1-3]|[1-9][0-9]{2})\b/i
+  ]);
+  unit = normalizeOcrUnit(unit || firstMatch(clean, [/\b(11(?:01|02|03)|10(?:01|02|03)|[1-9]0[1-3])\b/]));
+  const sender = firstMatch(clean, [ /REMETENTE\s*\n\s*([^\n]+)/i, /(?:Remetente|Sender|Loja|Emitente)\s*[:\-]\s*([^\n]+)/i ]);
+  const addressBlock = firstMatch(clean, [/(?:DESTINAT[ÁA]RIO[\s\S]{0,250}?)(?:REMETENTE|$)/i]);
+  const notesParts = [];
+  if (carrier) notesParts.push(`Transportadora: ${carrier}`);
+  if (order_number) notesParts.push(`Pedido: ${order_number}`);
+  if (invoice_number) notesParts.push(`NF-e: ${invoice_number}`);
+  if (barcode) notesParts.push(`Código de barras: ${barcode}`);
+  if (sender) notesParts.push(`Remetente: ${sender}`);
+  const notes = notesParts.join(' · ');
+  return { tracking: tracking || '', recipient: recipient || '', unit: unit || '', label: carrier || tracking || '', carrier, order_number, invoice_number, barcode, sender, address: addressBlock || '', notes, raw: clean.slice(0,5000) };
+}
+function parseInvoiceText(text='') {
+  const clean = normalizeOcrText(text);
+  const lines = clean.split('\n').map(l => l.trim()).filter(Boolean);
+  const access_key = firstMatch(clean, [/\b(\d{44})\b/]);
+  const document_number = firstMatch(clean, [ /(?:NF\-?e|NFS\-?e|nota fiscal|n[úu]mero|nº|no\.)\s*[:\-]?\s*(\d{3,12})/i, /(?:DANFE|CHAVE DE ACESSO|S[ée]rie)[\s\S]{0,120}?\b(\d{5,12})\b/i ]) || firstMatch(clean, [/\b(\d{6,12})\b/]);
+  const supplier = firstMatch(clean, [ /(?:emitente|fornecedor|prestador|remetente)\s*[:\-]\s*([^\n]+)/i, /(\b[A-ZÀ-Ú0-9 .,&\-]+(?:LTDA|S\.A\.?|SA|MEI|EIRELI|COMERCIAL|SERVIÇOS|SERVICOS)\b[^\n]*)/i ]) || lines.find(l => /LTDA|S\.A|MEI|EIRELI|SERVI|COMERC/i.test(l)) || '';
+  const amount = parseCurrency(clean);
+  const issue_date = normalizeDate(firstMatch(clean, [/(?:emiss[aã]o|emitida em|data de emiss[aã]o|data)\s*[:\-]?\s*([0-9\/\-.]+)/i]) || clean);
+  const due_date = normalizeDate(firstMatch(clean, [/(?:vencimento|venc\.?|pagar at[eé]|data de vencimento)\s*[:\-]?\s*([0-9\/\-.]+)/i]));
+  const unit = normalizeOcrUnit(firstMatch(clean, [/(?:apto|apartamento|unidade|unid\.?|ap\.?)\s*[:\-]?\s*(11(?:01|02|03)|10(?:01|02|03)|[1-9]0[1-3])/i]));
+  return { supplier, document_number, access_key, amount, issue_date, due_date, unit, category:'nota fiscal', raw:clean.slice(0,8000) };
+}
 function googleCalendarUrl(res) { const date = String(res.reserved_for || '').replace(/-/g,''); const start = (res.all_day ? '0000' : (res.start_time || '19:00').replace(':','')) + '00'; const end = (res.all_day ? '2359' : (res.end_time || '23:00').replace(':','')) + '00'; const title=encodeURIComponent(`Reserva ${res.area || ''} - Unidade ${res.unit || ''}`); const details=encodeURIComponent(`Reserva Vitória Régia\nMorador: ${res.resident || ''}\nStatus: ${res.status || ''}`); return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${date}T${start}/${date}T${end}&details=${details}&location=${encodeURIComponent(res.area || '')}`; }
 function icsContent(res) { const date=String(res.reserved_for||'').replace(/-/g,''); const start=(res.all_day?'0000':(res.start_time||'19:00').replace(':',''))+'00'; const end=(res.all_day?'2359':(res.end_time||'23:00').replace(':',''))+'00'; const uid=`reserva-${res.id}@vitoriaregia`; return ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Vitoria Regia Pro//Reservas//PT-BR','BEGIN:VEVENT',`UID:${uid}`,`DTSTAMP:${new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'')}`,`DTSTART:${date}T${start}`,`DTEND:${date}T${end}`,`SUMMARY:Reserva ${res.area || ''} - Unidade ${res.unit || ''}`,`DESCRIPTION:Morador ${res.resident || ''} - Status ${res.status || ''}`,`LOCATION:${res.area || ''}`,'END:VEVENT','END:VCALENDAR'].join('\r\n'); }
 
@@ -1167,6 +1272,13 @@ app.post('/api/register', async (req,res,next)=>{ try {
   const requestedRole = ['morador','funcionario'].includes(String(req.body.role||'').toLowerCase()) ? String(req.body.role).toLowerCase() : 'morador';
   const requiresUnit = requestedRole === 'morador';
   if (requiresUnit && !String(req.body.unit || '').trim()) { const err=new Error('Informe a unidade/apartamento para solicitar este tipo de cadastro.'); err.status=400; throw err; }
+  if (requiresUnit) {
+    const allowMultiple = boolValue(await getSetting('ALLOW_MULTIPLE_RESIDENTS_PER_UNIT','false'), false);
+    const maxResidents = Number(await getSetting('MAX_RESIDENTS_PER_UNIT','2') || 2);
+    const activeInUnit = (await q("SELECT COUNT(*)::int count FROM residents WHERE upper(replace(coalesce(unit,''),' ',''))=$1 AND COALESCE(active,true)=true",[normalizeUnit(req.body.unit)])).rows[0].count;
+    if (!allowMultiple && activeInUnit >= 1) { const err=new Error('Esta unidade já possui morador cadastrado. Peça ao síndico para liberar moradores adicionais ou solicite cadastro por dentro do sistema.'); err.status=409; throw err; }
+    if (allowMultiple && activeInUnit >= maxResidents) { const err=new Error(`Limite de ${maxResidents} morador(es) por unidade atingido. Solicite análise do síndico.`); err.status=409; throw err; }
+  }
   const emailEnabled = await featureEnabled('email'); const whatsappEnabled = await featureEnabled('whatsapp'); const telegramEnabled = await featureEnabled('telegram');
   const hasEmail = Boolean(String(req.body.email || '').trim()); const hasWhats = Boolean(onlyDigits(req.body.whatsapp_phone || req.body.phone || '')); const hasTelegram = Boolean(String(req.body.telegram_chat_id || '').trim());
   if (boolValue(await getSetting('REGISTRATION_REQUIRE_EMAIL','true'), true) && emailEnabled && !hasEmail) { const err=new Error('Informe o e-mail para solicitar cadastro.'); err.status=400; throw err; }
@@ -1177,10 +1289,33 @@ app.post('/api/register', async (req,res,next)=>{ try {
   if (hasWhats && !whatsappEnabled) { const err=new Error('Cadastro por WhatsApp ainda não está liberado neste condomínio.'); err.status=400; throw err; }
   if (hasTelegram && !telegramEnabled) { const err=new Error('Cadastro por Telegram ainda não está liberado neste condomínio.'); err.status=400; throw err; }
   const channels = await filterChannelsByPlan({ email:hasEmail, whatsapp:hasWhats, telegram:hasTelegram, app:true, browser:true });
-  const r=await q('INSERT INTO registration_requests(name,email,phone,whatsapp_phone,telegram_chat_id,preferred_channels,unit,document,role,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id,status', [req.body.name, req.body.email || '', req.body.phone || req.body.whatsapp_phone || '', req.body.whatsapp_phone || req.body.phone || '', req.body.telegram_chat_id || '', JSON.stringify(channels), requiresUnit ? (req.body.unit || '') : (req.body.unit || ''), req.body.document || '', requestedRole, req.body.notes || '']);
+  const r=await q('INSERT INTO registration_requests(name,email,phone,whatsapp_phone,telegram_chat_id,preferred_channels,unit,document,role,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *', [req.body.name, req.body.email || '', req.body.phone || req.body.whatsapp_phone || '', req.body.whatsapp_phone || req.body.phone || '', req.body.telegram_chat_id || '', JSON.stringify(channels), requiresUnit ? (req.body.unit || '') : (req.body.unit || ''), req.body.document || '', requestedRole, req.body.notes || '']);
+  const savedRequest = r.rows[0];
+  const emailAck = hasEmail ? await sendRegistrationAcknowledgement(savedRequest).catch(e => ({ ok:false, error:e.message })) : { ok:false, skipped:true, reason:'E-mail não informado.' };
   await audit(req.body.email || req.body.phone || req.body.telegram_chat_id || 'cadastro', 'solicitou cadastro', req.body.unit || '');
-  res.json({ ok:true, message:'Solicitação enviada para aprovação da administração.', request:r.rows[0] });
+  res.json({ ok:true, message: hasEmail && emailAck.ok ? 'Solicitação enviada. Enviamos um e-mail confirmando que seu cadastro será analisado em até 48h.' : 'Solicitação enviada para aprovação. Se o e-mail não chegar, acompanhe pelo sistema ou confira com a administração.', request:savedRequest, email_ack:emailAck });
 } catch(e){ next(e); } });
+
+app.post('/api/residents/request-same-unit', auth, async (req,res,next)=>{ try {
+  const baseResident = req.user.resident_id ? (await q('SELECT * FROM residents WHERE id=$1 AND COALESCE(active,true)=true',[req.user.resident_id])).rows[0] : null;
+  const unit = baseResident?.unit || req.user.unit || req.body.unit || '';
+  if (!unit) return res.status(400).json({ error:'Não foi possível identificar sua unidade. Atualize seu perfil ou fale com a administração.' });
+  const allowMultiple = boolValue(await getSetting('ALLOW_MULTIPLE_RESIDENTS_PER_UNIT','false'), false);
+  const maxResidents = Number(await getSetting('MAX_RESIDENTS_PER_UNIT','2') || 2);
+  if (!allowMultiple) return res.status(403).json({ error:'O cadastro de moradores adicionais para a mesma unidade não está liberado neste condomínio.' });
+  const activeInUnit = (await q("SELECT COUNT(*)::int count FROM residents WHERE upper(replace(coalesce(unit,''),' ',''))=$1 AND COALESCE(active,true)=true",[normalizeUnit(unit)])).rows[0].count;
+  if (activeInUnit >= maxResidents) return res.status(409).json({ error:`Limite de ${maxResidents} morador(es) por unidade atingido.` });
+  requireFields(req.body,['name']);
+  if (!req.body.email && !req.body.whatsapp_phone && !req.body.telegram_chat_id) return res.status(400).json({ error:'Informe e-mail, WhatsApp ou Telegram do morador adicional.' });
+  if (req.body.email) await requireNoDuplicate('Usuário', (await q('SELECT id,email FROM users WHERE lower(email)=lower($1) AND COALESCE(active,true)=true LIMIT 1',[req.body.email])).rows[0]);
+  if (req.body.email) await requireNoDuplicate('Solicitação de cadastro', (await q("SELECT id,email,status FROM registration_requests WHERE lower(email)=lower($1) AND status='pendente' LIMIT 1",[req.body.email])).rows[0]);
+  const channels = await filterChannelsByPlan({ app:true, browser:true, email:Boolean(req.body.email), whatsapp:Boolean(req.body.whatsapp_phone || req.body.phone), telegram:true });
+  const r=await q('INSERT INTO registration_requests(name,email,phone,whatsapp_phone,telegram_chat_id,preferred_channels,unit,document,role,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',[req.body.name,req.body.email||'',req.body.phone||req.body.whatsapp_phone||'',req.body.whatsapp_phone||req.body.phone||'',req.body.telegram_chat_id||'',JSON.stringify(channels),unit,req.body.document||'','morador',`Solicitação interna feita por usuário da unidade ${unit}.`]);
+  if (req.body.email) await sendRegistrationAcknowledgement(r.rows[0]).catch(()=>null);
+  await audit(req.user.email,'solicitou morador adicional',`${req.body.name} - unidade ${unit}`);
+  res.json({ ok:true, message:'Solicitação enviada ao síndico para aprovação. Se aprovada, o novo usuário receberá senha temporária nos canais cadastrados.', request:r.rows[0] });
+} catch(e){ next(e); } });
+
 app.post('/api/forgot-password', async (req,res,next)=>{ try {
   requireFields(req.body,['email']);
   const r=await q('SELECT * FROM users WHERE lower(email)=lower($1)',[req.body.email]);
@@ -1212,10 +1347,10 @@ app.put('/api/profile', auth, async (req,res,next)=>{ try {
 } catch(e){ next(e); } });
 
 
-app.get('/api/dashboard', auth, can('dashboard.view'), async (req,res,next)=>{ try { const own = isResident(req.user) && req.user.resident_id; const [residents, packagesTotal, packagesPending, visitorsToday, reservationsPending, messagesNew, emergencyPending, boletosPending, weather] = await Promise.all([
-  q('SELECT COUNT(*)::int count FROM residents WHERE COALESCE(active,true)=true'), q(own?'SELECT COUNT(*)::int count FROM packages WHERE resident_id=$1 AND deleted_at IS NULL':'SELECT COUNT(*)::int count FROM packages WHERE deleted_at IS NULL', own?[req.user.resident_id]:[]), q(own?"SELECT COUNT(*)::int count FROM packages WHERE resident_id=$1 AND deleted_at IS NULL AND status <> 'entregue'":"SELECT COUNT(*)::int count FROM packages WHERE deleted_at IS NULL AND status <> 'entregue'", own?[req.user.resident_id]:[]), q(own?"SELECT COUNT(*)::int count FROM visitors WHERE deleted_at IS NULL AND created_at::date=current_date AND unit=(SELECT unit FROM residents WHERE id=$1)":"SELECT COUNT(*)::int count FROM visitors WHERE deleted_at IS NULL AND created_at::date=current_date", own?[req.user.resident_id]:[]), q(own?"SELECT COUNT(*)::int count FROM reservations WHERE resident_id=$1 AND deleted_at IS NULL AND status='pre_agendada'":"SELECT COUNT(*)::int count FROM reservations WHERE deleted_at IS NULL AND status='pre_agendada'", own?[req.user.resident_id]:[]), q(own?"SELECT COUNT(*)::int count FROM messages WHERE resident_id=$1 AND status <> 'fechada'":"SELECT COUNT(*)::int count FROM messages WHERE status='nova'", own?[req.user.resident_id]:[]), q("SELECT COUNT(*)::int count FROM emergency_requests WHERE status='pendente'"), q(own?"SELECT COUNT(*)::int count FROM boletos WHERE resident_id=$1 AND deleted_at IS NULL AND status <> 'pago'":"SELECT COUNT(*)::int count FROM boletos WHERE deleted_at IS NULL AND status <> 'pago'", own?[req.user.resident_id]:[]), getWeatherSafe()
+app.get('/api/dashboard', auth, can('dashboard.view'), async (req,res,next)=>{ try { const own = isResident(req.user) && req.user.resident_id; const [residents, packagesTotal, packagesPending, visitorsToday, reservationsPending, messagesNew, emergencyPending, boletosPending, pendingRegistrations, weather] = await Promise.all([
+  q('SELECT COUNT(*)::int count FROM residents WHERE COALESCE(active,true)=true'), q(own?'SELECT COUNT(*)::int count FROM packages WHERE resident_id=$1 AND deleted_at IS NULL':'SELECT COUNT(*)::int count FROM packages WHERE deleted_at IS NULL', own?[req.user.resident_id]:[]), q(own?"SELECT COUNT(*)::int count FROM packages WHERE resident_id=$1 AND deleted_at IS NULL AND status <> 'entregue'":"SELECT COUNT(*)::int count FROM packages WHERE deleted_at IS NULL AND status <> 'entregue'", own?[req.user.resident_id]:[]), q(own?"SELECT COUNT(*)::int count FROM visitors WHERE deleted_at IS NULL AND created_at::date=current_date AND unit=(SELECT unit FROM residents WHERE id=$1)":"SELECT COUNT(*)::int count FROM visitors WHERE deleted_at IS NULL AND created_at::date=current_date", own?[req.user.resident_id]:[]), q(own?"SELECT COUNT(*)::int count FROM reservations WHERE resident_id=$1 AND deleted_at IS NULL AND status='pre_agendada'":"SELECT COUNT(*)::int count FROM reservations WHERE deleted_at IS NULL AND status='pre_agendada'", own?[req.user.resident_id]:[]), q(own?"SELECT COUNT(*)::int count FROM messages WHERE resident_id=$1 AND status <> 'fechada'":"SELECT COUNT(*)::int count FROM messages WHERE status='nova'", own?[req.user.resident_id]:[]), q("SELECT COUNT(*)::int count FROM emergency_requests WHERE status='pendente'"), q(own?"SELECT COUNT(*)::int count FROM boletos WHERE resident_id=$1 AND deleted_at IS NULL AND status <> 'pago'":"SELECT COUNT(*)::int count FROM boletos WHERE deleted_at IS NULL AND status <> 'pago'", own?[req.user.resident_id]:[]), q("SELECT COUNT(*)::int count FROM registration_requests WHERE status='pendente'"), getWeatherSafe()
 ]);
-  res.json({ version:APP_VERSION, metrics:{ residents:residents.rows[0].count, packages:packagesTotal.rows[0].count, pendingPackages:packagesPending.rows[0].count, visitorsToday:visitorsToday.rows[0].count, reservationsPending:reservationsPending.rows[0].count, messagesNew:messagesNew.rows[0].count, emergencyPending:emergencyPending.rows[0].count, boletosPending:boletosPending.rows[0].count }, weather }); } catch(e){ next(e); } });
+  res.json({ version:APP_VERSION, metrics:{ residents:residents.rows[0].count, packages:packagesTotal.rows[0].count, pendingPackages:packagesPending.rows[0].count, visitorsToday:visitorsToday.rows[0].count, reservationsPending:reservationsPending.rows[0].count, messagesNew:messagesNew.rows[0].count, emergencyPending:emergencyPending.rows[0].count, boletosPending:boletosPending.rows[0].count, pendingRegistrations:pendingRegistrations.rows[0].count }, weather }); } catch(e){ next(e); } });
 
 
 app.get('/api/residents/lookup', auth, can('residents.view'), async (req,res,next)=>{ try {
@@ -1307,9 +1442,7 @@ app.post('/api/registration-requests/:id/approve', auth, can('users.manage'), as
   const email=loginEmailFromChannels(rr);
   const user=(await q('INSERT INTO users(name,email,password_hash,role,user_type,unit,resident_id,phone,whatsapp_phone,telegram_chat_id,notification_preferences,permissions,active,force_password_change) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,true) ON CONFLICT(email) DO UPDATE SET active=true,resident_id=EXCLUDED.resident_id, unit=EXCLUDED.unit, phone=EXCLUDED.phone, whatsapp_phone=EXCLUDED.whatsapp_phone, telegram_chat_id=EXCLUDED.telegram_chat_id RETURNING *',[rr.name,email,await bcrypt.hash(temp,10),role,role,rr.unit || '',resident?.id || null,rr.phone||rr.whatsapp_phone||'',rr.whatsapp_phone||rr.phone||'',rr.telegram_chat_id||'',JSON.stringify(prefs),JSON.stringify(rolePermissions(role))])).rows[0];
   await q("UPDATE registration_requests SET status='aprovada',approved_by=$1,approved_at=now() WHERE id=$2",[req.user.id,rr.id]);
-  if (prefs.email && rr.email) await sendEmailSmart({ to:rr.email, subject:'Cadastro aprovado - Vitória Régia', text:`Seu cadastro foi aprovado. Usuário: ${email}. Senha temporária: ${temp}` }).catch(()=>null);
-  if (prefs.telegram) await sendTelegramMessage(rr.telegram_chat_id || '', `Cadastro aprovado no Vitória Régia. Usuário: ${email}. Senha temporária: ${temp}`).catch(()=>null);
-  if (prefs.whatsapp && (rr.whatsapp_phone || rr.phone)) await sendWhatsAppText(rr.whatsapp_phone || rr.phone, `Cadastro aprovado no Vitória Régia. Usuário: ${email}. Senha temporária: ${temp}`).catch(()=>null);
+  await sendTemporaryPasswordToUser({ ...user, email: rr.email || user.email, telegram_chat_id: rr.telegram_chat_id || user.telegram_chat_id, whatsapp_phone: rr.whatsapp_phone || rr.phone || user.whatsapp_phone, phone: rr.phone || user.phone, notification_preferences: prefs }, temp, 'Cadastro aprovado - Vitória Régia').catch(()=>null);
   await audit(req.user.email,'aprovou cadastro',email);
   res.json({ ok:true, user:sanitizeUser(user) });
 } catch(e){ next(e); } });
@@ -1415,6 +1548,9 @@ app.post('/api/reservations/:id/approve', auth, can('reservations.manage'), asyn
   const reserva=r.rows[0]; if (reserva) await notifyReservationUpdate(reserva,'confirmada').catch(()=>null);
   res.json(reserva || {});
 } catch(e){ next(e); } });
+app.post('/api/ocr/parse-package', auth, can('packages.manage'), async (req,res,next)=>{ try { res.json(parsePackageText(req.body?.text || '')); } catch(e){ next(e); } });
+app.post('/api/ocr/parse-invoice', auth, can('invoices.manage'), async (req,res,next)=>{ try { res.json(parseInvoiceText(req.body?.text || '')); } catch(e){ next(e); } });
+
 app.get('/api/reservations/:id/google', auth, can('reservations.view'), async (req,res,next)=>{ try { const r=(await q('SELECT * FROM reservations WHERE id=$1',[req.params.id])).rows[0]; if (!r) return res.status(404).json({ error:'Reserva não encontrada.' }); res.json({ url: googleCalendarUrl(r) }); } catch(e){ next(e); } });
 app.get('/api/reservations/:id/ics', auth, can('reservations.view'), async (req,res,next)=>{ try { const r=(await q('SELECT * FROM reservations WHERE id=$1',[req.params.id])).rows[0]; if (!r) return res.status(404).send('Reserva não encontrada.'); res.setHeader('Content-Type','text/calendar; charset=utf-8'); res.setHeader('Content-Disposition',`attachment; filename="reserva-${r.id}.ics"`); res.send(icsContent(r)); } catch(e){ next(e); } });
 app.get('/api/reservations/:id/visitors', auth, can('reservations.view'), async (req,res,next)=>{ try { res.json((await q('SELECT * FROM reservation_visitors WHERE reservation_id=$1 ORDER BY id DESC',[req.params.id])).rows); } catch(e){ next(e); } });
@@ -1526,6 +1662,19 @@ app.post('/api/emergency-requests/:id/reject', auth, can('emergency.approve'), a
 
 app.get('/api/notifications', auth, async (req,res,next)=>{ try { const rows = isResident(req.user) && req.user.resident_id ? (await q('SELECT * FROM notifications WHERE resident_id=$1 OR user_id=$2 ORDER BY id DESC LIMIT 150',[req.user.resident_id,req.user.id])).rows : (await q('SELECT * FROM notifications WHERE user_id IS NULL OR user_id=$1 ORDER BY id DESC LIMIT 150',[req.user.id])).rows; res.json(rows); } catch(e){ next(e); } });
 app.post('/api/notifications/:id/read', auth, async (req,res,next)=>{ try { const r=await q("UPDATE notifications SET status='lida',read_at=now() WHERE id=$1 RETURNING *",[req.params.id]); res.json(r.rows[0]||{}); } catch(e){ next(e); } });
+app.post('/api/notifications/read-all', auth, async (req,res,next)=>{ try {
+  if (isResident(req.user) && req.user.resident_id) await q("UPDATE notifications SET status='lida',read_at=COALESCE(read_at,now()) WHERE resident_id=$1 OR user_id=$2",[req.user.resident_id,req.user.id]);
+  else await q("UPDATE notifications SET status='lida',read_at=COALESCE(read_at,now()) WHERE user_id IS NULL OR user_id=$1",[req.user.id]);
+  res.json({ ok:true, message:'Todas as notificações foram marcadas como lidas.' });
+} catch(e){ next(e); } });
+app.delete('/api/notifications/read', auth, async (req,res,next)=>{ try {
+  if (isResident(req.user) && req.user.resident_id) await q("DELETE FROM notifications WHERE status='lida' AND (resident_id=$1 OR user_id=$2)",[req.user.resident_id,req.user.id]);
+  else await q("DELETE FROM notifications WHERE status='lida' AND (user_id IS NULL OR user_id=$1)",[req.user.id]);
+  res.json({ ok:true, message:'Notificações lidas apagadas.' });
+} catch(e){ next(e); } });
+app.get('/api/notifications/log', auth, can('settings.manage'), async (_req,res,next)=>{ try {
+  res.json((await q("SELECT id,title,body,channel,status,delivery_status,created_at,read_at FROM notifications ORDER BY id DESC LIMIT 300")).rows);
+} catch(e){ next(e); } });
 app.get('/api/push/vapid-public-key', auth, async (_req,res)=>res.json({ publicKey: process.env.VAPID_PUBLIC_KEY || '' }));
 app.post('/api/push/subscribe', auth, async (req,res,next)=>{ try { if (!req.body.endpoint) return res.status(400).json({ error:'Endpoint não informado.' }); await q('INSERT INTO push_subscriptions(user_id,endpoint,payload) VALUES($1,$2,$3) ON CONFLICT(endpoint) DO UPDATE SET payload=$3',[req.user.id,req.body.endpoint,JSON.stringify(req.body)]); res.json({ ok:true }); } catch(e){ next(e); } });
 
