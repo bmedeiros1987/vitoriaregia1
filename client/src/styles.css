@@ -439,3 +439,20 @@ body[data-appearance="dark"] .appShell{background:linear-gradient(90deg, rgba(3,
 .auditHero svg{width:34px;height:34px;color:var(--accent)}
 .auditHero h3{margin:0;font-size:22px;letter-spacing:-.4px}.auditToolbar{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}.logCards{display:grid;gap:10px}.logCard{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:14px 16px}.logCard b{display:block;margin:6px 0 2px}.auditGroup h3{display:flex;align-items:center;gap:8px;margin:0 0 10px}.auditGroup h3:before{content:'';width:10px;height:10px;border-radius:999px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:inline-block}.calendarLikePreview{grid-column:1/-1;display:flex;gap:12px;align-items:center;padding:14px 16px;border-radius:18px;border:1px solid var(--line);background:color-mix(in srgb,var(--accent) 8%,var(--panel2));}.calendarLikePreview svg{color:var(--accent);width:28px;height:28px}.formGrid .confirmAction,.formGrid button,.actions .confirmAction{white-space:nowrap}.notificationBell{transition:.16s ease}.notificationBell:hover{transform:translateY(-1px)}
 @media(max-width:760px){.brandCompact .brandLogo{width:86px!important;height:86px!important}.brand.brandCompact{min-height:126px!important}.tableWrap table,.tableWrap tbody,.tableWrap tr,.tableWrap td{display:block!important;width:100%!important}.tableWrap tr{padding:10px!important}.tableWrap td{border:0!important;border-radius:0!important;padding:7px 4px!important}.logCard{display:grid}.auditToolbar button{width:100%;}.actions button{min-width:0}}
+
+
+/* v11.5 — acabamento premium, logo do menu proporcional e notificações em tempo real */
+.brand.brandCompact{min-height:174px!important;align-items:center!important;justify-items:center!important;text-align:center!important;}
+.brandCompact .brandLogo{width:142px!important;height:142px!important;max-width:150px!important;max-height:150px!important;margin:0 auto 6px auto!important;object-fit:contain!important;}
+.brandCompact .brandText{width:100%!important;text-align:center!important;}
+.brandCompact .brandText b{font-size:20px!important;line-height:1.1!important;text-align:center!important;}
+.brandCompact .brandText small{display:block!important;text-align:center!important;font-size:11px!important;opacity:.78!important;}
+.brand .insideClose.menuToggle{position:absolute!important;top:12px!important;right:12px!important;width:38px!important;height:38px!important;border:1px solid rgba(255,255,255,.18)!important;}
+.menu-closed .brand.brandCompact{min-height:124px!important;}
+.menu-closed .brandCompact .brandLogo{width:76px!important;height:76px!important;}
+.notificationRealtimeBadge{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:6px 9px;background:color-mix(in srgb,var(--accent) 12%,var(--panel2));color:var(--accent);font-weight:900;font-size:12px;}
+.tableWrap tr,.settingsCard,.subpanel,.panel,.metric,.cards article,.appCards article{transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease;}
+.tableWrap tr:hover,.cards article:hover,.metric:hover{transform:translateY(-1px);box-shadow:0 14px 34px rgba(15,30,25,.08)!important;}
+.deliveryOk{color:#15803d!important;font-weight:800}.deliveryError{color:#b91c1c!important;font-weight:800}
+body[data-appearance="dark"] .tableWrap tr:hover{box-shadow:0 18px 42px rgba(0,0,0,.28)!important;}
+@media(max-width:760px){.brandCompact .brandLogo{width:96px!important;height:96px!important}.brand.brandCompact{min-height:142px!important}.notificationBell{position:relative!important}.topbar{gap:10px!important}}

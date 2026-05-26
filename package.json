@@ -1,6 +1,6 @@
 {
   "name": "vitoria-regia-pro",
-  "version": "11.4.0",
+  "version": "11.6.0",
   "private": true,
   "description": "Sistema Vitória Régia Pro v11.4 com notificações imediatas, reservas dia todo e logs premium",
   "scripts": {

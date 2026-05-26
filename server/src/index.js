@@ -17,7 +17,7 @@ import { randomBytes, createHash, verify as cryptoVerify } from 'node:crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v11.4';
+const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v11.6';
 const JWT_SECRET = process.env.JWT_SECRET || 'troque-este-segredo-em-producao';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/vitoriaregia';
 const DB_SSL_MODE = String(process.env.DATABASE_SSL_MODE || process.env.DATABASE_SSL || 'auto').trim().toLowerCase();
@@ -600,7 +600,7 @@ CREATE TABLE IF NOT EXISTS audit(
   await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_reservation_slot ON reservations(area, reserved_for, start_time, end_time) WHERE status <> 'cancelada'").catch(e => console.warn('Índice de reservas ignorado:', e.message));
 
   const defaultSettings = {
-    THEME_ACCENT: '#126b5f', THEME_TEXT_SIZE: 'comfort', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light', APP_VERSION:'Vitória Régia Pro v11.0',
+    THEME_ACCENT: '#126b5f', THEME_TEXT_SIZE: 'comfort', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light', APP_VERSION:'Vitória Régia Pro v11.6',
     CONDO_NAME: 'Condomínio Vitória Régia', DEVELOPED_BY: 'CrewCheck', CREWCHECK_SITE: 'https://www.crewcheck.online/', CREWCHECK_FOOTER: 'Desenvolvido por CrewCheck - todos os direitos reservados', CONDO_ADDRESS: '', WEATHER_CITY: 'João Pessoa', WEATHER_LAT: '-7.1195', WEATHER_LON: '-34.8450',
     ELEVATOR_OPERATOR_NAME: 'Operadora do elevador', ELEVATOR_EMERGENCY_PHONE: '', EMERGENCY_EMAILS: process.env.SENDGRID_TO_DEFAULT || '',
     EMERGENCY_APPROVAL_REQUIRED: 'true', FOOTER_MODE: 'minimal', EMAIL_PROVIDER: process.env.MAIL_PROVIDER || 'sendgrid',
@@ -625,7 +625,7 @@ CREATE TABLE IF NOT EXISTS audit(
   for (const [key, value] of Object.entries(defaultSettings)) await q('INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING', [key, value]);
 
   // Sincroniza variáveis do Render para canais de comunicação sem gravar segredo no GitHub.
-  const envSyncKeys = ['ENABLE_TELEGRAM','TELEGRAM_ENABLED','TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID','TELEGRAM_BOT_USERNAME','TELEGRAM_START_URL','TELEGRAM_WEBHOOK_SECRET','TELEGRAM_API_BASE_URL','TELEGRAM_PARSE_MODE','TELEGRAM_TEST_CHAT_ID','PUBLIC_APP_URL','ENABLE_EMAIL','SENDGRID_FROM_EMAIL','SENDGRID_FROM_NAME','SENDGRID_REPLY_TO','SENDGRID_TO_DEFAULT','EMAIL_PROVIDER','ENABLE_WHATSAPP','WHATSAPP_API_VERSION','WHATSAPP_PHONE_NUMBER_ID','WHATSAPP_BUSINESS_ACCOUNT_ID','WHATSAPP_ACCESS_TOKEN'];
+  const envSyncKeys = ['ENABLE_TELEGRAM','TELEGRAM_ENABLED','TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID','TELEGRAM_BOT_USERNAME','TELEGRAM_START_URL','TELEGRAM_WEBHOOK_SECRET','TELEGRAM_API_BASE_URL','TELEGRAM_PARSE_MODE','TELEGRAM_TEST_CHAT_ID','PUBLIC_APP_URL','ENABLE_EMAIL','SENDGRID_API_KEY','SMTP_PASS','SENDGRID_FROM_EMAIL','SENDGRID_FROM_NAME','SENDGRID_REPLY_TO','SENDGRID_TO_DEFAULT','EMAIL_PROVIDER','ENABLE_WHATSAPP','WHATSAPP_API_VERSION','WHATSAPP_PHONE_NUMBER_ID','WHATSAPP_BUSINESS_ACCOUNT_ID','WHATSAPP_ACCESS_TOKEN'];
   for (const key of envSyncKeys) {
     if (process.env[key] !== undefined && String(process.env[key]).trim() !== '') {
       await q('INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value', [key, String(process.env[key])]).catch(()=>null);
@@ -644,10 +644,11 @@ CREATE TABLE IF NOT EXISTS audit(
   const defaults = [
     ['elevador','Preso no elevador',process.env.ELEVATOR_EMERGENCY_PHONE || '',process.env.ELEVATOR_OPERATOR_NAME || 'Operadora do elevador','Mantenha a calma, acione o alarme interno e ligue para a operadora cadastrada pelo síndico.',false,1],
     ['incendio','Fogo / fumaça','193','Corpo de Bombeiros','Acione 193, deixe o local com segurança e aguarde orientação da portaria.',true,2],
-    ['invasao','Invasão do prédio','190','Polícia Militar','Evite confronto, procure local seguro e comunique a portaria.',true,3],
-    ['saude','Emergência médica','192','SAMU','Acione 192 e informe bloco, unidade e ponto de referência.',false,4],
-    ['hidraulica','Vazamento grave','','Manutenção predial','Feche o registro se possível e informe imediatamente a administração.',false,5],
-    ['energia','Queda de energia','','Concessionária / manutenção','Verifique áreas comuns e aguarde orientação da portaria.',false,6]
+    ['gas','Vazamento de gás','193','Corpo de Bombeiros / manutenção','Evite acionar interruptores, abra portas e janelas se houver segurança, afaste-se do local e aguarde orientação.',true,3],
+    ['invasao','Invasão do prédio','190','Polícia Militar','Evite confronto, procure local seguro e comunique a portaria.',true,4],
+    ['saude','Emergência médica','192','SAMU','Acione 192 e informe bloco, unidade e ponto de referência.',false,5],
+    ['hidraulica','Vazamento grave','','Manutenção predial','Feche o registro se possível e informe imediatamente a administração.',false,6],
+    ['energia','Queda de energia','','Concessionária / manutenção','Verifique áreas comuns e aguarde orientação da portaria.',false,7]
   ];
   for (const row of defaults) await q('INSERT INTO emergency_types(code,label,phone,supplier,instructions,notify_all,sort_order) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(code) DO UPDATE SET notify_all=EXCLUDED.notify_all, sort_order=EXCLUDED.sort_order', row);
 
@@ -809,7 +810,7 @@ async function sendEmailSmart({ to, subject, text, html, actionUrl='', actionLab
   if (!(await featureEnabled('email'))) return { ok:false, skipped:true, reason:'Canal de e-mail não liberado por Bruno.' };
   const destination = splitList(to); if (!destination.length) { const err = new Error('Informe ao menos um destinatário de e-mail.'); err.status=400; throw err; }
   const provider = String(await getSetting('EMAIL_PROVIDER', process.env.SENDGRID_API_KEY ? 'sendgrid' : 'smtp')).toLowerCase();
-  const sendgridKey = process.env.SENDGRID_API_KEY;
+  const sendgridKey = await getSetting('SENDGRID_API_KEY', process.env.SENDGRID_API_KEY || '');
   const fromEmail = await getSetting('SENDGRID_FROM_EMAIL', process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM || '');
   const fromName = await getSetting('SENDGRID_FROM_NAME', process.env.SENDGRID_FROM_NAME || 'Vitória Régia');
   const replyTo = await getSetting('SENDGRID_REPLY_TO', process.env.SENDGRID_REPLY_TO || '');
@@ -1339,7 +1340,7 @@ app.get('/api/reservations', auth, can('reservations.view'), async (req,res,next
   res.json(rows.map(r => ({ ...r, visitors: visitorsBy[r.id] || [] })));
 } catch(e){ next(e); } });
 app.post('/api/reservations', auth, can('reservations.manage'), async (req,res,next)=>{ try {
-  const isAllDay = req.body.all_day === true || ['dia_todo','dia todo','diatodo'].includes(String(req.body.reservation_mode || req.body.period_label || req.body.shift || '').toLowerCase());
+  const isAllDay = req.body.all_day === true || ['dia_todo','dia todo','diatodo','dia inteiro','24h'].includes(String(req.body.reservation_mode || req.body.period_label || req.body.shift || '').toLowerCase()) || (String(req.body.start_time||'')==='00:00' && String(req.body.end_time||'')==='23:59');
   requireFields(req.body, isAllDay ? ['area','unit','resident','reserved_for'] : ['area','unit','resident','reserved_for','start_time','end_time']);
   const startForDuplicate = isAllDay ? '00:00' : (req.body.start_time || '19:00');
   const endForDuplicate = isAllDay ? '23:59' : (req.body.end_time || '23:00');
@@ -1426,6 +1427,35 @@ app.post('/api/maintenance', auth, can('maintenance.manage'), async (req,res,nex
 
 app.get('/api/emergency-types', auth, async (_req,res,next)=>{ try { res.json((await q('SELECT * FROM emergency_types WHERE active=true ORDER BY sort_order,label')).rows); } catch(e){ next(e); } });
 app.post('/api/emergency-types', auth, can('settings.manage'), async (req,res,next)=>{ try { requireFields(req.body,['code','label']); const r=await q('INSERT INTO emergency_types(code,label,phone,supplier,instructions,notify_all,active,sort_order,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,now()) ON CONFLICT(code) DO UPDATE SET label=$2,phone=$3,supplier=$4,instructions=$5,notify_all=$6,active=$7,sort_order=$8,updated_at=now() RETURNING *',[req.body.code,req.body.label,req.body.phone||'',req.body.supplier||'',req.body.instructions||'',req.body.notify_all===true,req.body.active!==false,req.body.sort_order||99]); res.json(r.rows[0]); } catch(e){ next(e); } });
+
+function emergencyLocationText(er={}) {
+  return er.occurrence_location || er.unit || 'local a confirmar pela portaria';
+}
+function emergencyProfessionalMessage(er={}) {
+  const loc = emergencyLocationText(er);
+  const code = String(er.type_code || '').toLowerCase();
+  const obs = er.message ? `\nObservação: ${er.message}` : '';
+  const map = {
+    incendio: {
+      title:'Alerta de emergência: fogo ou fumaça',
+      body:`🚨 ALERTA DE EMERGÊNCIA\n\nFoi identificado aviso de fogo ou fumaça no condomínio.\n\nLocal informado: ${loc}\n\nOrientação: mantenha a calma, evite usar elevadores, afaste-se da área indicada e acompanhe as próximas orientações da portaria/síndico.${obs}`
+    },
+    gas: {
+      title:'Alerta de emergência: vazamento de gás',
+      body:`🚨 ALERTA DE EMERGÊNCIA\n\nFoi identificado aviso de vazamento de gás no condomínio.\n\nLocal informado: ${loc}\n\nOrientação: não acione interruptores, evite chamas/faíscas, afaste-se da área indicada e acompanhe as próximas orientações da portaria/síndico.${obs}`
+    },
+    invasao: {
+      title:'Alerta de segurança: invasão',
+      body:`🚨 ALERTA DE SEGURANÇA\n\nFoi registrado aviso de invasão ou acesso não autorizado no condomínio.\n\nLocal informado: ${loc}\n\nOrientação: evite circular pelas áreas comuns, procure local seguro e acompanhe as próximas orientações da portaria/síndico.${obs}`
+    }
+  };
+  if (map[code]) return map[code];
+  return {
+    title:`Emergência: ${er.type_label || 'Ocorrência'}`,
+    body:`🚨 COMUNICADO DE EMERGÊNCIA\n\nOcorrência: ${er.type_label || 'Emergência'}\nLocal informado: ${loc}${obs}\n\nA equipe responsável já foi acionada. Acompanhe as próximas orientações pelo sistema.`
+  };
+}
+
 async function handleEmergencyRequest(req,res,next){ try {
   const code=req.body.type || req.body.code || 'geral';
   const type=(await q('SELECT * FROM emergency_types WHERE code=$1',[code])).rows[0] || { code, label:'Emergência', notify_all:false, phone:'', supplier:'', instructions:'' };
@@ -1451,7 +1481,19 @@ async function handleEmergencyRequest(req,res,next){ try {
 app.post('/api/emergency', auth, can('emergency.use'), handleEmergencyRequest);
 app.post('/api/emergency-requests', auth, can('emergency.use'), handleEmergencyRequest);
 app.get('/api/emergency-requests', auth, can('emergency.approve'), async (_req,res,next)=>{ try { res.json((await q('SELECT er.*, u.email requested_email FROM emergency_requests er LEFT JOIN users u ON u.id=er.requested_by ORDER BY er.id DESC LIMIT 200')).rows); } catch(e){ next(e); } });
-app.post('/api/emergency-requests/:id/approve', auth, can('emergency.approve'), async (req,res,next)=>{ try { const r=await q("UPDATE emergency_requests SET status='aprovada',approved_by=$1,decision_note=$2,decided_at=now() WHERE id=$3 RETURNING *",[req.user.id,req.body.note||'',req.params.id]); const er=r.rows[0]; if (!er) return res.status(404).json({ error:'Solicitação não encontrada.' }); const body=`Emergência aprovada: ${er.type_label}${er.unit ? ' - unidade ' + er.unit : ''}. ${er.message || ''}`; if (er.notify_all) await notifyAllResidents({ title:`Emergência: ${er.type_label}`, body, channels:{ app:true,browser:true,email:true,telegram:true,whatsapp:true }, action_url:'/#/emergencia', payload:{ emergency:true, critical:true, type:er.type_code } }); else await notifyStaff({ title:`Emergência aprovada: ${er.type_label}`, body, action_url:'/#/emergencia' }); await audit(req.user.email,'aprovou emergência',er.type_label); res.json(er); } catch(e){ next(e); } });
+app.post('/api/emergency-requests/:id/approve', auth, can('emergency.approve'), async (req,res,next)=>{ try {
+  const r=await q("UPDATE emergency_requests SET status='aprovada',approved_by=$1,decision_note=$2,decided_at=now() WHERE id=$3 RETURNING *",[req.user.id,req.body.note||'',req.params.id]);
+  const er=r.rows[0];
+  if (!er) return res.status(404).json({ error:'Solicitação não encontrada.' });
+  const msg=emergencyProfessionalMessage(er);
+  if (er.notify_all) {
+    await notifyAllResidents({ title:msg.title, body:msg.body, channels:{ app:true,browser:true,email:false,telegram:true,whatsapp:true }, action_url:'/#/emergencia', payload:{ emergency:true, critical:true, type:er.type_code } });
+  } else {
+    await notifyStaff({ title:msg.title, body:msg.body, action_url:'/#/emergencia', channels:{ telegram:true,email:false,browser:true } });
+  }
+  await audit(req.user.email,'aprovou emergência',er.type_label);
+  res.json({ ...er, notification_title:msg.title });
+} catch(e){ next(e); } });
 app.post('/api/emergency-requests/:id/reject', auth, can('emergency.approve'), async (req,res,next)=>{ try { const r=await q("UPDATE emergency_requests SET status='rejeitada',approved_by=$1,decision_note=$2,decided_at=now() WHERE id=$3 RETURNING *",[req.user.id,req.body.note||'',req.params.id]); res.json(r.rows[0]||{}); } catch(e){ next(e); } });
 
 app.get('/api/notifications', auth, async (req,res,next)=>{ try { const rows = isResident(req.user) && req.user.resident_id ? (await q('SELECT * FROM notifications WHERE resident_id=$1 OR user_id=$2 ORDER BY id DESC LIMIT 150',[req.user.resident_id,req.user.id])).rows : (await q('SELECT * FROM notifications WHERE user_id IS NULL OR user_id=$1 ORDER BY id DESC LIMIT 150',[req.user.id])).rows; res.json(rows); } catch(e){ next(e); } });
