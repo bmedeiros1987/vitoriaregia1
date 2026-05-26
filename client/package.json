@@ -1,6 +1,6 @@
 {
   "name": "vitoria-regia-pro-client",
-  "version": "11.6.0",
+  "version": "11.8.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -20,5 +20,5 @@
   "engines": {
     "node": "20.19.0"
   },
-  "description": "Sistema Vitória Régia Pro v11.4 com notificações imediatas, reservas dia todo e logs premium"
+  "description": "Sistema Vitória Régia Pro v11.8 com configurações preservadas, cadastro inicial corrigido e atualizações pelo site estabilizadas"
 }

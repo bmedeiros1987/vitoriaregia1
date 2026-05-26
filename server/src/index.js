@@ -17,7 +17,7 @@ import { randomBytes, createHash, verify as cryptoVerify } from 'node:crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v11.6';
+const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v11.8';
 const JWT_SECRET = process.env.JWT_SECRET || 'troque-este-segredo-em-producao';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/vitoriaregia';
 const DB_SSL_MODE = String(process.env.DATABASE_SSL_MODE || process.env.DATABASE_SSL || 'auto').trim().toLowerCase();
@@ -113,6 +113,9 @@ async function ensureCriticalLegacySchema() {
     ['residents','whatsapp_phone TEXT'],
     ['residents','telegram_chat_id TEXT'],
     ['residents','active BOOLEAN DEFAULT true'],
+    ['residents','pet_name TEXT'],
+    ['residents','vehicle_model TEXT'],
+    ['residents','vehicle_plate TEXT'],
     ['residents','deleted_at TIMESTAMP']
   ];
   for (const [table, col] of critical) await addColumnStrict(table, col);
@@ -546,7 +549,7 @@ CREATE TABLE IF NOT EXISTS audit(
 
     // residents
     ['residents','name TEXT'], ['residents','unit TEXT'], ['residents','phone TEXT'], ['residents','whatsapp_phone TEXT'], ['residents','email TEXT'],
-    ['residents','document TEXT'], ['residents','vehicle TEXT'], ['residents','notes TEXT'], ['residents','access_profile TEXT DEFAULT \'morador\''],
+    ['residents','document TEXT'], ['residents','vehicle TEXT'], ['residents','vehicle_model TEXT'], ['residents','vehicle_plate TEXT'], ['residents','pet_name TEXT'], ['residents','notes TEXT'], ['residents','access_profile TEXT DEFAULT \'morador\''],
     ['residents','access_permissions JSONB DEFAULT \'{}\'::jsonb'], ['residents','telegram_chat_id TEXT'],
     ['residents',"resident_tags JSONB DEFAULT '{}'::jsonb"],
     ['residents','notification_preferences JSONB DEFAULT \'{"app":true,"email":true,"telegram":true,"whatsapp":false,"browser":true}\'::jsonb'], ['residents','created_at TIMESTAMP DEFAULT now()'], ['residents','active BOOLEAN DEFAULT true'], ['residents','deleted_at TIMESTAMP'],
@@ -600,14 +603,14 @@ CREATE TABLE IF NOT EXISTS audit(
   await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_reservation_slot ON reservations(area, reserved_for, start_time, end_time) WHERE status <> 'cancelada'").catch(e => console.warn('Índice de reservas ignorado:', e.message));
 
   const defaultSettings = {
-    THEME_ACCENT: '#126b5f', THEME_TEXT_SIZE: 'comfort', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light', APP_VERSION:'Vitória Régia Pro v11.6',
+    THEME_ACCENT: '#126b5f', THEME_TEXT_SIZE: 'comfort', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light', APP_VERSION:'Vitória Régia Pro v11.8',
     CONDO_NAME: 'Condomínio Vitória Régia', DEVELOPED_BY: 'CrewCheck', CREWCHECK_SITE: 'https://www.crewcheck.online/', CREWCHECK_FOOTER: 'Desenvolvido por CrewCheck - todos os direitos reservados', CONDO_ADDRESS: '', WEATHER_CITY: 'João Pessoa', WEATHER_LAT: '-7.1195', WEATHER_LON: '-34.8450',
     ELEVATOR_OPERATOR_NAME: 'Operadora do elevador', ELEVATOR_EMERGENCY_PHONE: '', EMERGENCY_EMAILS: process.env.SENDGRID_TO_DEFAULT || '',
     EMERGENCY_APPROVAL_REQUIRED: 'true', FOOTER_MODE: 'minimal', EMAIL_PROVIDER: process.env.MAIL_PROVIDER || 'sendgrid',
     SENDGRID_FROM_EMAIL: process.env.SENDGRID_FROM_EMAIL || '', SENDGRID_FROM_NAME: process.env.SENDGRID_FROM_NAME || 'Condomínio Vitória Régia', SENDGRID_REPLY_TO: process.env.SENDGRID_REPLY_TO || '', EMAIL_SIGNATURE: 'Condomínio Vitória Régia',
     TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '', TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || '', TELEGRAM_BOT_USERNAME: process.env.TELEGRAM_BOT_USERNAME || 'vitoriaregia_bot', TELEGRAM_START_URL: process.env.TELEGRAM_START_URL || 'https://t.me/vitoriaregia_bot', TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET || '', TELEGRAM_ENABLED: process.env.TELEGRAM_ENABLED || process.env.ENABLE_TELEGRAM || 'true', TELEGRAM_PARSE_MODE: process.env.TELEGRAM_PARSE_MODE || '', WHATSAPP_PHONE_NUMBER_ID: '', WHATSAPP_ACCESS_TOKEN: '', WHATSAPP_API_VERSION: 'v19.0',
     DELIVERY_DEFAULT_CHANNELS: '{"app":true,"browser":true,"email":true,"telegram":true,"whatsapp":false}',
-    ALLOW_MULTIPLE_RESIDENTS_PER_UNIT: 'false', SHOW_UPDATES_TO_SINDICO: 'false',
+    ALLOW_MULTIPLE_RESIDENTS_PER_UNIT: 'false', MAX_RESIDENTS_PER_UNIT:'2', SHOW_UPDATES_TO_SINDICO: 'false',
     RESERVATION_DEFAULT_RULES: 'Declaro que li e aceito as normas de uso do espaço comum, incluindo horários, limpeza, ruído, convidados e responsabilidade por danos.',
     RESERVATION_MAX_GUESTS_DEFAULT: '30', RESERVATION_COUNT_CHILDREN: 'true', RESERVATION_COUNT_INFANTS: 'false',
     BOLETO_PROVIDER: 'manual', APK_BASE_URL: process.env.PUBLIC_APP_URL || 'https://vitoriaregia1.onrender.com', APK_PORTARIA_URL: '', APK_SINDICO_URL: '', APK_MORADOR_URL: '',
@@ -661,7 +664,7 @@ CREATE TABLE IF NOT EXISTS audit(
   const masterPassword = process.env.BRUNO_PASSWORD || process.env.MASTER_PASSWORD || process.env.ADMIN_PASSWORD || '123456';
   const masterExists = await q('SELECT id FROM users WHERE lower(email)=lower($1)', [masterEmail]);
   if (!masterExists.rowCount) {
-    await q('INSERT INTO users(name,email,password_hash,role,user_type,permissions,active) VALUES($1,$2,$3,$4,$5,$6,$7)', ['Bruno', masterEmail, await bcrypt.hash(masterPassword, 10), 'master', 'master', JSON.stringify(rolePermissions('master')), true]);
+    await q('INSERT INTO users(name,email,password_hash,role,user_type,permissions,active) VALUES($1,$2,$3,$4,$5,$6,$7)', ['Administrador', masterEmail, await bcrypt.hash(masterPassword, 10), 'master', 'master', JSON.stringify(rolePermissions('master')), true]);
   }
   const adminEmail = process.env.ADMIN_EMAIL || 'admin@vitoriaregia.local';
   const adminPassword = process.env.ADMIN_PASSWORD || '123456';
@@ -683,11 +686,32 @@ function isSecretSetting(key='') { return SECRET_SETTING_KEYS.has(String(key).to
 function maskSecretSetting(value='') { const s=String(value || ''); if (!s) return ''; if (s.includes('***')) return s; return s.length < 9 ? 'configurado' : `${s.slice(0,3)}***${s.slice(-3)}`; }
 async function getSettingsObject({ maskSecrets=false }={}) { const rows=(await q('SELECT key,value FROM settings ORDER BY key')).rows; return rows.reduce((acc,r)=>{ acc[r.key] = maskSecrets && isSecretSetting(r.key) ? maskSecretSetting(r.value) : r.value; return acc; }, {}); }
 async function getSetting(key, fallback='') { const r=await q('SELECT value FROM settings WHERE key=$1',[key]); const dbValue=r.rowCount ? String(r.rows[0].value ?? '') : ''; return dbValue !== '' ? dbValue : (process.env[key] || fallback); }
+async function getRuntimeSecret(key, fallback='') {
+  // Preferência: Render/env > banco de configurações > fallback.
+  // Isso impede que atualizações pelo site deixem Telegram/e-mail sem credencial quando a variável está no Render.
+  const env = process.env[key];
+  if (env !== undefined && String(env).trim() !== '') return String(env);
+  const r = await q('SELECT value FROM settings WHERE key=$1',[key]).catch(()=>({rowCount:0,rows:[]}));
+  const dbValue = r.rowCount ? String(r.rows[0].value ?? '') : '';
+  return dbValue !== '' && !dbValue.includes('***') && dbValue !== 'configurado' ? dbValue : fallback;
+}
+async function preserveCommunicationSettingsSnapshot() {
+  const keys=['ENABLE_EMAIL','EMAIL_PROVIDER','SENDGRID_API_KEY','SENDGRID_FROM_EMAIL','SENDGRID_FROM_NAME','SENDGRID_REPLY_TO','SENDGRID_TO_DEFAULT','SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','SMTP_SECURE','MAIL_FROM','ENABLE_TELEGRAM','TELEGRAM_ENABLED','TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID','TELEGRAM_TEST_CHAT_ID','TELEGRAM_BOT_USERNAME','TELEGRAM_START_URL','TELEGRAM_WEBHOOK_SECRET','TELEGRAM_API_BASE_URL','TELEGRAM_PARSE_MODE','ENABLE_WHATSAPP','WHATSAPP_ACCESS_TOKEN','WHATSAPP_PHONE_NUMBER_ID','PUBLIC_APP_URL','UPDATE_GITHUB_TOKEN','UPDATE_GITHUB_REPO','UPDATE_GITHUB_BRANCH','RENDER_DEPLOY_HOOK_URL'];
+  const out={};
+  for (const k of keys) { const v = await getRuntimeSecret(k,''); if (v) out[k]=v; }
+  return out;
+}
+async function restoreCommunicationSettingsSnapshot(snapshot={}) {
+  for (const [k,v] of Object.entries(snapshot||{})) {
+    if (v !== undefined && String(v).trim() !== '') await q('INSERT INTO settings(key,value,updated_at) VALUES($1,$2,now()) ON CONFLICT(key) DO UPDATE SET value=$2,updated_at=now()',[k,String(v)]).catch(()=>null);
+  }
+}
+
 function withTimeout(promise, ms=8000, label='operação') { return Promise.race([promise, new Promise(resolve => setTimeout(() => resolve({ ok:false, timeout:true, error:`Tempo limite excedido em ${label}` }), ms))]); }
 function channelResultSummary(result) { if (!result) return 'não solicitado'; if (result.ok) return 'enviado'; if (result.skipped) return 'ignorado'; if (result.timeout) return 'tempo esgotado'; return 'erro'; }
 
 function isMaster(user) { return user?.role === 'master' || user?.role === 'admin'; }
-function masterOnly(req, res, next) { return isMaster(req.user) ? next() : res.status(403).json({ error: 'Apenas Bruno pode alterar funcionalidades liberadas, apps, banco e atualizações.' }); }
+function masterOnly(req, res, next) { return isMaster(req.user) ? next() : res.status(403).json({ error: 'Acesso reservado para manutenção do sistema.' }); }
 async function canViewUpdates(req, res, next) {
   if (isMaster(req.user)) return next();
   if (req.user?.role === 'sindico' && boolValue(await getSetting('SHOW_UPDATES_TO_SINDICO','false'), false)) return next();
@@ -714,11 +738,11 @@ async function filterChannelsByPlan(channels={}) {
   out.browser = Boolean(out.browser) && await featureEnabled('browser');
   return out;
 }
-const PLATFORM_SETTING_KEYS = new Set(['ENABLE_EMAIL','ENABLE_TELEGRAM','ENABLE_WHATSAPP','ENABLE_BROWSER_PUSH','ENABLE_APP_PORTARIA','ENABLE_APP_SINDICO','ENABLE_APP_MORADOR','REGISTRATION_REQUIRE_EMAIL','REGISTRATION_REQUIRE_WHATSAPP','REGISTRATION_REQUIRE_TELEGRAM','BANK_PROVIDER','BANK_API_BASE_URL','BANK_CLIENT_ID','BANK_ACCOUNT','BANK_AGENCY','BANK_WALLET','BANK_CONTRACT','BANK_PIX_KEY','BOLETO_AUTO_GENERATE','BOLETO_PROVIDER','ENABLE_SYSTEM_UPDATES','UPDATE_CHANNEL','UPDATE_FEED_URL','UPDATE_APPLY_MODE','UPDATE_GITHUB_REPO','UPDATE_GITHUB_BRANCH','APK_PORTARIA_URL','APK_SINDICO_URL','APK_MORADOR_URL','RESERVATION_MAX_GUESTS_DEFAULT','RESERVATION_COUNT_CHILDREN','RESERVATION_COUNT_INFANTS','RESIDENT_CRITERIA','EMERGENCY_CRITICAL_ALERTS','ALLOW_MULTIPLE_RESIDENTS_PER_UNIT','SHOW_UPDATES_TO_SINDICO','EMAIL_PROVIDER','SENDGRID_FROM_EMAIL','SENDGRID_FROM_NAME','SENDGRID_REPLY_TO','SENDGRID_TO_DEFAULT','SENDGRID_DATA_RESIDENCY','SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','SMTP_SECURE','MAIL_FROM','TELEGRAM_ENABLED','TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID','TELEGRAM_WEBHOOK_SECRET','TELEGRAM_BOT_USERNAME','TELEGRAM_START_URL','TELEGRAM_PARSE_MODE','WHATSAPP_API_VERSION','WHATSAPP_PHONE_NUMBER_ID','WHATSAPP_BUSINESS_ACCOUNT_ID','WHATSAPP_ACCESS_TOKEN','WHATSAPP_TEMPLATE_PACKAGE','WHATSAPP_TEMPLATE_RESERVATION','VAPID_PUBLIC_KEY','VAPID_PRIVATE_KEY','VAPID_SUBJECT']);
+const PLATFORM_SETTING_KEYS = new Set(['ENABLE_EMAIL','ENABLE_TELEGRAM','ENABLE_WHATSAPP','ENABLE_BROWSER_PUSH','ENABLE_APP_PORTARIA','ENABLE_APP_SINDICO','ENABLE_APP_MORADOR','REGISTRATION_REQUIRE_EMAIL','REGISTRATION_REQUIRE_WHATSAPP','REGISTRATION_REQUIRE_TELEGRAM','BANK_PROVIDER','BANK_API_BASE_URL','BANK_CLIENT_ID','BANK_ACCOUNT','BANK_AGENCY','BANK_WALLET','BANK_CONTRACT','BANK_PIX_KEY','BOLETO_AUTO_GENERATE','BOLETO_PROVIDER','ENABLE_SYSTEM_UPDATES','UPDATE_CHANNEL','UPDATE_FEED_URL','UPDATE_APPLY_MODE','UPDATE_GITHUB_REPO','UPDATE_GITHUB_BRANCH','APK_PORTARIA_URL','APK_SINDICO_URL','APK_MORADOR_URL','RESERVATION_MAX_GUESTS_DEFAULT','RESERVATION_COUNT_CHILDREN','RESERVATION_COUNT_INFANTS','RESIDENT_CRITERIA','EMERGENCY_CRITICAL_ALERTS','ALLOW_MULTIPLE_RESIDENTS_PER_UNIT','MAX_RESIDENTS_PER_UNIT','SHOW_UPDATES_TO_SINDICO','EMAIL_PROVIDER','SENDGRID_FROM_EMAIL','SENDGRID_FROM_NAME','SENDGRID_REPLY_TO','SENDGRID_TO_DEFAULT','SENDGRID_DATA_RESIDENCY','SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','SMTP_SECURE','MAIL_FROM','TELEGRAM_ENABLED','TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID','TELEGRAM_WEBHOOK_SECRET','TELEGRAM_BOT_USERNAME','TELEGRAM_START_URL','TELEGRAM_PARSE_MODE','WHATSAPP_API_VERSION','WHATSAPP_PHONE_NUMBER_ID','WHATSAPP_BUSINESS_ACCOUNT_ID','WHATSAPP_ACCESS_TOKEN','WHATSAPP_TEMPLATE_PACKAGE','WHATSAPP_TEMPLATE_RESERVATION','VAPID_PUBLIC_KEY','VAPID_PRIVATE_KEY','VAPID_SUBJECT']);
 function containsProtectedSettings(body={}) { return Object.keys(body || {}).some(k => PLATFORM_SETTING_KEYS.has(k)); }
 async function publicSettingsObject() {
   const s = await getSettingsObject();
-  const keys = ['CONDO_NAME','APPEARANCE','THEME_ACCENT','ENABLE_EMAIL','ENABLE_TELEGRAM','ENABLE_WHATSAPP','ENABLE_BROWSER_PUSH','ENABLE_APP_PORTARIA','ENABLE_APP_SINDICO','ENABLE_APP_MORADOR','REGISTRATION_REQUIRE_EMAIL','REGISTRATION_REQUIRE_WHATSAPP','REGISTRATION_REQUIRE_TELEGRAM','APK_PORTARIA_URL','APK_SINDICO_URL','APK_MORADOR_URL','RESERVATION_MAX_GUESTS_DEFAULT','RESERVATION_COUNT_CHILDREN','RESERVATION_COUNT_INFANTS','RESIDENT_CRITERIA','EMERGENCY_CRITICAL_ALERTS','ALLOW_MULTIPLE_RESIDENTS_PER_UNIT','SHOW_UPDATES_TO_SINDICO','CREWCHECK_SITE','DEVELOPED_BY','THEME_TEXT_SIZE'];
+  const keys = ['CONDO_NAME','APPEARANCE','THEME_ACCENT','ENABLE_EMAIL','ENABLE_TELEGRAM','ENABLE_WHATSAPP','ENABLE_BROWSER_PUSH','ENABLE_APP_PORTARIA','ENABLE_APP_SINDICO','ENABLE_APP_MORADOR','REGISTRATION_REQUIRE_EMAIL','REGISTRATION_REQUIRE_WHATSAPP','REGISTRATION_REQUIRE_TELEGRAM','APK_PORTARIA_URL','APK_SINDICO_URL','APK_MORADOR_URL','RESERVATION_MAX_GUESTS_DEFAULT','RESERVATION_COUNT_CHILDREN','RESERVATION_COUNT_INFANTS','RESIDENT_CRITERIA','EMERGENCY_CRITICAL_ALERTS','ALLOW_MULTIPLE_RESIDENTS_PER_UNIT','MAX_RESIDENTS_PER_UNIT','SHOW_UPDATES_TO_SINDICO','CREWCHECK_SITE','DEVELOPED_BY','THEME_TEXT_SIZE'];
   return Object.fromEntries(keys.map(k => [k, s[k] ?? '']));
 }
 function loginEmailFromChannels(body={}) {
@@ -807,7 +831,7 @@ async function professionalEmailHtml({ subject='', text='', html='', actionUrl='
 function maskEmailList(value='') { return splitList(value).map(email => email.replace(/(^.).*(@.*$)/, '$1***$2')); }
 
 async function sendEmailSmart({ to, subject, text, html, actionUrl='', actionLabel='Acessar sistema' }) {
-  if (!(await featureEnabled('email'))) return { ok:false, skipped:true, reason:'Canal de e-mail não liberado por Bruno.' };
+  if (!(await featureEnabled('email'))) return { ok:false, skipped:true, reason:'Canal de e-mail não liberado nas configurações.' };
   const destination = splitList(to); if (!destination.length) { const err = new Error('Informe ao menos um destinatário de e-mail.'); err.status=400; throw err; }
   const provider = String(await getSetting('EMAIL_PROVIDER', process.env.SENDGRID_API_KEY ? 'sendgrid' : 'smtp')).toLowerCase();
   const sendgridKey = await getSetting('SENDGRID_API_KEY', process.env.SENDGRID_API_KEY || '');
@@ -841,7 +865,7 @@ function configureWebPush() {
   return true;
 }
 async function sendBrowserPushToResident(residentId, title, body, url='/', payloadExtra={}) {
-  if (!(await featureEnabled('browser'))) return { ok:false, skipped:true, reason:'Notificação do navegador não liberada por Bruno.' };
+  if (!(await featureEnabled('browser'))) return { ok:false, skipped:true, reason:'Notificação do navegador não liberada nas configurações.' };
   if (!residentId || !configureWebPush()) return { ok:false, skipped:true, reason:'VAPID não configurado' };
   const subs = await q('SELECT ps.* FROM push_subscriptions ps JOIN users u ON u.id=ps.user_id WHERE u.resident_id=$1', [residentId]).catch(()=>({ rows:[] }));
   const payload = JSON.stringify({ title, body, url, icon:'/logo-vitoria-regia.svg', ...payloadExtra });
@@ -891,7 +915,7 @@ async function sendTelegramMessage(chatId, text, options={}) {
   const payload = { chat_id: chat, text, ...(parseMode ? { parse_mode: parseMode } : {}), ...(options || {}) };
   return telegramApi('sendMessage', payload);
 }
-async function sendWhatsAppText(phone, text) { if (!(await featureEnabled('whatsapp'))) return { ok:false, skipped:true, reason:'WhatsApp não liberado por Bruno.' }; const phoneId=await getSetting('WHATSAPP_PHONE_NUMBER_ID', process.env.WHATSAPP_PHONE_NUMBER_ID || ''); const token=await getSetting('WHATSAPP_ACCESS_TOKEN', process.env.WHATSAPP_ACCESS_TOKEN || process.env.WHATSAPP_API_TOKEN || ''); const version=await getSetting('WHATSAPP_API_VERSION', process.env.WHATSAPP_API_VERSION || 'v19.0'); const to = onlyDigits(phone); if (!phoneId || !token || !to) return { ok:false, skipped:true }; const r = await fetch(`https://graph.facebook.com/${version}/${phoneId}/messages`, { method:'POST', headers:{ 'content-type':'application/json', authorization:`Bearer ${token}` }, body: JSON.stringify({ messaging_product:'whatsapp', to, type:'text', text:{ body:text } }) }); return { ok:r.ok, data: await r.json().catch(()=>({})) }; }
+async function sendWhatsAppText(phone, text) { if (!(await featureEnabled('whatsapp'))) return { ok:false, skipped:true, reason:'WhatsApp não liberado nas configurações.' }; const phoneId=await getSetting('WHATSAPP_PHONE_NUMBER_ID', process.env.WHATSAPP_PHONE_NUMBER_ID || ''); const token=await getSetting('WHATSAPP_ACCESS_TOKEN', process.env.WHATSAPP_ACCESS_TOKEN || process.env.WHATSAPP_API_TOKEN || ''); const version=await getSetting('WHATSAPP_API_VERSION', process.env.WHATSAPP_API_VERSION || 'v19.0'); const to = onlyDigits(phone); if (!phoneId || !token || !to) return { ok:false, skipped:true }; const r = await fetch(`https://graph.facebook.com/${version}/${phoneId}/messages`, { method:'POST', headers:{ 'content-type':'application/json', authorization:`Bearer ${token}` }, body: JSON.stringify({ messaging_product:'whatsapp', to, type:'text', text:{ body:text } }) }); return { ok:r.ok, data: await r.json().catch(()=>({})) }; }
 async function findResident({ unit='', recipient='', resident_id=null, user_id=null }={}) {
   if (resident_id) { const r=await q('SELECT * FROM residents WHERE id=$1 AND COALESCE(active,true)=true',[resident_id]); if (r.rowCount) return r.rows[0]; }
   if (user_id) { const r=await q('SELECT r.* FROM users u JOIN residents r ON r.id=u.resident_id WHERE u.id=$1',[user_id]); if (r.rowCount) return r.rows[0]; }
@@ -956,7 +980,7 @@ ${body}`, { disable_web_page_preview:true }).catch(e=>({ ok:false, error:e.messa
 async function notifyAllResidents({ title, body, channels={}, action_url='', payload={} }) { const residents=(await q('SELECT * FROM residents WHERE email IS NOT NULL OR phone IS NOT NULL')).rows; for (const r of residents) await notifyResident(r, { title, body, channels:{ app:true, browser:true, ...channels }, action_url, payload }).catch(()=>null); }
 
 async function sendTemporaryPasswordToUser(user, temp, title='Senha temporária - Vitória Régia') {
-  const prefs = await filterChannelsByPlan({ app:true, browser:true, email:true, telegram:true, whatsapp:false, ...parseJson(user.notification_preferences, {}) });
+  const prefs = await filterChannelsByPlan({ app:true, browser:true, email:true, telegram:true, whatsapp:true });
   const body = `Sua senha temporária é: ${temp}\nAcesse o sistema e altere sua senha.`;
   await createNotification({ user_id:user.id, title:'Senha temporária gerada', body:'Uma senha temporária foi enviada pelos seus canais cadastrados.', channel:'app', channels:prefs }).catch(()=>null);
   const jobs=[];
@@ -1088,8 +1112,8 @@ function updateRowValues(manifest, payloadHash, packageBuffer=null, userId=null,
   return [manifest.update_code, manifest.version || manifest.to_version || '', manifest.title || 'Atualização Vitória Régia', manifest.notes || '', manifest.from_version || '', manifest.to_version || manifest.version || '', status, manifest.validation_token_hash || '', payloadHash || manifest.payload_sha256 || '', JSON.stringify(manifest), packageBuffer, userId];
 }
 async function githubApi(repo, endpoint, options={}) {
-  const token = process.env.UPDATE_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
-  if (!token) throw new Error('Configure UPDATE_GITHUB_TOKEN no Render para aplicar atualizações automaticamente pelo GitHub.');
+  const token = await getRuntimeSecret('UPDATE_GITHUB_TOKEN', process.env.GITHUB_TOKEN || '');
+  if (!token) throw new Error('Configure UPDATE_GITHUB_TOKEN nas variáveis do Render ou em Configurações → Atualizações.');
   const response = await fetch(`https://api.github.com/repos/${repo}${endpoint}`, { ...options, headers:{ 'Accept':'application/vnd.github+json', 'Authorization':`Bearer ${token}`, 'X-GitHub-Api-Version':'2022-11-28', ...(options.headers || {}) } });
   const text = await response.text();
   let data = {}; try { data = text ? JSON.parse(text) : {}; } catch { data = { raw:text }; }
@@ -1097,8 +1121,8 @@ async function githubApi(repo, endpoint, options={}) {
   return data;
 }
 async function applyUpdateViaGithub(payloadBuffer, manifest) {
-  const repo = process.env.UPDATE_GITHUB_REPO || await getSetting('UPDATE_GITHUB_REPO','bmedeiros1987/vitoriaregia1');
-  const branch = process.env.UPDATE_GITHUB_BRANCH || await getSetting('UPDATE_GITHUB_BRANCH','main');
+  const repo = await getRuntimeSecret('UPDATE_GITHUB_REPO','bmedeiros1987/vitoriaregia1');
+  const branch = await getRuntimeSecret('UPDATE_GITHUB_BRANCH','main');
   const ref = await githubApi(repo, `/git/ref/heads/${encodeURIComponent(branch)}`);
   const headSha = ref.object.sha;
   const baseCommit = await githubApi(repo, `/git/commits/${headSha}`);
@@ -1114,8 +1138,9 @@ async function applyUpdateViaGithub(payloadBuffer, manifest) {
   const newTree = await githubApi(repo, '/git/trees', { method:'POST', body: JSON.stringify({ base_tree: baseCommit.tree.sha, tree }) });
   const newCommit = await githubApi(repo, '/git/commits', { method:'POST', body: JSON.stringify({ message:`Atualização Vitória Régia ${manifest.version || manifest.update_code}`, tree:newTree.sha, parents:[headSha] }) });
   await githubApi(repo, `/git/refs/heads/${encodeURIComponent(branch)}`, { method:'PATCH', body: JSON.stringify({ sha:newCommit.sha, force:false }) });
-  if (process.env.RENDER_DEPLOY_HOOK_URL) await fetch(process.env.RENDER_DEPLOY_HOOK_URL, { method:'POST' }).catch(()=>null);
-  return { repo, branch, commit:newCommit.sha, files:tree.length, deployHook:Boolean(process.env.RENDER_DEPLOY_HOOK_URL) };
+  const hook = await getRuntimeSecret('RENDER_DEPLOY_HOOK_URL','');
+  if (hook) await fetch(hook, { method:'POST' }).catch(()=>null);
+  return { repo, branch, commit:newCommit.sha, files:tree.length, deployHook:Boolean(hook) };
 }
 async function applyUpdateLocally(payloadBuffer) {
   if (process.env.ALLOW_RUNTIME_UPDATE !== 'true') throw new Error('Aplicação local bloqueada. Para VPS/PC, defina ALLOW_RUNTIME_UPDATE=true. No Render, use modo GitHub.');
@@ -1139,8 +1164,8 @@ app.get('/api/public-config', async (_req,res,next)=>{ try { res.json(await publ
 app.post('/api/login', async (req,res,next)=>{ try { requireFields(req.body,['email','password']); const r=await q('SELECT * FROM users WHERE lower(email)=lower($1)',[req.body.email]); const user=r.rows[0]; if (!user || user.active === false) return res.status(401).json({ error:'Usuário não encontrado ou inativo.' }); const ok=await bcrypt.compare(req.body.password, user.password_hash || ''); if (!ok) return res.status(401).json({ error:'Senha inválida.' }); const clean=sanitizeUser(user); await q('UPDATE users SET last_login=now() WHERE id=$1',[clean.id]).catch(()=>null); const token=jwt.sign(clean, JWT_SECRET, { expiresIn:'12h' }); res.json({ token, user:clean, version:APP_VERSION }); } catch(e){ next(e); } });
 app.post('/api/register', async (req,res,next)=>{ try {
   requireFields(req.body,['name']);
-  const requestedRole = ['morador','sindico','portaria','funcionario'].includes(String(req.body.role||'').toLowerCase()) ? String(req.body.role).toLowerCase() : 'morador';
-  const requiresUnit = ['morador','sindico'].includes(requestedRole);
+  const requestedRole = ['morador','funcionario'].includes(String(req.body.role||'').toLowerCase()) ? String(req.body.role).toLowerCase() : 'morador';
+  const requiresUnit = requestedRole === 'morador';
   if (requiresUnit && !String(req.body.unit || '').trim()) { const err=new Error('Informe a unidade/apartamento para solicitar este tipo de cadastro.'); err.status=400; throw err; }
   const emailEnabled = await featureEnabled('email'); const whatsappEnabled = await featureEnabled('whatsapp'); const telegramEnabled = await featureEnabled('telegram');
   const hasEmail = Boolean(String(req.body.email || '').trim()); const hasWhats = Boolean(onlyDigits(req.body.whatsapp_phone || req.body.phone || '')); const hasTelegram = Boolean(String(req.body.telegram_chat_id || '').trim());
@@ -1154,7 +1179,7 @@ app.post('/api/register', async (req,res,next)=>{ try {
   const channels = await filterChannelsByPlan({ email:hasEmail, whatsapp:hasWhats, telegram:hasTelegram, app:true, browser:true });
   const r=await q('INSERT INTO registration_requests(name,email,phone,whatsapp_phone,telegram_chat_id,preferred_channels,unit,document,role,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id,status', [req.body.name, req.body.email || '', req.body.phone || req.body.whatsapp_phone || '', req.body.whatsapp_phone || req.body.phone || '', req.body.telegram_chat_id || '', JSON.stringify(channels), requiresUnit ? (req.body.unit || '') : (req.body.unit || ''), req.body.document || '', requestedRole, req.body.notes || '']);
   await audit(req.body.email || req.body.phone || req.body.telegram_chat_id || 'cadastro', 'solicitou cadastro', req.body.unit || '');
-  res.json({ ok:true, message:'Solicitação enviada para aprovação do síndico.', request:r.rows[0] });
+  res.json({ ok:true, message:'Solicitação enviada para aprovação da administração.', request:r.rows[0] });
 } catch(e){ next(e); } });
 app.post('/api/forgot-password', async (req,res,next)=>{ try {
   requireFields(req.body,['email']);
@@ -1207,8 +1232,9 @@ app.get('/api/residents', auth, can('residents.view'), async (req,res,next)=>{ t
 app.post('/api/residents', auth, can('residents.manage'), async (req,res,next)=>{ try {
   requireFields(req.body,['name','unit']);
   await requireNoDuplicate('Morador', await residentDuplicate(req.body));
+  if (boolValue(await getSetting('ALLOW_MULTIPLE_RESIDENTS_PER_UNIT','false'), false)) { const max=Number(await getSetting('MAX_RESIDENTS_PER_UNIT','2') || 2); const c=(await q("SELECT COUNT(*)::int count FROM residents WHERE upper(replace(coalesce(unit,''),' ',''))=$1 AND COALESCE(active,true)=true",[normalizeUnit(req.body.unit)])).rows[0].count; if (c >= max) { const err=new Error(`Limite de ${max} morador(es) por unidade atingido.`); err.status=409; throw err; } }
   const prefs = await filterChannelsByPlan(req.body.notification_preferences || { app:true, browser:true, email:Boolean(req.body.email), telegram:true, whatsapp:Boolean(req.body.whatsapp_phone || req.body.phone) });
-  const r=await q('INSERT INTO residents(name,unit,phone,whatsapp_phone,email,document,vehicle,notes,access_profile,access_permissions,telegram_chat_id,notification_preferences,resident_tags) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *', [req.body.name, req.body.unit, req.body.phone||'', req.body.whatsapp_phone||req.body.phone||'', req.body.email||'', req.body.document||'', req.body.vehicle||'', req.body.notes||'', req.body.access_profile||'morador', JSON.stringify(req.body.access_permissions || rolePermissions('morador')), req.body.telegram_chat_id||'', JSON.stringify(prefs), JSON.stringify(req.body.resident_tags || {})]);
+  const r=await q('INSERT INTO residents(name,unit,phone,whatsapp_phone,email,document,vehicle,vehicle_model,vehicle_plate,pet_name,notes,access_profile,access_permissions,telegram_chat_id,notification_preferences,resident_tags) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *', [req.body.name, req.body.unit, req.body.phone||'', req.body.whatsapp_phone||req.body.phone||'', req.body.email||'', req.body.document||'', req.body.vehicle||req.body.vehicle_model||'', req.body.vehicle_model||req.body.vehicle||'', req.body.vehicle_plate||'', req.body.pet_name||'', req.body.notes||'', req.body.access_profile||'morador', JSON.stringify(req.body.access_permissions || rolePermissions('morador')), req.body.telegram_chat_id||'', JSON.stringify(prefs), JSON.stringify(req.body.resident_tags || {})]);
   await audit(req.user.email,'criou morador',req.body.name);
   res.json(r.rows[0]);
 } catch(e){ next(e); } });
@@ -1216,7 +1242,7 @@ app.put('/api/residents/:id', auth, can('residents.manage'), async (req,res,next
   requireFields(req.body,['name','unit']);
   await requireNoDuplicate('Morador', await residentDuplicate(req.body, req.params.id));
   const prefs = await filterChannelsByPlan(req.body.notification_preferences || { app:true, browser:true, email:Boolean(req.body.email), telegram:true, whatsapp:Boolean(req.body.whatsapp_phone || req.body.phone) });
-  const r=await q('UPDATE residents SET name=$1,unit=$2,phone=$3,whatsapp_phone=$4,email=$5,document=$6,vehicle=$7,notes=$8,access_profile=$9,access_permissions=$10,telegram_chat_id=$11,notification_preferences=$12,resident_tags=$13 WHERE id=$14 RETURNING *', [req.body.name, req.body.unit, req.body.phone||'', req.body.whatsapp_phone||req.body.phone||'', req.body.email||'', req.body.document||'', req.body.vehicle||'', req.body.notes||'', req.body.access_profile||'morador', JSON.stringify(req.body.access_permissions || {}), req.body.telegram_chat_id||'', JSON.stringify(prefs), JSON.stringify(req.body.resident_tags || {}), req.params.id]);
+  const r=await q('UPDATE residents SET name=$1,unit=$2,phone=$3,whatsapp_phone=$4,email=$5,document=$6,vehicle=$7,vehicle_model=$8,vehicle_plate=$9,pet_name=$10,notes=$11,access_profile=$12,access_permissions=$13,telegram_chat_id=$14,notification_preferences=$15,resident_tags=$16 WHERE id=$17 RETURNING *', [req.body.name, req.body.unit, req.body.phone||'', req.body.whatsapp_phone||req.body.phone||'', req.body.email||'', req.body.document||'', req.body.vehicle||req.body.vehicle_model||'', req.body.vehicle_model||req.body.vehicle||'', req.body.vehicle_plate||'', req.body.pet_name||'', req.body.notes||'', req.body.access_profile||'morador', JSON.stringify(req.body.access_permissions || {}), req.body.telegram_chat_id||'', JSON.stringify(prefs), JSON.stringify(req.body.resident_tags || {}), req.params.id]);
   res.json(r.rows[0]||{});
 } catch(e){ next(e); } });
 app.delete('/api/residents/:id', auth, can('residents.manage'), async (req,res,next)=>{ try { await q('UPDATE residents SET active=false,deleted_at=now() WHERE id=$1',[req.params.id]); await audit(req.user.email,'removeu morador',req.params.id); res.json({ ok:true }); } catch(e){ next(e); } });
@@ -1225,7 +1251,7 @@ app.get('/api/users', auth, can('users.manage'), async (req,res,next)=>{ try { c
 app.post('/api/users', auth, can('users.manage'), async (req,res,next)=>{ try {
   requireFields(req.body,['name','role']);
   const role=req.body.role || 'morador';
-  if (role === 'master' && !isMaster(req.user)) return res.status(403).json({ error:'Somente Bruno pode criar outro administrador técnico.' });
+  if (role === 'master' && !isMaster(req.user)) return res.status(403).json({ error:'Ação restrita à área técnica.' });
   const userType=req.body.user_type || role; const password=req.body.password || randomCode(8);
   const resident_id = ['funcionario','portaria','financeiro'].includes(role) ? null : (req.body.resident_id || null);
   const unit = (role === 'sindico' && req.body.is_outsourced) || ['funcionario','portaria','financeiro'].includes(role) ? '' : (req.body.unit || '');
@@ -1242,12 +1268,12 @@ app.post('/api/users', auth, can('users.manage'), async (req,res,next)=>{ try {
   }
   res.json({ user:sanitizeUser(r.rows[0]), temp_password_sent: !req.body.password });
 } catch(e){ next(e); } });
-app.put('/api/users/:id', auth, can('users.manage'), async (req,res,next)=>{ try { const role=req.body.role||'morador'; if (role === 'master' && !isMaster(req.user)) return res.status(403).json({ error:'Somente Bruno pode alterar administrador técnico.' }); const perms=normalizePermissions(req.body.permissions||{},role); const resident_id=['funcionario','portaria','financeiro'].includes(role) ? null : (req.body.resident_id || null); const unit=(role==='sindico' && req.body.is_outsourced) || ['funcionario','portaria','financeiro'].includes(role) ? '' : (req.body.unit || ''); await requireNoDuplicate('Usuário', await userDuplicate(req.body, req.params.id)); const prefs=await filterChannelsByPlan(req.body.notification_preferences || {}); let sql='UPDATE users SET name=$1,email=$2,role=$3,user_type=$4,is_outsourced=$5,unit=$6,permissions=$7,resident_id=$8,employee_id=$9,phone=$10,whatsapp_phone=$11,telegram_chat_id=$12,notification_preferences=$13,active=$14'; const params=[req.body.name,loginEmailFromChannels(req.body),role,req.body.user_type||role,req.body.is_outsourced===true,unit,JSON.stringify(perms),resident_id,req.body.employee_id||null,req.body.phone||req.body.whatsapp_phone||'',req.body.whatsapp_phone||req.body.phone||'',req.body.telegram_chat_id||'',JSON.stringify(prefs),req.body.active!==false]; if (req.body.password) { params.push(await bcrypt.hash(req.body.password,10)); sql += `,password_hash=$${params.length},force_password_change=false`; } params.push(req.params.id); sql += ` WHERE id=$${params.length} RETURNING *`; const r=await q(sql,params); await audit(req.user.email,'alterou usuário',req.body.email||req.body.phone||req.params.id); res.json(sanitizeUser(r.rows[0])); } catch(e){ next(e); } });
+app.put('/api/users/:id', auth, can('users.manage'), async (req,res,next)=>{ try { const role=req.body.role||'morador'; if (role === 'master' && !isMaster(req.user)) return res.status(403).json({ error:'Ação restrita à área técnica.' }); const perms=normalizePermissions(req.body.permissions||{},role); const resident_id=['funcionario','portaria','financeiro'].includes(role) ? null : (req.body.resident_id || null); const unit=(role==='sindico' && req.body.is_outsourced) || ['funcionario','portaria','financeiro'].includes(role) ? '' : (req.body.unit || ''); await requireNoDuplicate('Usuário', await userDuplicate(req.body, req.params.id)); const prefs=await filterChannelsByPlan(req.body.notification_preferences || {}); let sql='UPDATE users SET name=$1,email=$2,role=$3,user_type=$4,is_outsourced=$5,unit=$6,permissions=$7,resident_id=$8,employee_id=$9,phone=$10,whatsapp_phone=$11,telegram_chat_id=$12,notification_preferences=$13,active=$14'; const params=[req.body.name,loginEmailFromChannels(req.body),role,req.body.user_type||role,req.body.is_outsourced===true,unit,JSON.stringify(perms),resident_id,req.body.employee_id||null,req.body.phone||req.body.whatsapp_phone||'',req.body.whatsapp_phone||req.body.phone||'',req.body.telegram_chat_id||'',JSON.stringify(prefs),req.body.active!==false]; if (req.body.password) { params.push(await bcrypt.hash(req.body.password,10)); sql += `,password_hash=$${params.length},force_password_change=false`; } params.push(req.params.id); sql += ` WHERE id=$${params.length} RETURNING *`; const r=await q(sql,params); await audit(req.user.email,'alterou usuário',req.body.email||req.body.phone||req.params.id); res.json(sanitizeUser(r.rows[0])); } catch(e){ next(e); } });
 
 app.delete('/api/users/:id', auth, can('users.manage'), async (req,res,next)=>{ try {
   const existing=(await q('SELECT * FROM users WHERE id=$1',[req.params.id])).rows[0];
   if (!existing) return res.status(404).json({ error:'Usuário não encontrado.' });
-  if ((existing.role === 'master' || existing.role === 'admin') && !isMaster(req.user)) return res.status(403).json({ error:'Somente Bruno pode remover este usuário.' });
+  if ((existing.role === 'master' || existing.role === 'admin') && !isMaster(req.user)) return res.status(403).json({ error:'Ação restrita à área técnica.' });
   await q('UPDATE users SET active=false WHERE id=$1',[req.params.id]);
   await audit(req.user.email,'removeu usuário',existing.email || req.params.id);
   res.json({ ok:true });
@@ -1269,8 +1295,8 @@ app.get('/api/registration-requests', auth, can('users.manage'), async (_req,res
 app.post('/api/registration-requests/:id/approve', auth, can('users.manage'), async (req,res,next)=>{ try {
   const rr=(await q('SELECT * FROM registration_requests WHERE id=$1',[req.params.id])).rows[0];
   if (!rr) return res.status(404).json({ error:'Solicitação não encontrada.' });
-  const role = ['morador','sindico','portaria','funcionario'].includes(String(rr.role||'').toLowerCase()) ? String(rr.role).toLowerCase() : 'morador';
-  const needsResident = ['morador','sindico'].includes(role) && String(rr.unit || '').trim();
+  const role = ['morador','funcionario','portaria'].includes(String(rr.role||'').toLowerCase()) ? String(rr.role).toLowerCase() : 'morador';
+  const needsResident = role === 'morador' && String(rr.unit || '').trim();
   const prefs=await filterChannelsByPlan(parseJson(rr.preferred_channels,{ email:Boolean(rr.email), whatsapp:Boolean(rr.whatsapp_phone || rr.phone), telegram:true, app:true, browser:true }));
   let resident=null;
   if (needsResident) {
@@ -1341,6 +1367,8 @@ app.get('/api/reservations', auth, can('reservations.view'), async (req,res,next
 } catch(e){ next(e); } });
 app.post('/api/reservations', auth, can('reservations.manage'), async (req,res,next)=>{ try {
   const isAllDay = req.body.all_day === true || ['dia_todo','dia todo','diatodo','dia inteiro','24h'].includes(String(req.body.reservation_mode || req.body.period_label || req.body.shift || '').toLowerCase()) || (String(req.body.start_time||'')==='00:00' && String(req.body.end_time||'')==='23:59');
+  let reservationUnit = req.body.unit || ''; let reservationResident = req.body.resident || ''; if (isResident(req.user) && req.user.resident_id) { const rr=(await q('SELECT name,unit FROM residents WHERE id=$1',[req.user.resident_id])).rows[0] || {}; reservationUnit = rr.unit || reservationUnit; reservationResident = rr.name || reservationResident || req.user.name; }
+  req.body.unit = reservationUnit; req.body.resident = reservationResident;
   requireFields(req.body, isAllDay ? ['area','unit','resident','reserved_for'] : ['area','unit','resident','reserved_for','start_time','end_time']);
   const startForDuplicate = isAllDay ? '00:00' : (req.body.start_time || '19:00');
   const endForDuplicate = isAllDay ? '23:59' : (req.body.end_time || '23:00');
@@ -1506,7 +1534,7 @@ app.get('/api/apps/download/:kind', auth, async (req,res,next)=>{ try {
   const kind=String(req.params.kind||'').toLowerCase();
   const allowed={ portaria:'ENABLE_APP_PORTARIA', sindico:'ENABLE_APP_SINDICO', morador:'ENABLE_APP_MORADOR' };
   if (!allowed[kind]) return res.status(404).send('Aplicativo não encontrado.');
-  if (!(isMaster(req.user) || boolValue(await getSetting(allowed[kind], 'true'), true))) return res.status(403).send('Aplicativo bloqueado por Bruno.');
+  if (!(isMaster(req.user) || boolValue(await getSetting(allowed[kind], 'true'), true))) return res.status(403).send('Aplicativo bloqueado pelas configurações do sistema.');
   const configured=await getSetting(`APK_${kind.toUpperCase()}_URL`, '');
   if (configured) return res.redirect(configured);
   const file=path.join(__dirname,'..','apks',`vitoria-regia-${kind}.apk`);
@@ -1516,7 +1544,7 @@ app.get('/api/apps/download/:kind', auth, async (req,res,next)=>{ try {
 
 app.get('/api/settings', auth, async (_req,res,next)=>{ try { res.json(await getSettingsObject({ maskSecrets:true })); } catch(e){ next(e); } });
 app.post('/api/settings', auth, can('settings.manage'), async (req,res,next)=>{ try {
-  if (containsProtectedSettings(req.body) && !isMaster(req.user)) return res.status(403).json({ error:'Funcionalidades liberadas, apps e banco só podem ser alterados por Bruno.' });
+  if (containsProtectedSettings(req.body) && !isMaster(req.user)) return res.status(403).json({ error:'Funcionalidades liberadas, apps e banco exigem acesso reservado.' });
   for (const [key,value] of Object.entries(req.body||{})) { const val=String(value ?? ''); if (isSecretSetting(key) && (!val || val.includes('***') || val === 'configurado')) continue; await q('INSERT INTO settings(key,value,updated_at) VALUES($1,$2,now()) ON CONFLICT(key) DO UPDATE SET value=$2,updated_at=now()',[key,val]); }
   if ('ELEVATOR_EMERGENCY_PHONE' in req.body || 'ELEVATOR_OPERATOR_NAME' in req.body) await q(`UPDATE emergency_types SET phone=COALESCE(NULLIF($1,''), phone), supplier=COALESCE(NULLIF($2,''), supplier), updated_at=now() WHERE code=$3`, [req.body.ELEVATOR_EMERGENCY_PHONE||'',req.body.ELEVATOR_OPERATOR_NAME||'','elevador']);
   await audit(req.user.email,'alterou configurações',Object.keys(req.body||{}).join(',')); res.json({ ok:true });
@@ -1531,15 +1559,15 @@ app.get('/api/system-updates/config', auth, canViewUpdates, async (_req,res,next
     mode: await getSetting('UPDATE_APPLY_MODE', process.env.UPDATE_APPLY_MODE || 'github'),
     githubRepo: await getSetting('UPDATE_GITHUB_REPO', process.env.UPDATE_GITHUB_REPO || 'bmedeiros1987/vitoriaregia1'),
     githubBranch: await getSetting('UPDATE_GITHUB_BRANCH', process.env.UPDATE_GITHUB_BRANCH || 'main'),
-    githubTokenConfigured: Boolean(process.env.UPDATE_GITHUB_TOKEN || process.env.GITHUB_TOKEN),
-    renderDeployHookConfigured: Boolean(process.env.RENDER_DEPLOY_HOOK_URL),
+    githubTokenConfigured: Boolean(await getRuntimeSecret('UPDATE_GITHUB_TOKEN', process.env.GITHUB_TOKEN || '')),
+    renderDeployHookConfigured: Boolean(await getRuntimeSecret('RENDER_DEPLOY_HOOK_URL','')),
     feedUrl: await getSetting('UPDATE_FEED_URL', process.env.UPDATE_FEED_URL || ''),
     signatureRequired: ['1','true','sim','yes','on'].includes(String(process.env.UPDATE_REQUIRE_SIGNATURE || 'false').toLowerCase())
   });
 } catch(e){ next(e); } });
 app.get('/api/system-updates', auth, canViewUpdates, async (_req,res,next)=>{ try { res.json((await q("SELECT id,update_code,version,title,notes,from_version,to_version,status,validation_token_hash,payload_sha256,manifest,announced_at,validated_at,applied_at,error,created_at FROM system_updates ORDER BY id DESC LIMIT 100")).rows); } catch(e){ next(e); } });
 app.post('/api/system-updates/upload', auth, masterOnly, uploadUpdateZip.single('update_zip'), async (req,res,next)=>{ try {
-  if (!boolValue(await getSetting('ENABLE_SYSTEM_UPDATES','true'), true)) return res.status(403).json({ error:'Central de atualizações bloqueada por Bruno.' });
+  if (!boolValue(await getSetting('ENABLE_SYSTEM_UPDATES','true'), true)) return res.status(403).json({ error:'Central de atualizações bloqueada nas configurações.' });
   let packageBuffer = req.file?.buffer || null;
   if (!packageBuffer && req.body?.zip_base64) {
     const raw = String(req.body.zip_base64).includes(',') ? String(req.body.zip_base64).split(',').pop() : String(req.body.zip_base64);
@@ -1564,6 +1592,7 @@ app.post('/api/system-updates/:id/notify', auth, masterOnly, async (req,res,next
   res.json({ ok:true, notified, message:'Aviso de atualização reenviado.' });
 } catch(e){ next(e); } });
 app.post('/api/system-updates/:id/apply', auth, masterOnly, async (req,res,next)=>{ try {
+  const communicationSnapshot = await preserveCommunicationSettingsSnapshot();
   const row = (await q('SELECT * FROM system_updates WHERE id=$1',[req.params.id])).rows[0];
   if (!row) return res.status(404).json({ error:'Atualização não encontrada.' });
   if (!row.package_data) return res.status(400).json({ error:'Esta atualização foi apenas anunciada. Envie o ZIP validado antes de aplicar.' });
@@ -1574,8 +1603,9 @@ app.post('/api/system-updates/:id/apply', auth, masterOnly, async (req,res,next)
   else if (mode === 'local') result = await applyUpdateLocally(validation.payloadBuffer);
   else result = { manual:true, message:'Atualização validada. Modo manual selecionado; publique o payload pelo GitHub.' };
   await q("UPDATE system_updates SET status=$1, applied_by=$2, applied_at=now(), error=NULL WHERE id=$3", [mode === 'manual' ? 'validado' : 'aplicado', req.user.id, req.params.id]);
+  await restoreCommunicationSettingsSnapshot(communicationSnapshot);
   await notifyUpdateAvailable({ ...validation.manifest, title:`Atualização ${validation.manifest.version || validation.manifest.update_code} aplicada` }, req.user.email).catch(()=>null);
-  await audit(req.user.email, 'aplicou atualização', validation.manifest.update_code);
+  await audit(req.user.email, 'aplicou atualização preservando configurações de comunicação', validation.manifest.update_code);
   res.json({ ok:true, mode, result, requires_relogin:true, message: mode === 'github' ? 'Atualização enviada ao GitHub. O Render fará novo deploy pelo repositório/deploy hook. Entre novamente após o deploy para carregar a nova versão.' : 'Atualização processada. Entre novamente para carregar a nova versão.' });
 } catch(e){ await q('UPDATE system_updates SET status=$1,error=$2 WHERE id=$3',['erro',e.message,req.params.id]).catch(()=>null); next(e); } });
 app.post('/api/system-updates/check-feed', auth, masterOnly, async (req,res,next)=>{ try {
@@ -1609,8 +1639,8 @@ app.post('/api/system-updates/announce', async (req,res,next)=>{ try {
   res.json({ ok:true, notified });
 } catch(e){ next(e); } });
 
-async function getWeatherSafe() { try { const lat=Number(await getSetting('WEATHER_LAT','-7.1195')); const lon=Number(await getSetting('WEATHER_LON','-34.8450')); const city=await getSetting('WEATHER_CITY','João Pessoa'); const url=`https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m`; const r=await fetch(url, { signal: AbortSignal.timeout(4500) }); const data=await r.json(); return { city, temperature:data?.current?.temperature_2m, humidity:data?.current?.relative_humidity_2m, wind:data?.current?.wind_speed_10m, code:data?.current?.weather_code, updated_at:data?.current?.time, source:'servidor' }; } catch { return { city: await getSetting('WEATHER_CITY','João Pessoa'), temperature:null, source:'indisponível' }; } }
-app.get('/api/weather', auth, async (_req,res,next)=>{ try { res.json(await getWeatherSafe()); } catch(e){ next(e); } });
+async function getWeatherSafe(input={}) { try { const lat=Number(input.lat || await getSetting('WEATHER_LAT','-7.1195')); const lon=Number(input.lon || await getSetting('WEATHER_LON','-34.8450')); const city=input.city || await getSetting('WEATHER_CITY','João Pessoa'); const url=`https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m`; const r=await fetch(url, { signal: AbortSignal.timeout(4500) }); const data=await r.json(); return { city, temperature:data?.current?.temperature_2m, humidity:data?.current?.relative_humidity_2m, wind:data?.current?.wind_speed_10m, code:data?.current?.weather_code, updated_at:data?.current?.time, source:'localização' }; } catch { return { city: await getSetting('WEATHER_CITY','João Pessoa'), temperature:null, humidity:null, source:'indisponível' }; } }
+app.get('/api/weather', auth, async (req,res,next)=>{ try { res.json(await getWeatherSafe({ lat:req.query.lat, lon:req.query.lon, city:req.query.city })); } catch(e){ next(e); } });
 
 function safeBool(v) { return Boolean(v && String(v).trim()); }
 app.get('/api/notify/config', auth, can('settings.manage'), async (_req,res,next)=>{ try {
