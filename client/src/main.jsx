@@ -11,7 +11,7 @@ import {
 import './styles.css';
 
 const API = import.meta.env.VITE_API_URL || '';
-const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v12.4.6';
+const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v12.4.8';
 const money = (v) => Number(v || 0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
 const date = (v) => v ? new Date(String(v)).toLocaleDateString('pt-BR', { timeZone:'UTC' }) : '-';
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -58,6 +58,10 @@ const put = (path, body) => request(path, { method:'PUT', body:JSON.stringify(bo
 const del = (path) => request(path, { method:'DELETE' });
 
 const routeDefaults = { portaria:'encomendas', reservas:'calendario', cadastros:'moradores', financeiro:'movimentos', comunicacao:'notificacoes', central:'apps', configuracoes:'aparencia' };
+function isReservasHash(raw){
+  const value = String(raw || '').toLowerCase();
+  return value === '#/reservas' || value === '#/reservas/' || value.startsWith('#/reservas/') || value === '/reservas' || value === '/reservas/' || value.startsWith('/reservas/') || value === 'reservas' || value.startsWith('reservas/');
+}
 const routeAliases = {
   reservas:['reservas','calendario'], reserva:['reservas','calendario'], espacos:['reservas','espacos'],
   encomendas:['portaria','encomendas'], visitantes:['portaria','visitantes'], escalas:['portaria','escalas'], mensagens:['portaria','mensagens'], portaria:['portaria','encomendas'],
@@ -71,6 +75,9 @@ function routeState(raw='dashboard', explicitSub){
   const cleanRoute = String(raw || 'dashboard').replace(/^#?\/?/, '').replace(/^\//, '');
   const [first, second] = cleanRoute.split('/').filter(Boolean);
   const key = first || 'dashboard';
+  if(isReservasHash(raw) || key === 'reservas'){
+    return { active:'reservas', sub: explicitSub || second || 'calendario' };
+  }
   if(routeAliases[key]){
     const [active, aliasSub] = routeAliases[key];
     return { active, sub: explicitSub || second || aliasSub || routeDefaults[active] };
@@ -78,7 +85,8 @@ function routeState(raw='dashboard', explicitSub){
   return { active:key, sub: explicitSub || second || routeDefaults[key] };
 }
 function routeHash(active, sub){
-  return '/' + active + (sub && routeDefaults[active] ? '/' + sub : '');
+  const currentSub = sub || routeDefaults[active];
+  return '#/' + active + (currentSub && routeDefaults[active] ? '/' + currentSub : '');
 }
 
 function App(){
@@ -114,24 +122,26 @@ function App(){
   useEffect(() => { if(session) loadAll(); else request('/api/public-config').then(s => setData(d => ({ ...d, settings:s }))).catch(()=>null); }, [session]);
   useEffect(() => { if(!session) return; const id=setInterval(() => { request('/api/notifications').then(notifications => setData(d => ({...d, notifications}))).catch(()=>null); }, 5000); return () => clearInterval(id); }, [session]);
   useEffect(() => {
-    const fn=()=>{
-      const hash = location.hash || '#/dashboard';
-      const r=routeState(hash || 'dashboard');
-
-      if(hash.includes('/reservas')){
+    const syncRoute = () => {
+      const r = routeState(window.location.hash || 'dashboard');
+      if(isReservasHash(window.location.hash)){
         setActive('reservas');
-        setSub('calendario');
+        setSub(r.sub || 'calendario');
         return;
       }
-
       setActive(r.active);
       if(r.sub) setSub(r.sub);
     };
-
-    fn();
-    window.addEventListener('hashchange', fn);
-    return()=>window.removeEventListener('hashchange', fn);
+    syncRoute();
+    window.addEventListener('hashchange', syncRoute);
+    return () => window.removeEventListener('hashchange', syncRoute);
   }, []);
+  useEffect(() => {
+    if(isReservasHash(window.location.hash) && active !== 'reservas'){
+      setActive('reservas');
+      setSub('calendario');
+    }
+  }, [active]);
 
   function setForm(group, patch){ setForms(f => ({ ...f, [group]:{ ...f[group], ...patch } })); }
   function notify(message, fail=false){ setToast(message); if(fail) document.body.classList.add('shake'); setTimeout(()=>{ setToast(''); document.body.classList.remove('shake'); }, 3800); }
@@ -148,7 +158,15 @@ function App(){
   async function action(path, body, message, method='POST'){ try { method === 'PUT' ? await put(path, body) : await post(path, body); notify(message); await loadAll(); return true; } catch(e){ notify(e.message, true); return false; } }
   function openConfirm(title, fields, fn){ setConfirm({ title, fields, fn }); }
   async function confirmRun(){ const c=confirm; setConfirm(null); if(c?.fn) await c.fn(); }
-  function go(tab, newSub){ const r=routeState(tab, newSub); setActive(r.active); if(r.sub) setSub(r.sub); location.hash=routeHash(r.active, r.sub); setMenuOpen(false); }
+  function go(tab, newSub){
+    const r = routeState(tab, newSub);
+    const finalSub = r.active === 'reservas' ? (newSub || r.sub || 'calendario') : r.sub;
+    setActive(r.active);
+    if(finalSub) setSub(finalSub);
+    const nextHash = routeHash(r.active, finalSub);
+    if(window.location.hash !== nextHash) window.location.hash = nextHash;
+    setMenuOpen(false);
+  }
   async function lookupUnit(group, unit, maybeName=''){
     if(!unit) return null;
     try { const res = await request('/api/residents/lookup?unit='+encodeURIComponent(unit)+'&name='+encodeURIComponent(maybeName||'')); setLookup(l=>({ ...l, [group]:res })); const resident=res.primary || res.residents?.[0];
@@ -184,14 +202,16 @@ function App(){
   if(!session) return <LoginPage forms={forms} setForm={setForm} mode={loginMode} setMode={setLoginMode} doLogin={doLogin} err={err} setShowPass={setShowPass} showPass={showPass} action={action} settings={settings} />;
   const menuItems = [ ['dashboard','Início',Home], ['portaria','Portaria',Package], ['reservas','Reservas',CalendarDays], ['financeiro','Financeiro',WalletCards], ['cadastros','Cadastros',Users], ['comunicacao','Comunicação',Bell], ['ocorrencias','Livro de Ocorrências',BookOpen], ['emergencia','Emergência',Siren], ['suporte','Suporte',HelpCircle], ['configuracoes','Configurações',Settings], ['central','Sistema e Apps',ShieldCheck], ['updates','Atualizações',RefreshCcw] ];
   const shellClass = ['appShell', menuOpen?'mobile-open':'', menuClosed?'menu-closed':'', `menu-${settings.MENU_ORIENTATION||'vertical'}`].join(' ');
-  const props = { data, forms, setForm, action, notify, loadAll, settings, session, can, openConfirm, lookup, lookupUnit, prefillResidentFromContext, readImage, reading, fileToData, setActive:go, sub, setSub, isAdminReserved, configTab, setConfigTab, del, logout };
+  const routeLockedInReservas = isReservasHash(window.location.hash);
+  const visibleActive = routeLockedInReservas ? 'reservas' : active;
+  const props = { data, forms, setForm, action, notify, loadAll, settings, session, can, openConfirm, lookup, lookupUnit, prefillResidentFromContext, readImage, reading, fileToData, setActive:go, sub:routeLockedInReservas && !sub ? 'calendario' : sub, setSub, isAdminReserved, configTab, setConfigTab, del, logout };
   return <div className={shellClass}>
     <button className="mobileMenu" onClick={()=>setMenuOpen(true)}><Menu /></button>{menuOpen && <div className="overlay" onClick={()=>setMenuOpen(false)} />}
-    <aside><div className="brand brandCompact brandLogoOnly"><img src="/logo-vitoria-regia-menu.svg" className="brandLogo"/><button className="insideClose menuToggle" title={menuOpen ? 'Fechar menu' : (menuClosed?'Expandir menu':'Recolher menu')} onClick={()=>{ if(window.innerWidth < 861) setMenuOpen(false); else setMenuClosed(!menuClosed); }}>{window.innerWidth < 861 ? <X/> : (menuClosed ? <ChevronRight/> : <PanelLeft/>)}</button></div><nav>{menuItems.map(([key,label,Icon]) => <button key={key} className={active===key?'active':''} aria-current={active===key?'page':undefined} onClick={()=>go(key)}><Icon /><span>{label}</span></button>)}</nav><div className="sideBottom"><button onClick={()=>go('perfil')}><UserCheck/><span>Meu perfil</span></button><button onClick={logout}><LogOut/><span>Sair</span></button></div></aside>
+    <aside><div className="brand brandCompact brandLogoOnly"><img src="/logo-vitoria-regia-menu.svg" className="brandLogo"/><button className="insideClose menuToggle" title={menuOpen ? 'Fechar menu' : (menuClosed?'Expandir menu':'Recolher menu')} onClick={()=>{ if(window.innerWidth < 861) setMenuOpen(false); else setMenuClosed(!menuClosed); }}>{window.innerWidth < 861 ? <X/> : (menuClosed ? <ChevronRight/> : <PanelLeft/>)}</button></div><nav>{menuItems.map(([key,label,Icon]) => <button key={key} className={visibleActive===key?'active':''} aria-current={visibleActive===key?'page':undefined} onClick={()=>go(key)}><Icon /><span>{label}</span></button>)}</nav><div className="sideBottom"><button onClick={()=>go('perfil')}><UserCheck/><span>Meu perfil</span></button><button onClick={logout}><LogOut/><span>Sair</span></button></div></aside>
     {can('emergency.use') && <button className="floatingEmergency" onClick={()=>go('emergencia')}><Siren/><span>Emergência</span></button>}
     <main className="content"><Topbar session={session} settings={settings} data={data} setActive={go}/>{toast && <div className="toast">{toast}</div>}
-      {active==='dashboard' && <Dashboard {...props}/>} {active==='portaria' && <Portaria {...props}/>} {(active==='reservas' || window.location.hash.includes('/reservas')) && <Reservations {...props}/>} {active==='financeiro' && <Financeiro {...props}/>} {active==='cadastros' && <Cadastros {...props}/>} {active==='comunicacao' && <Comunicacao {...props}/>} {active==='ocorrencias' && <OccurrenceBook {...props}/>} {active==='emergencia' && <Emergency {...props}/>} {active==='suporte' && <SupportPage {...props}/>} {active==='configuracoes' && <SettingsPage {...props}/>} {active==='central' && <CentralPro {...props}/>} {active==='updates' && <Updates {...props}/>} {active==='perfil' && <Profile {...props}/>} 
-    </main><nav className="bottomNav"><button className={active==='dashboard'?'active':''} onClick={()=>go('dashboard')}><Home/><span>Início</span></button><button className={active==='reservas'?'active':''} onClick={()=>go('reservas')}><CalendarDays/><span>Reservas</span></button><button className={active==='comunicacao'?'active':''} onClick={()=>go('comunicacao','notificacoes')}><Bell/><span>Comunicados</span></button><button className={active==='perfil'?'active':''} onClick={()=>go('perfil')}><UserCheck/><span>Perfil</span></button></nav>{confirm && <ConfirmModal confirm={confirm} onCancel={()=>setConfirm(null)} onConfirm={confirmRun}/>}<Footer /></div>;
+      {visibleActive==='dashboard' && <Dashboard {...props}/>} {visibleActive==='portaria' && <Portaria {...props}/>} {visibleActive==='reservas' && <Reservations {...props}/>} {visibleActive==='financeiro' && <Financeiro {...props}/>} {visibleActive==='cadastros' && <Cadastros {...props}/>} {visibleActive==='comunicacao' && <Comunicacao {...props}/>} {visibleActive==='ocorrencias' && <OccurrenceBook {...props}/>} {visibleActive==='emergencia' && <Emergency {...props}/>} {visibleActive==='suporte' && <SupportPage {...props}/>} {visibleActive==='configuracoes' && <SettingsPage {...props}/>} {visibleActive==='central' && <CentralPro {...props}/>} {visibleActive==='updates' && <Updates {...props}/>} {visibleActive==='perfil' && <Profile {...props}/>} 
+    </main><nav className="bottomNav"><button className={visibleActive==='dashboard'?'active':''} onClick={()=>go('dashboard')}><Home/><span>Início</span></button><button className={visibleActive==='reservas'?'active':''} onClick={()=>go('reservas')}><CalendarDays/><span>Reservas</span></button><button className={visibleActive==='comunicacao'?'active':''} onClick={()=>go('comunicacao','notificacoes')}><Bell/><span>Comunicados</span></button><button className={visibleActive==='perfil'?'active':''} onClick={()=>go('perfil')}><UserCheck/><span>Perfil</span></button></nav>{confirm && <ConfirmModal confirm={confirm} onCancel={()=>setConfirm(null)} onConfirm={confirmRun}/>}<Footer /></div>;
 }
 function LoginPage({ forms,setForm,mode,setMode,doLogin,err,setShowPass,showPass,action,settings }){
   const [registerStatus,setRegisterStatus] = useState(null);

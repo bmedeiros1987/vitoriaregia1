@@ -1,6 +1,6 @@
 {
   "name": "vitoria-regia-pro",
-  "version": "12.4.6",
+  "version": "12.4.8",
   "private": true,
   "description": "Sistema Vitória Régia Pro v12.4.4.2 com financeiro por documento, regimento, OCR premium, livro de ocorrências, documentos e suporte.",
   "scripts": {

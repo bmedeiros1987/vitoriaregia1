@@ -1,6 +1,6 @@
 {
   "name": "vitoria-regia-pro-client",
-  "version": "12.4.6",
+  "version": "12.4.8",
   "private": true,
   "type": "module",
   "scripts": {
