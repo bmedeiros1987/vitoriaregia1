@@ -911,13 +911,51 @@ async function telegramApi(method, body={}) {
     return { ok:false, error:e.name === 'AbortError' ? 'Tempo limite do Telegram excedido.' : e.message, transport:'get_fallback' };
   } finally { clearTimeout(timer2); }
 }
+const telegramDedupeMemory = new Map();
+function telegramDedupeKey(chat, text, options={}) {
+  const cleanText = String(text || '').trim().replace(/\s+/g, ' ');
+  const markup = options?.reply_markup ? JSON.stringify(options.reply_markup) : '';
+  return `${chat}::${cleanText}::${markup}`;
+}
+function pruneTelegramDedupe(now=Date.now()) {
+  const ttl = Number(process.env.TELEGRAM_DEDUPE_TTL_MS || 60000);
+  for (const [k, ts] of telegramDedupeMemory.entries()) if (now - ts > ttl) telegramDedupeMemory.delete(k);
+}
+function markTelegramDedupe(keys=[], now=Date.now()) {
+  const normalized = [...new Set(keys.filter(Boolean).map(k => String(k)))];
+  const hit = normalized.find(k => telegramDedupeMemory.has(k));
+  if (hit) return { duplicate:true, key:hit };
+  for (const k of normalized) telegramDedupeMemory.set(k, now);
+  return { duplicate:false, keys:normalized };
+}
+function unmarkTelegramDedupe(keys=[]) {
+  for (const k of keys.filter(Boolean)) telegramDedupeMemory.delete(String(k));
+}
 async function sendTelegramMessage(chatId, text, options={}) {
   if (!(await featureEnabled('telegram'))) return { ok:false, skipped:true, reason:'Telegram não liberado em Configurações.' };
-  const chat = chatId || await getSetting('TELEGRAM_CHAT_ID', process.env.TELEGRAM_CHAT_ID || '');
-  if (!chat) return { ok:false, skipped:true, reason:'Chat ID do Telegram não configurado.' };
+  const allowDefaultChat = options.allowDefaultChat !== false;
+  const cleanOptions = { ...(options || {}) };
+  delete cleanOptions.allowDefaultChat;
+  delete cleanOptions.dedupeKey;
+  const chat = chatId || (allowDefaultChat ? await getSetting('TELEGRAM_CHAT_ID', process.env.TELEGRAM_CHAT_ID || '') : '');
+  if (!chat) return { ok:false, skipped:true, reason:'Chat ID do Telegram não configurado para este destinatário.' };
+  const now = Date.now();
+  pruneTelegramDedupe(now);
+
+  // v12.5.2: deduplicação global por conteúdo + destinatário.
+  // Mesmo que uma área chame createNotification() e também chame sendTelegramMessage(),
+  // ou que dois módulos montem dedupeKey diferentes, a mesma mensagem para o mesmo chat
+  // fica bloqueada por TELEGRAM_DEDUPE_TTL_MS (padrão: 60s).
+  const naturalKey = telegramDedupeKey(chat, text, cleanOptions);
+  const explicitKey = options.dedupeKey ? `explicit:${options.dedupeKey}` : '';
+  const guard = markTelegramDedupe([naturalKey, explicitKey], now);
+  if (guard.duplicate) return { ok:true, skipped:true, deduped:true, reason:'Mensagem Telegram duplicada bloqueada globalmente.' };
+
   const parseMode = await getSetting('TELEGRAM_PARSE_MODE', process.env.TELEGRAM_PARSE_MODE || '');
-  const payload = { chat_id: chat, text, ...(parseMode ? { parse_mode: parseMode } : {}), ...(options || {}) };
-  return telegramApi('sendMessage', payload);
+  const payload = { chat_id: chat, text, ...(parseMode ? { parse_mode: parseMode } : {}), ...cleanOptions };
+  const result = await telegramApi('sendMessage', payload);
+  if (!result?.ok) unmarkTelegramDedupe(guard.keys);
+  return result;
 }
 async function sendWhatsAppText(phone, text) { if (!(await featureEnabled('whatsapp'))) return { ok:false, skipped:true, reason:'WhatsApp não liberado nas configurações.' }; const phoneId=await getSetting('WHATSAPP_PHONE_NUMBER_ID', process.env.WHATSAPP_PHONE_NUMBER_ID || ''); const token=await getSetting('WHATSAPP_ACCESS_TOKEN', process.env.WHATSAPP_ACCESS_TOKEN || process.env.WHATSAPP_API_TOKEN || ''); const version=await getSetting('WHATSAPP_API_VERSION', process.env.WHATSAPP_API_VERSION || 'v19.0'); const to = onlyDigits(phone); if (!phoneId || !token || !to) return { ok:false, skipped:true }; const r = await fetch(`https://graph.facebook.com/${version}/${phoneId}/messages`, { method:'POST', headers:{ 'content-type':'application/json', authorization:`Bearer ${token}` }, body: JSON.stringify({ messaging_product:'whatsapp', to, type:'text', text:{ body:text } }) }); return { ok:r.ok, data: await r.json().catch(()=>({})) }; }
 async function findResident({ unit='', recipient='', resident_id=null, user_id=null }={}) {
@@ -956,7 +994,7 @@ async function createNotification({ resident_id=null, user_id=null, title, body,
       if (prefs.telegram !== false) {
         const result = await sendTelegramMessage(target?.telegram_chat_id || '', `${title || 'Notificação Vitória Régia'}
 
-${body || ''}`, { disable_web_page_preview:true }).catch(e=>({ ok:false, error:e.message }));
+${body || ''}`, { disable_web_page_preview:true, allowDefaultChat:false, dedupeKey:`notification:${target?.telegram_chat_id || resident_id || user_id}:${title}:${body}` }).catch(e=>({ ok:false, error:e.message }));
         await updateNotificationDelivery(notification.id, { telegram: result }).catch(()=>null);
       }
     } catch(e) {
@@ -977,7 +1015,10 @@ async function notifyResident(resident, { title, body, channels={}, action_url='
   const prefs = await filterChannelsByPlan({ app:true, browser:true, email:true, telegram:true, whatsapp:false, ...parseJson(resident?.notification_preferences, {}) , ...channels });
   const notification = await createNotification({ resident_id: resident?.id || null, title, body, channel:'app', channels:prefs, action_url, payload:{ ...payload, __skip_auto_delivery:true }, status:'enviando' }).catch(()=>null);
   const jobs = {};
-  if (prefs.telegram) jobs.telegram = withTimeout(sendTelegramMessage(resident?.telegram_chat_id || '', body, payload?.telegram_reply_markup ? { reply_markup: payload.telegram_reply_markup, disable_web_page_preview:true } : { disable_web_page_preview:true }).catch(e=>({ ok:false, error:e.message })), Number(process.env.TELEGRAM_TIMEOUT_MS || 6500), 'Telegram');
+  if (prefs.telegram) {
+    const tgOptions = payload?.telegram_reply_markup ? { reply_markup: payload.telegram_reply_markup, disable_web_page_preview:true } : { disable_web_page_preview:true };
+    jobs.telegram = withTimeout(sendTelegramMessage(resident?.telegram_chat_id || '', body, { ...tgOptions, allowDefaultChat:false, dedupeKey:`resident:${notification?.id || resident?.id || 'sem-id'}:telegram` }).catch(e=>({ ok:false, error:e.message })), Number(process.env.TELEGRAM_TIMEOUT_MS || 6500), 'Telegram');
+  }
   if (prefs.email && resident?.email) jobs.email = withTimeout(sendEmailSmart({ to: resident.email, subject:title, text:body, actionUrl: action_url, actionLabel:'Abrir no sistema' }).catch(e=>({ ok:false, error:e.message })), Number(process.env.EMAIL_TIMEOUT_MS || 12000), 'E-mail');
   if (prefs.browser && resident?.id) jobs.browser = sendBrowserPushToResident(resident.id, title, body, action_url || '/', payload).catch(e=>({ ok:false, error:e.message }));
   if (prefs.whatsapp && (resident?.whatsapp_phone || resident?.phone)) jobs.whatsapp = sendWhatsAppText(resident.whatsapp_phone || resident.phone, body).catch(e=>({ ok:false, error:e.message }));
@@ -996,7 +1037,7 @@ async function notifyStaff({ title, body, action_url='', channels={} }) {
   const jobs = {};
   if (await featureEnabled('telegram')) jobs.telegram = withTimeout(sendTelegramMessage('', `${title}
 
-${body}`, { disable_web_page_preview:true }).catch(e=>({ ok:false, error:e.message })), Number(process.env.TELEGRAM_TIMEOUT_MS || 6500), 'Telegram');
+${body}`, { disable_web_page_preview:true, dedupeKey:`staff:${title}:${body}` }).catch(e=>({ ok:false, error:e.message })), Number(process.env.TELEGRAM_TIMEOUT_MS || 6500), 'Telegram');
   const emails = staff.map(u=>u.email).filter(Boolean);
   if (emails.length && await featureEnabled('email')) jobs.email = withTimeout(sendEmailSmart({ to: emails.join(','), subject:title, text:body, actionUrl: action_url, actionLabel:'Abrir no sistema' }).catch(e=>({ ok:false, error:e.message })), Number(process.env.EMAIL_TIMEOUT_MS || 12000), 'E-mail');
   const entries = await Promise.all(Object.entries(jobs).map(async ([k,p]) => [k, await p]));
@@ -1009,7 +1050,7 @@ async function notifyAllResidents({ title, body, channels={}, action_url='', pay
 async function sendTemporaryPasswordToUser(user, temp, title='Senha temporária - Vitória Régia') {
   const prefs = await filterChannelsByPlan({ app:true, browser:true, email:true, telegram:true, whatsapp:true });
   const body = `Sua senha temporária é: ${temp}\nAcesse o sistema e altere sua senha.`;
-  await createNotification({ user_id:user.id, title:'Senha temporária gerada', body:'Uma senha temporária foi enviada pelos seus canais cadastrados.', channel:'app', channels:prefs }).catch(()=>null);
+  await createNotification({ user_id:user.id, title:'Senha temporária gerada', body:'Uma senha temporária foi enviada pelos seus canais cadastrados.', channel:'app', channels:prefs, payload:{ __skip_auto_delivery:true } }).catch(()=>null);
   const jobs=[];
   if (prefs.email && user.email) jobs.push(sendEmailSmart({ to:user.email, subject:title, text:body, actionUrl:'/#/perfil', actionLabel:'Abrir meu perfil' }).catch(e=>({ ok:false, error:e.message })));
   if (prefs.telegram) jobs.push(sendTelegramMessage(user.telegram_chat_id || '', body).catch(e=>({ ok:false, error:e.message }))); 
