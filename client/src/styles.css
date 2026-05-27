@@ -546,3 +546,162 @@ body[data-appearance="dark"] .cleanEmployeePanel,body[data-appearance="dark"] .c
 .loginBrandBlock .loginLogo{width:min(230px,76vw)!important;max-height:178px!important;object-fit:contain!important;filter:drop-shadow(0 18px 34px rgba(0,0,0,.25))!important}.loginBrandBlock b{font-size:24px!important;letter-spacing:.03em!important}.loginBrandBlock .logoVersion{font-size:12px!important;opacity:.75!important}.secureNote{left:clamp(18px,6vw,64px)!important;bottom:clamp(18px,5vw,58px)!important;max-width:380px!important;transform:none!important}.registerForm .roleChoiceGrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.roleChoice{min-height:94px!important;border-radius:20px!important;display:flex!important;align-items:center!important;gap:12px!important;text-align:left!important}.roleChoice svg{width:25px;height:25px}.roleChoice small{font-size:12px!important;line-height:1.25!important}.registerStatus{border-radius:16px;padding:12px 14px;margin:10px 0;font-weight:800}.registerStatus.ok{background:#e9fbf4;color:#065f46;border:1px solid #a7f3d0}.registerStatus.err{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}.regimentoLink{display:inline-flex;align-items:center;gap:8px;font-weight:900;color:var(--accent);text-decoration:underline;text-underline-offset:3px}.supportGrid{display:grid;grid-template-columns:1.15fr .85fr;gap:16px}.faqItem{background:var(--panel2);border:1px solid var(--line);border-radius:16px;padding:12px 14px;margin-bottom:10px}.faqItem summary{font-weight:900;cursor:pointer}.faqItem p{margin:8px 0 0;color:var(--muted)}.documentsList .buttonlike,.buttonlike{display:inline-flex;align-items:center;gap:7px;border-radius:14px;border:1px solid var(--line);padding:10px 12px;background:var(--panel);font-weight:850;text-decoration:none;color:var(--text)}.occurrenceBook .formGrid textarea,.supportGrid textarea{min-height:120px}.full{grid-column:1/-1}.footer{gap:8px!important}.footer b,.footer span{margin:0 4px!important}.footer .crewcheck{margin-left:8px!important}.weather small span.server,.weather .server{display:none!important}.themePreview,.settingCard,.subpanel,.panel,.tableWrap{box-shadow:0 22px 60px rgba(13,35,55,.08)!important}.tableWrap table{border-collapse:separate!important;border-spacing:0 10px!important}.tableWrap tr{background:var(--panel);box-shadow:0 10px 25px rgba(15,39,66,.05)}.tableWrap td{border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.tableWrap td:first-child{border-left:1px solid var(--line);border-radius:16px 0 0 16px}.tableWrap td:last-child{border-right:1px solid var(--line);border-radius:0 16px 16px 0}.formGrid.premiumForm,.reservationForm,.cleanEmployeePanel,.cleanShiftPanel{border:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.88),rgba(255,255,255,.72));border-radius:24px;padding:18px}.documentUploadHint{font-size:12px;color:var(--muted)}
 @media(max-width:860px){.brandLogoOnly .brandLogo{width:130px!important;max-height:130px!important}.brand.brandLogoOnly{min-height:162px!important}.supportGrid{grid-template-columns:1fr}.registerForm .roleChoiceGrid{grid-template-columns:1fr}.secureNote{position:static!important;margin:14px auto 0!important;width:min(92vw,360px)!important}.loginPhoto{display:flex;align-items:flex-end;justify-content:center;padding:0 14px 22px}.loginBrandBlock .loginLogo{width:168px!important;max-height:132px!important}.tableWrap table,.tableWrap tbody,.tableWrap tr,.tableWrap td{display:block!important;width:100%!important}.tableWrap td{border:0!important}.tableWrap tr{border:1px solid var(--line);border-radius:18px;padding:10px}.actions{justify-content:flex-start!important}.actions button,.buttonlike{width:100%;justify-content:center}}
 body[data-appearance="dark"] .formGrid.premiumForm,body[data-appearance="dark"] .reservationForm,body[data-appearance="dark"] .cleanEmployeePanel,body[data-appearance="dark"] .cleanShiftPanel{background:linear-gradient(180deg,rgba(14,27,24,.94),rgba(12,23,20,.86))!important}
+
+/* v12.4.3 — correção visual do menu, logo e páginas internas */
+:root{--menu-navy:#062b45;--menu-navy-2:#041f34;}
+.appShell>aside{background:linear-gradient(180deg,var(--menu-navy),var(--menu-navy-2))!important;border:1px solid rgba(255,255,255,.08)!important;color:#eef9ff!important;box-shadow:0 28px 80px rgba(0,28,52,.22)!important;overflow:hidden!important;}
+body[data-appearance="dark"] .appShell>aside{background:linear-gradient(180deg,#06263f,#031728)!important;}
+.appShell>aside .brand.brandLogoOnly{min-height:176px!important;padding:18px 12px 16px!important;border-bottom:1px solid rgba(255,255,255,.12)!important;background:radial-gradient(circle at 50% 18%,rgba(73,214,189,.18),transparent 48%)!important;}
+.appShell>aside .brandLogoOnly .brandLogo{width:min(232px,94%)!important;max-width:232px!important;max-height:154px!important;object-fit:contain!important;display:block!important;margin:0 auto!important;filter:drop-shadow(0 18px 30px rgba(0,0,0,.36))!important;}
+.appShell>aside .insideClose.menuToggle{position:absolute!important;top:14px!important;right:14px!important;width:42px!important;height:42px!important;border-radius:16px!important;background:rgba(255,255,255,.10)!important;color:#fff!important;border:1px solid rgba(255,255,255,.18)!important;backdrop-filter:blur(10px)!important;}
+.appShell>aside nav button,.appShell>aside .sideBottom button{color:rgba(235,250,255,.82)!important;border:1px solid transparent!important;}
+.appShell>aside nav button.active,.appShell>aside nav button:hover,.appShell>aside .sideBottom button:hover{background:linear-gradient(135deg,#19b9a8,#1976ad)!important;color:#fff!important;box-shadow:0 14px 28px rgba(0,149,149,.22)!important;}
+.appShell>aside nav button svg,.appShell>aside .sideBottom button svg{color:inherit!important;stroke-width:2.2!important;}
+.menu-closed .appShell>aside,.menu-closed.appShell>aside,.menu-closed aside{width:92px!important;}
+.menu-closed .appShell>aside .brand.brandLogoOnly,.menu-closed .brand.brandLogoOnly{min-height:110px!important;padding:14px 8px!important;}
+.menu-closed .appShell>aside .brandLogoOnly .brandLogo,.menu-closed .brandLogoOnly .brandLogo{width:64px!important;max-height:74px!important;}
+.menu-closed .appShell>aside .insideClose.menuToggle,.menu-closed .insideClose.menuToggle{right:11px!important;top:10px!important;width:36px!important;height:36px!important;}
+.appShell .spaceSidebar{position:sticky!important;top:18px!important;left:auto!important;right:auto!important;bottom:auto!important;width:auto!important;min-width:0!important;height:auto!important;max-height:calc(100vh - 140px)!important;overflow:auto!important;display:block!important;z-index:auto!important;padding:16px!important;border-radius:24px!important;background:linear-gradient(180deg,#062b45,#041f34)!important;color:#fff!important;box-shadow:0 18px 44px rgba(4,31,52,.18)!important;border:1px solid rgba(255,255,255,.10)!important;backdrop-filter:none!important;}
+.appShell .spaceSidebar h3{margin:0 0 14px!important;color:#fff!important;font-size:17px!important;letter-spacing:.01em!important;}
+.appShell .spaceSidebar button{display:block!important;width:100%!important;text-align:left!important;margin:0 0 8px!important;padding:12px 13px!important;border-radius:16px!important;background:rgba(255,255,255,.07)!important;color:rgba(255,255,255,.78)!important;border:1px solid rgba(255,255,255,.08)!important;font-weight:850!important;}
+.appShell .spaceSidebar button.active,.appShell .spaceSidebar button:hover{background:linear-gradient(135deg,#19b9a8,#1976ad)!important;color:#fff!important;}
+.appShell .spaceSidebar small{color:rgba(255,255,255,.68)!important;}
+.reservationWorkspace{display:grid!important;grid-template-columns:minmax(220px,286px) minmax(0,1fr)!important;gap:18px!important;align-items:start!important;width:100%!important;overflow:visible!important;}
+.reservationMain{min-width:0!important;width:100%!important;}.panel{overflow:visible!important;}.panelHead{gap:12px!important;align-items:flex-start!important;}.panelHead>div{min-width:0!important;}.panelHead h2,.panelHead p{overflow-wrap:anywhere!important;}.formGrid{align-items:start!important;}.formGrid label,.settingsCard label{min-width:0!important;}.formGrid button,.primary,.buttonlike,.actions button{white-space:normal!important;text-align:center!important;}.tableWrap{max-width:100%!important;}
+@media(max-width:1050px){.reservationWorkspace{grid-template-columns:1fr!important;}.appShell .spaceSidebar{position:relative!important;top:auto!important;max-height:none!important;display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;}.appShell .spaceSidebar h3{grid-column:1/-1!important;}.appShell .spaceSidebar button{margin:0!important;}}
+@media(max-width:860px){.appShell>aside .brand.brandLogoOnly{min-height:150px!important;}.appShell>aside .brandLogoOnly .brandLogo{width:170px!important;max-height:130px!important;}.appShell .spaceSidebar{grid-template-columns:1fr!important;padding:14px!important;border-radius:22px!important;}.content{padding-left:16px!important;padding-right:16px!important;}.panel{padding:18px!important;border-radius:24px!important;}.topbar{padding-left:58px!important;}}
+
+/* v12.4.4 — Hotfix final: logo proporcional e Reservas abrindo corretamente */
+:root{
+  --vr-sidebar-width: 286px;
+  --vr-sidebar-closed-width: 92px;
+}
+.appShell > aside{
+  width:var(--vr-sidebar-width)!important;
+  min-width:var(--vr-sidebar-width)!important;
+  max-width:var(--vr-sidebar-width)!important;
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:stretch!important;
+  background:linear-gradient(180deg,#062b48 0%,#041c34 100%)!important;
+  overflow:hidden!important;
+}
+.appShell > aside .brand.brandCompact,
+.appShell > aside .brandLogoOnly{
+  min-height:178px!important;
+  padding:18px 48px 22px 18px!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  border-bottom:1px solid rgba(255,255,255,.16)!important;
+}
+.appShell > aside .brandCompact .brandLogo,
+.appShell > aside .brandLogo{
+  width:210px!important;
+  height:auto!important;
+  max-width:220px!important;
+  max-height:128px!important;
+  object-fit:contain!important;
+  display:block!important;
+  margin:0 auto!important;
+  filter:drop-shadow(0 10px 20px rgba(0,0,0,.28))!important;
+}
+.appShell > aside .brandText,
+.appShell > aside .brandText b,
+.appShell > aside .brandText small{display:none!important;}
+.appShell > aside .insideClose.menuToggle{
+  position:absolute!important;
+  top:18px!important;
+  right:15px!important;
+  width:42px!important;
+  height:42px!important;
+  display:grid!important;
+  place-items:center!important;
+  border-radius:15px!important;
+  background:rgba(255,255,255,.12)!important;
+  border:1px solid rgba(255,255,255,.22)!important;
+  color:#fff!important;
+}
+.appShell > aside nav{padding:18px 0!important;}
+.appShell.menu-closed > aside,
+.menu-closed > aside{
+  width:var(--vr-sidebar-closed-width)!important;
+  min-width:var(--vr-sidebar-closed-width)!important;
+  max-width:var(--vr-sidebar-closed-width)!important;
+  padding-left:10px!important;
+  padding-right:10px!important;
+}
+.appShell.menu-closed > aside .brand.brandCompact,
+.menu-closed > aside .brand.brandCompact{
+  min-height:116px!important;
+  padding:12px 0 14px!important;
+}
+.appShell.menu-closed > aside .brandLogo,
+.menu-closed > aside .brandLogo{
+  width:62px!important;
+  max-width:62px!important;
+  max-height:74px!important;
+}
+.appShell.menu-closed > aside .insideClose.menuToggle,
+.menu-closed > aside .insideClose.menuToggle{
+  position:static!important;
+  margin:8px auto 0!important;
+}
+.appShell.menu-closed .content,
+.menu-closed .content{padding-left:calc(var(--vr-sidebar-closed-width) + 28px)!important;}
+
+/* O painel interno de espaços NÃO pode herdar estilos do menu lateral principal */
+.reservationWorkspace{display:grid!important;grid-template-columns:minmax(220px,280px) minmax(0,1fr)!important;gap:18px!important;align-items:start!important;}
+.reservationWorkspace > .spaceSidebar{
+  position:relative!important;
+  inset:auto!important;
+  left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;
+  transform:none!important;
+  width:auto!important;
+  min-width:0!important;
+  max-width:none!important;
+  height:auto!important;
+  min-height:0!important;
+  border-radius:24px!important;
+  background:rgba(255,255,255,.92)!important;
+  color:var(--text)!important;
+  border:1px solid var(--line)!important;
+  box-shadow:0 18px 42px rgba(10,36,62,.08)!important;
+  padding:18px!important;
+  display:grid!important;
+  gap:10px!important;
+  overflow:visible!important;
+  z-index:auto!important;
+}
+.reservationWorkspace > .spaceSidebar h3{margin:0 0 6px!important;color:var(--text)!important;font-size:18px!important;font-weight:950!important;}
+.reservationWorkspace > .spaceSidebar button{
+  width:100%!important;
+  display:grid!important;
+  gap:3px!important;
+  justify-items:start!important;
+  text-align:left!important;
+  border:1px solid var(--line)!important;
+  background:linear-gradient(180deg,#ffffff,#f8fbfc)!important;
+  color:var(--text)!important;
+  border-radius:16px!important;
+  padding:13px 14px!important;
+  min-height:54px!important;
+  box-shadow:none!important;
+}
+.reservationWorkspace > .spaceSidebar button.active,
+.reservationWorkspace > .spaceSidebar button:hover{
+  color:#fff!important;
+  background:linear-gradient(135deg,var(--accent),#167ac0)!important;
+  border-color:transparent!important;
+  box-shadow:0 14px 28px rgba(20,154,133,.20)!important;
+}
+.reservationWorkspace > .spaceSidebar button small{font-size:11px!important;color:inherit!important;opacity:.78!important;}
+.reservationMain{min-width:0!important;display:grid!important;gap:18px!important;}
+
+@media(max-width:860px){
+  .appShell > aside{width:min(86vw,340px)!important;max-width:min(86vw,340px)!important;min-width:0!important;}
+  .appShell > aside .brand.brandCompact{min-height:142px!important;padding:16px 52px 18px 18px!important;}
+  .appShell > aside .brandLogo{width:190px!important;max-height:116px!important;}
+  .reservationWorkspace{grid-template-columns:1fr!important;}
+  .reservationWorkspace > .spaceSidebar{position:relative!important;width:100%!important;border-radius:22px!important;padding:14px!important;}
+}
