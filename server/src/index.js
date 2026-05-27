@@ -1832,6 +1832,22 @@ app.post('/api/notifications/read-all', auth, async (req,res,next)=>{ try {
   if (rows.length) await q("DELETE FROM notifications WHERE id = ANY($1::int[])",[rows.map(r=>r.id)]).catch(()=>null);
   res.json({ ok:true, removed:rows.length, message:'Notificações marcadas como lidas e arquivadas na auditoria.' });
 } catch(e){ next(e); } });
+app.delete('/api/notifications/:id', auth, async (req,res,next)=>{ try {
+  let r;
+  if (isResident(req.user) && req.user.resident_id) r=await q('DELETE FROM notifications WHERE id=$1 AND (resident_id=$2 OR user_id=$3) RETURNING id,title',[req.params.id,req.user.resident_id,req.user.id]);
+  else r=await q('DELETE FROM notifications WHERE id=$1 AND (user_id IS NULL OR user_id=$2) RETURNING id,title',[req.params.id,req.user.id]);
+  const n=r.rows[0];
+  if(!n) return res.status(404).json({ error:'Notificação não encontrada.' });
+  await audit(req.user.email || req.user.name || 'sistema','apagou notificação',`${n.title || ''} #${n.id}`).catch(()=>null);
+  res.json({ ok:true, removed:1 });
+} catch(e){ next(e); } });
+app.delete('/api/notifications', auth, async (req,res,next)=>{ try {
+  let rows=[];
+  if (isResident(req.user) && req.user.resident_id) rows=(await q('DELETE FROM notifications WHERE resident_id=$1 OR user_id=$2 RETURNING id,title',[req.user.resident_id,req.user.id])).rows;
+  else rows=(await q('DELETE FROM notifications WHERE user_id IS NULL OR user_id=$1 RETURNING id,title',[req.user.id])).rows;
+  for (const n of rows) await audit(req.user.email || req.user.name || 'sistema','apagou todas as notificações',`${n.title || ''} #${n.id}`).catch(()=>null);
+  res.json({ ok:true, removed:rows.length, message:'Todas as notificações foram apagadas.' });
+} catch(e){ next(e); } });
 app.delete('/api/notifications/read', auth, async (req,res,next)=>{ try {
   let rows=[];
   if (isResident(req.user) && req.user.resident_id) rows=(await q("DELETE FROM notifications WHERE status='lida' AND (resident_id=$1 OR user_id=$2) RETURNING id,title",[req.user.resident_id,req.user.id])).rows;
