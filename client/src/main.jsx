@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import Tesseract from 'tesseract.js';
 import {
@@ -11,7 +11,7 @@ import {
 import './styles.css';
 
 const API = import.meta.env.VITE_API_URL || '';
-const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v12.4.8';
+const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v12.4.9';
 const money = (v) => Number(v || 0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
 const date = (v) => v ? new Date(String(v)).toLocaleDateString('pt-BR', { timeZone:'UTC' }) : '-';
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -58,10 +58,6 @@ const put = (path, body) => request(path, { method:'PUT', body:JSON.stringify(bo
 const del = (path) => request(path, { method:'DELETE' });
 
 const routeDefaults = { portaria:'encomendas', reservas:'calendario', cadastros:'moradores', financeiro:'movimentos', comunicacao:'notificacoes', central:'apps', configuracoes:'aparencia' };
-function isReservasHash(raw){
-  const value = String(raw || '').toLowerCase();
-  return value === '#/reservas' || value === '#/reservas/' || value.startsWith('#/reservas/') || value === '/reservas' || value === '/reservas/' || value.startsWith('/reservas/') || value === 'reservas' || value.startsWith('reservas/');
-}
 const routeAliases = {
   reservas:['reservas','calendario'], reserva:['reservas','calendario'], espacos:['reservas','espacos'],
   encomendas:['portaria','encomendas'], visitantes:['portaria','visitantes'], escalas:['portaria','escalas'], mensagens:['portaria','mensagens'], portaria:['portaria','encomendas'],
@@ -75,9 +71,6 @@ function routeState(raw='dashboard', explicitSub){
   const cleanRoute = String(raw || 'dashboard').replace(/^#?\/?/, '').replace(/^\//, '');
   const [first, second] = cleanRoute.split('/').filter(Boolean);
   const key = first || 'dashboard';
-  if(isReservasHash(raw) || key === 'reservas'){
-    return { active:'reservas', sub: explicitSub || second || 'calendario' };
-  }
   if(routeAliases[key]){
     const [active, aliasSub] = routeAliases[key];
     return { active, sub: explicitSub || second || aliasSub || routeDefaults[active] };
@@ -85,15 +78,23 @@ function routeState(raw='dashboard', explicitSub){
   return { active:key, sub: explicitSub || second || routeDefaults[key] };
 }
 function routeHash(active, sub){
-  const currentSub = sub || routeDefaults[active];
-  return '#/' + active + (currentSub && routeDefaults[active] ? '/' + currentSub : '');
+  return '/' + active + (sub && routeDefaults[active] ? '/' + sub : '');
+}
+function currentRouteState(){
+  const hash = window.location.hash || '#/dashboard';
+  const normalized = hash.replace(/^#/, '') || '/dashboard';
+  if (/^\/reservas(\/|$)/i.test(normalized)) return { active:'reservas', sub:'calendario' };
+  return routeState(hash || 'dashboard');
+}
+function isReservasHash(){
+  return /^#?\/reservas(\/|$)/i.test(window.location.hash || '');
 }
 
 function App(){
   const [session,setSession] = useState(() => JSON.parse(localStorage.getItem('vr_user') || 'null'));
   const [forms,setForms] = useState(initialForms());
   const [data,setData] = useState(emptyData());
-  const initialRoute = routeState(location.hash || 'dashboard');
+  const initialRoute = currentRouteState();
   const [active,setActive] = useState(initialRoute.active);
   const [sub,setSub] = useState(initialRoute.sub || 'encomendas');
   const [configTab,setConfigTab] = useState('aparencia');
@@ -122,26 +123,20 @@ function App(){
   useEffect(() => { if(session) loadAll(); else request('/api/public-config').then(s => setData(d => ({ ...d, settings:s }))).catch(()=>null); }, [session]);
   useEffect(() => { if(!session) return; const id=setInterval(() => { request('/api/notifications').then(notifications => setData(d => ({...d, notifications}))).catch(()=>null); }, 5000); return () => clearInterval(id); }, [session]);
   useEffect(() => {
-    const syncRoute = () => {
-      const r = routeState(window.location.hash || 'dashboard');
-      if(isReservasHash(window.location.hash)){
-        setActive('reservas');
-        setSub(r.sub || 'calendario');
-        return;
-      }
+    const syncRoute=()=>{
+      const r=currentRouteState();
       setActive(r.active);
       if(r.sub) setSub(r.sub);
+      if(r.active==='reservas' && window.location.hash !== '#/reservas/calendario') {
+        window.history.replaceState(null, '', '#/reservas/calendario');
+      }
     };
     syncRoute();
     window.addEventListener('hashchange', syncRoute);
-    return () => window.removeEventListener('hashchange', syncRoute);
+    window.addEventListener('popstate', syncRoute);
+    window.addEventListener('focus', syncRoute);
+    return()=>{ window.removeEventListener('hashchange', syncRoute); window.removeEventListener('popstate', syncRoute); window.removeEventListener('focus', syncRoute); };
   }, []);
-  useEffect(() => {
-    if(isReservasHash(window.location.hash) && active !== 'reservas'){
-      setActive('reservas');
-      setSub('calendario');
-    }
-  }, [active]);
 
   function setForm(group, patch){ setForms(f => ({ ...f, [group]:{ ...f[group], ...patch } })); }
   function notify(message, fail=false){ setToast(message); if(fail) document.body.classList.add('shake'); setTimeout(()=>{ setToast(''); document.body.classList.remove('shake'); }, 3800); }
@@ -159,12 +154,11 @@ function App(){
   function openConfirm(title, fields, fn){ setConfirm({ title, fields, fn }); }
   async function confirmRun(){ const c=confirm; setConfirm(null); if(c?.fn) await c.fn(); }
   function go(tab, newSub){
-    const r = routeState(tab, newSub);
-    const finalSub = r.active === 'reservas' ? (newSub || r.sub || 'calendario') : r.sub;
+    const r=routeState(tab, tab==='reservas' ? (newSub || 'calendario') : newSub);
+    const nextHash = '#'+routeHash(r.active, r.sub);
     setActive(r.active);
-    if(finalSub) setSub(finalSub);
-    const nextHash = routeHash(r.active, finalSub);
-    if(window.location.hash !== nextHash) window.location.hash = nextHash;
+    if(r.sub) setSub(r.sub);
+    if(window.location.hash !== nextHash) window.location.hash=nextHash;
     setMenuOpen(false);
   }
   async function lookupUnit(group, unit, maybeName=''){
@@ -202,16 +196,16 @@ function App(){
   if(!session) return <LoginPage forms={forms} setForm={setForm} mode={loginMode} setMode={setLoginMode} doLogin={doLogin} err={err} setShowPass={setShowPass} showPass={showPass} action={action} settings={settings} />;
   const menuItems = [ ['dashboard','Início',Home], ['portaria','Portaria',Package], ['reservas','Reservas',CalendarDays], ['financeiro','Financeiro',WalletCards], ['cadastros','Cadastros',Users], ['comunicacao','Comunicação',Bell], ['ocorrencias','Livro de Ocorrências',BookOpen], ['emergencia','Emergência',Siren], ['suporte','Suporte',HelpCircle], ['configuracoes','Configurações',Settings], ['central','Sistema e Apps',ShieldCheck], ['updates','Atualizações',RefreshCcw] ];
   const shellClass = ['appShell', menuOpen?'mobile-open':'', menuClosed?'menu-closed':'', `menu-${settings.MENU_ORIENTATION||'vertical'}`].join(' ');
-  const routeLockedInReservas = isReservasHash(window.location.hash);
-  const visibleActive = routeLockedInReservas ? 'reservas' : active;
-  const props = { data, forms, setForm, action, notify, loadAll, settings, session, can, openConfirm, lookup, lookupUnit, prefillResidentFromContext, readImage, reading, fileToData, setActive:go, sub:routeLockedInReservas && !sub ? 'calendario' : sub, setSub, isAdminReserved, configTab, setConfigTab, del, logout };
+  const reservasRouteLocked = active==='reservas' || isReservasHash();
+  const visualActive = reservasRouteLocked ? 'reservas' : active;
+  const props = { data, forms, setForm, action, notify, loadAll, settings, session, can, openConfirm, lookup, lookupUnit, prefillResidentFromContext, readImage, reading, fileToData, setActive:go, sub, setSub, isAdminReserved, configTab, setConfigTab, del, logout };
   return <div className={shellClass}>
     <button className="mobileMenu" onClick={()=>setMenuOpen(true)}><Menu /></button>{menuOpen && <div className="overlay" onClick={()=>setMenuOpen(false)} />}
-    <aside><div className="brand brandCompact brandLogoOnly"><img src="/logo-vitoria-regia-menu.svg" className="brandLogo"/><button className="insideClose menuToggle" title={menuOpen ? 'Fechar menu' : (menuClosed?'Expandir menu':'Recolher menu')} onClick={()=>{ if(window.innerWidth < 861) setMenuOpen(false); else setMenuClosed(!menuClosed); }}>{window.innerWidth < 861 ? <X/> : (menuClosed ? <ChevronRight/> : <PanelLeft/>)}</button></div><nav>{menuItems.map(([key,label,Icon]) => <button key={key} className={visibleActive===key?'active':''} aria-current={visibleActive===key?'page':undefined} onClick={()=>go(key)}><Icon /><span>{label}</span></button>)}</nav><div className="sideBottom"><button onClick={()=>go('perfil')}><UserCheck/><span>Meu perfil</span></button><button onClick={logout}><LogOut/><span>Sair</span></button></div></aside>
+    <aside><div className="brand brandCompact brandLogoOnly"><img src="/logo-vitoria-regia-menu.svg" className="brandLogo"/><button className="insideClose menuToggle" title={menuOpen ? 'Fechar menu' : (menuClosed?'Expandir menu':'Recolher menu')} onClick={()=>{ if(window.innerWidth < 861) setMenuOpen(false); else setMenuClosed(!menuClosed); }}>{window.innerWidth < 861 ? <X/> : (menuClosed ? <ChevronRight/> : <PanelLeft/>)}</button></div><nav>{menuItems.map(([key,label,Icon]) => <button key={key} className={visualActive===key?'active':''} aria-current={visualActive===key?'page':undefined} onClick={()=>go(key, key==='reservas'?'calendario':undefined)}><Icon /><span>{label}</span></button>)}</nav><div className="sideBottom"><button onClick={()=>go('perfil')}><UserCheck/><span>Meu perfil</span></button><button onClick={logout}><LogOut/><span>Sair</span></button></div></aside>
     {can('emergency.use') && <button className="floatingEmergency" onClick={()=>go('emergencia')}><Siren/><span>Emergência</span></button>}
     <main className="content"><Topbar session={session} settings={settings} data={data} setActive={go}/>{toast && <div className="toast">{toast}</div>}
-      {visibleActive==='dashboard' && <Dashboard {...props}/>} {visibleActive==='portaria' && <Portaria {...props}/>} {visibleActive==='reservas' && <Reservations {...props}/>} {visibleActive==='financeiro' && <Financeiro {...props}/>} {visibleActive==='cadastros' && <Cadastros {...props}/>} {visibleActive==='comunicacao' && <Comunicacao {...props}/>} {visibleActive==='ocorrencias' && <OccurrenceBook {...props}/>} {visibleActive==='emergencia' && <Emergency {...props}/>} {visibleActive==='suporte' && <SupportPage {...props}/>} {visibleActive==='configuracoes' && <SettingsPage {...props}/>} {visibleActive==='central' && <CentralPro {...props}/>} {visibleActive==='updates' && <Updates {...props}/>} {visibleActive==='perfil' && <Profile {...props}/>} 
-    </main><nav className="bottomNav"><button className={visibleActive==='dashboard'?'active':''} onClick={()=>go('dashboard')}><Home/><span>Início</span></button><button className={visibleActive==='reservas'?'active':''} onClick={()=>go('reservas')}><CalendarDays/><span>Reservas</span></button><button className={visibleActive==='comunicacao'?'active':''} onClick={()=>go('comunicacao','notificacoes')}><Bell/><span>Comunicados</span></button><button className={visibleActive==='perfil'?'active':''} onClick={()=>go('perfil')}><UserCheck/><span>Perfil</span></button></nav>{confirm && <ConfirmModal confirm={confirm} onCancel={()=>setConfirm(null)} onConfirm={confirmRun}/>}<Footer /></div>;
+      {visualActive==='dashboard' && <Dashboard {...props}/>} {visualActive==='portaria' && <Portaria {...props}/>} {reservasRouteLocked && <Reservations {...props}/>} {visualActive==='financeiro' && <Financeiro {...props}/>} {visualActive==='cadastros' && <Cadastros {...props}/>} {visualActive==='comunicacao' && <Comunicacao {...props}/>} {visualActive==='ocorrencias' && <OccurrenceBook {...props}/>} {visualActive==='emergencia' && <Emergency {...props}/>} {visualActive==='suporte' && <SupportPage {...props}/>} {visualActive==='configuracoes' && <SettingsPage {...props}/>} {visualActive==='central' && <CentralPro {...props}/>} {visualActive==='updates' && <Updates {...props}/>} {visualActive==='perfil' && <Profile {...props}/>} 
+    </main><nav className="bottomNav"><button className={visualActive==='dashboard'?'active':''} onClick={()=>go('dashboard')}><Home/><span>Início</span></button><button className={visualActive==='reservas'?'active':''} onClick={()=>go('reservas','calendario')}><CalendarDays/><span>Reservas</span></button><button className={visualActive==='comunicacao'?'active':''} onClick={()=>go('comunicacao','notificacoes')}><Bell/><span>Comunicados</span></button><button className={visualActive==='perfil'?'active':''} onClick={()=>go('perfil')}><UserCheck/><span>Perfil</span></button></nav>{confirm && <ConfirmModal confirm={confirm} onCancel={()=>setConfirm(null)} onConfirm={confirmRun}/>}<Footer /></div>;
 }
 function LoginPage({ forms,setForm,mode,setMode,doLogin,err,setShowPass,showPass,action,settings }){
   const [registerStatus,setRegisterStatus] = useState(null);
@@ -522,8 +516,52 @@ function UpdateSettings({forms,setForm,action,settings,isAdminReserved}){ return
 function AuditPage({data,action}){ const grouped=useMemo(()=>{ const m={}; for(const a of data.audit) (m[a.action] ||= []).push(a); return m; },[data.audit]); return <div className="stack auditPremium"><div className="auditHero"><History/><div><h3>Auditoria do sistema</h3><small>Acompanhe ações, alterações e erros técnicos com organização por categoria.</small></div></div><SettingCard title="Logs de erro" icon={<Activity/>}><ErrorLogs action={action}/></SettingCard><SettingCard title="Log de notificações" icon={<Bell/>}><Table rows={data.notifications||[]} render={n=><><td><b>{n.title}</b><small>{n.body}</small></td><td><Code>{channelNames[n.channel]||n.channel}</Code></td><td><Status ok={['lida','enviada'].includes(n.status)}>{n.status}</Status><small>{date(n.created_at)}</small></td></>}/></SettingCard>{Object.entries(grouped).map(([action,rows])=><div className="subpanel auditGroup" key={action}><h3>{action}</h3><Table rows={rows} render={a=><><td><b>{a.actor}</b><small>{a.entity}</small></td><td>{date(a.created_at)}</td></>}/></div>)}</div>; }
 function CentralPro(props){ const showUpdates=props.isAdminReserved || bool(props.settings.SHOW_UPDATES_TO_SINDICO,false); return <Panel title="Sistema e Apps" subtitle="Aplicativos, manuais e atualizações do sistema." icon={<ShieldCheck/>}><SubTabs value={props.sub} setValue={props.setSub} tabs={[['apps','Aplicativos'], ...(showUpdates?[['updates','Atualizações']]:[]), ['manuais','Manuais'], ['documentos','Documentos']]} />{props.sub==='updates'&&showUpdates?<Updates {...props}/>:props.sub==='manuais'?<Manuals {...props}/>:props.sub==='documentos'?<Documents {...props}/>:<AppsDownload {...props}/>}</Panel>; }
 function AppsDownload({settings}){ const apps=[['Portaria','APK_PORTARIA_URL','ENABLE_APP_PORTARIA','#/portaria'],['Síndico','APK_SINDICO_URL','ENABLE_APP_SINDICO','#/dashboard'],['Morador','APK_MORADOR_URL','ENABLE_APP_MORADOR','#/perfil']]; return <div className="appCards downloadApps">{apps.filter(([,u,e])=>bool(settings[e],true)).map(([name,key,,hash])=><article key={name}><Smartphone/><h3>Aplicativo {name}</h3><p>Use como PWA no celular ou baixe o APK quando ele estiver publicado.</p><div className="appActions"><a className="buttonlike" href={window.location.origin+'/'+hash}><AppWindow/> Abrir versão web/app</a>{settings[key]?<a className="buttonlike secondary" href={settings[key]} target="_blank" rel="noreferrer"><Download/> Baixar APK</a>:<button className="buttonlike disabled" type="button" disabled><Download/> APK não publicado</button>}</div></article>)}</div>; }
-function Updates({data,forms,setForm,notify,loadAll,isAdminReserved}){ const [progress,setProgress]=useState(0); const [progressText,setProgressText]=useState(''); async function upload(file){ if(!file) return; const fd=new FormData(); fd.append('update_zip',file); fd.append('validation_code',forms.systemUpdate.validation_code||''); try{ setProgress(18); setProgressText('Enviando pacote oficial...'); await new Promise(r=>setTimeout(r,280)); setProgress(52); setProgressText('Validando token interno e hash SHA-256...'); await request('/api/system-updates/upload',{method:'POST',body:fd,raw:true}); setProgress(100); setProgressText('Atualização recebida e validada pelo site. Clique em Aplicar para publicar.'); notify('Atualização recebida e validada pelo site.'); await loadAll(); setTimeout(()=>setProgress(0),1800); }catch(e){ setProgress(0); setProgressText(''); notify(e.message,true); } } async function applyUpdate(u){ try{ setProgress(16); setProgressText('Preparando aplicação da atualização...'); await new Promise(r=>setTimeout(r,300)); setProgress(45); setProgressText('Publicando atualização no repositório/deploy...'); const result=await request(`/api/system-updates/${u.id}/apply`,{method:'POST',body:JSON.stringify({validation_code:forms.systemUpdate.validation_code}),headers:{'Content-Type':'application/json'}}); setProgress(80); setProgressText('Atualização enviada. Reiniciando sessão para carregar a nova versão...'); notify(result.message || 'Atualização aplicada. Você será direcionado para a tela de login.'); setTimeout(()=>{ localStorage.removeItem('vr_token'); localStorage.removeItem('vr_user'); window.location.href='/'; }, 4800); setProgress(100); }catch(e){ setProgress(0); setProgressText(''); notify(e.message,true); } } return <div className="updatePanel"><div className="updateDrop premiumUpdate"><UploadCloud/><h3>Atualizar pelo site</h3><p>Envie aqui o ZIP oficial de atualização. O sistema valida o token interno e o hash SHA-256, aplica a atualização e retorna para a tela de login para carregar a nova versão.</p><div className="secureUpdateNote"><ShieldCheck/><small>O token de validação fica protegido dentro do ZIP oficial e não é exibido na tela.</small></div><label className="fileButton"><UploadCloud/> Selecionar ZIP<input type="file" accept=".zip" disabled={!isAdminReserved} onChange={e=>upload(e.target.files?.[0])}/></label>{progress>0&&<div className="progressWrap"><div className="progressTop"><b>{progressText}</b><small>{progress}%</small></div><div className="progressBar"><span style={{width:progress+'%'}}/></div></div>}<div className="noticeBox ok"><b>Observação importante</b><small>Após aplicar uma atualização, entre novamente no sistema. Isso evita carregar telas antigas do navegador durante o deploy.</small></div></div><Table rows={data.systemUpdates} render={u=><><td><b>{u.title||u.version||u.update_code}</b><small>{u.update_code}</small></td><td><Status ok={['validado','aplicado','publicada'].includes(u.status)}>{u.status}</Status></td><td><Code>{u.manifest?.signature ? 'Assinatura digital' : 'Token interno + hash'}</Code></td><td className="actions">{isAdminReserved&&<button className="confirmAction" onClick={()=>applyUpdate(u)}>Aplicar</button>}</td></>}/></div>; }
-
+function Updates({data,forms,setForm,notify,loadAll,isAdminReserved}){
+  const [progress,setProgress]=useState(0);
+  const [progressText,setProgressText]=useState('');
+  const [selectedFileName,setSelectedFileName]=useState('');
+  const fileInputRef = useRef(null);
+  async function upload(file){
+    if(!file) return;
+    setSelectedFileName(file.name || 'pacote selecionado');
+    if(!isAdminReserved){
+      notify('Apenas usuário master/admin pode enviar ZIP de atualização. Entre com o acesso reservado para aplicar atualizações.', true);
+      return;
+    }
+    const fd=new FormData();
+    fd.append('update_zip',file);
+    fd.append('validation_code',forms.systemUpdate.validation_code||'');
+    try{
+      setProgress(18); setProgressText('Enviando pacote oficial...');
+      await new Promise(r=>setTimeout(r,280));
+      setProgress(52); setProgressText('Validando token interno e hash SHA-256...');
+      await request('/api/system-updates/upload',{method:'POST',body:fd,raw:true});
+      setProgress(100); setProgressText('Atualização recebida e validada pelo site. Clique em Aplicar para publicar.');
+      notify('Atualização recebida e validada pelo site.');
+      await loadAll();
+      setTimeout(()=>setProgress(0),1800);
+    }catch(e){
+      setProgress(0); setProgressText('');
+      notify(e.message || 'Não foi possível enviar o ZIP.',true);
+    } finally {
+      if(fileInputRef.current) fileInputRef.current.value='';
+    }
+  }
+  async function applyUpdate(u){
+    if(!isAdminReserved) return notify('Apenas usuário master/admin pode aplicar atualizações.', true);
+    try{
+      setProgress(16); setProgressText('Preparando aplicação da atualização...');
+      await new Promise(r=>setTimeout(r,300));
+      setProgress(45); setProgressText('Publicando atualização no repositório/deploy...');
+      const result=await request(`/api/system-updates/${u.id}/apply`,{method:'POST',body:JSON.stringify({validation_code:forms.systemUpdate.validation_code}),headers:{'Content-Type':'application/json'}});
+      setProgress(80); setProgressText('Atualização enviada. Reiniciando sessão para carregar a nova versão...');
+      notify(result.message || 'Atualização aplicada. Você será direcionado para a tela de login.');
+      setTimeout(()=>{ localStorage.removeItem('vr_token'); localStorage.removeItem('vr_user'); window.location.href='/'; }, 4800);
+      setProgress(100);
+    }catch(e){ setProgress(0); setProgressText(''); notify(e.message,true); }
+  }
+  return <div className="updatePanel"><div className="updateDrop premiumUpdate"><UploadCloud/><h3>Atualizar pelo site</h3><p>Envie aqui o ZIP oficial de atualização. O sistema valida o token interno e o hash SHA-256, aplica a atualização e retorna para a tela de login para carregar a nova versão.</p><div className="secureUpdateNote"><ShieldCheck/><small>O token de validação fica protegido dentro do ZIP oficial e não é exibido na tela.</small></div><button type="button" className="fileButton updateZipButton" onClick={()=>fileInputRef.current?.click()}><UploadCloud/> Selecionar ZIP</button><input ref={fileInputRef} type="file" accept=".zip,application/zip,application/x-zip-compressed" style={{display:'none'}} onChange={e=>upload(e.target.files?.[0])}/>{selectedFileName&&<div className="noticeBox"><b>Arquivo selecionado</b><small>{selectedFileName}</small></div>}{!isAdminReserved&&<div className="noticeBox warn"><b>Acesso reservado</b><small>O botão abre o seletor, mas o envio só é aceito pelo backend para usuário master/admin.</small></div>}{progress>0&&<div className="progressWrap"><div className="progressTop"><b>{progressText}</b><small>{progress}%</small></div><div className="progressBar"><span style={{width:progress+'%'}}/></div></div>}<div className="noticeBox ok"><b>Observação importante</b><small>Após aplicar uma atualização, entre novamente no sistema. Isso evita carregar telas antigas do navegador durante o deploy.</small></div></div><Table rows={data.systemUpdates} render={u=><><td><b>{u.title||u.version||u.update_code}</b><small>{u.update_code}</small></td><td><Status ok={['validado','aplicado','publicada'].includes(u.status)}>{u.status}</Status></td><td><Code>{u.manifest?.signature ? 'Assinatura digital' : 'Token interno + hash'}</Code></td><td className="actions">{isAdminReserved&&<button className="confirmAction" onClick={()=>applyUpdate(u)}>Aplicar</button>}</td></>}/></div>;
+}
 function Documents({data}){ const rows=data.documents||[]; return <div className="stack"><div className="noticeBox ok"><b>Documentos do condomínio</b><small>Documentos públicos ficam disponíveis para todos os usuários. Documentos restritos aparecem somente para perfis autorizados.</small></div><Table rows={rows} render={d=><><td><b>{d.title}</b><small>{d.description || d.file_name}</small></td><td><Status ok={d.is_public}>{d.is_public?'Público':'Restrito'}</Status><small>{d.audience || 'geral'}</small></td><td><a className="buttonlike" href={`${API}/api/documents/${d.id}/download`} target="_blank" rel="noreferrer"><Download/> Baixar</a></td></>}/></div>; }
 function DocumentsSettings({forms,setForm,action,loadAll}){ const [file,setFile]=useState(null); async function upload(e){ e.preventDefault(); if(!file) return alert('Selecione um arquivo.'); const fd=new FormData(); fd.append('document',file); fd.append('title',forms.document.title||file.name); fd.append('description',forms.document.description||''); fd.append('audience',forms.document.audience||'publico'); fd.append('is_public',String(forms.document.is_public!==false)); await request('/api/documents/upload',{method:'POST',body:fd,raw:true}); await loadAll?.(); alert('Documento enviado ao sistema.'); } return <SettingCard title="Documentos do condomínio" icon={<FileUp/>}><form className="formGrid" onSubmit={upload}><label>Título<input value={forms.document.title||''} onChange={e=>setForm('document',{title:e.target.value})}/></label><label>Público<select value={forms.document.audience||'publico'} onChange={e=>setForm('document',{audience:e.target.value})}><option value="publico">Público geral</option><option value="morador">Moradores</option><option value="portaria">Portaria</option><option value="sindico">Síndico</option><option value="restrito">Restrito</option></select></label><label className="check"><input type="checkbox" checked={forms.document.is_public!==false} onChange={e=>setForm('document',{is_public:e.target.checked})}/>Documento público para usuários</label><label className="full">Descrição<textarea value={forms.document.description||''} onChange={e=>setForm('document',{description:e.target.value})}/></label><label className="fileButton"><UploadCloud/> Selecionar arquivo<input type="file" onChange={e=>setFile(e.target.files?.[0]||null)}/></label><button><UploadCloud/> Enviar documento</button></form></SettingCard>; }
 function OccurrenceBook({data,forms,setForm,action,session}){ const f=forms.occurrence||{}; const isManager=['sindico','subsindico','admin','master','portaria'].includes(session?.role); return <Panel title="Livro de Ocorrências" subtitle="Registre queixas, situações e solicitações de forma organizada e rastreável." icon={<BookOpen/>}><form className="formGrid premiumForm" onSubmit={e=>{e.preventDefault(); action('/api/occurrence-book', f, 'Ocorrência registrada e encaminhada ao síndico/subsíndico');}}><label>Título *<input required value={f.title||''} onChange={e=>setForm('occurrence',{title:e.target.value})}/></label><label>Local / unidade<input placeholder={session?.unit||'Ex.: 602, garagem, corredor'} value={f.unit||session?.unit||''} onChange={e=>setForm('occurrence',{unit:e.target.value})}/></label><label>Categoria<select value={f.category||'queixa'} onChange={e=>setForm('occurrence',{category:e.target.value})}><option value="queixa">Queixa</option><option value="barulho">Barulho</option><option value="convivencia">Convivência</option><option value="seguranca">Segurança</option><option value="manutencao">Manutenção</option><option value="outro">Outro</option></select></label><label>Prioridade<select value={f.priority||'normal'} onChange={e=>setForm('occurrence',{priority:e.target.value})}><option value="normal">Normal</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select></label><label className="full">Descrição *<textarea required value={f.description||''} onChange={e=>setForm('occurrence',{description:e.target.value})} placeholder="Descreva com clareza o que aconteceu, onde ocorreu e quando foi percebido."/></label><button><Send/> Registrar ocorrência</button></form><Table rows={data.occurrenceBook||[]} render={o=><><td><b>{o.title}</b><small>{o.description}</small></td><td>{o.unit||'-'}<small>{o.category} · {o.priority}</small></td><td><Status ok={o.status==='fechada'}>{o.status}</Status><small>{date(o.created_at)}</small></td>{isManager&&<td className="actions"><button onClick={()=>{const response=prompt('Resposta ao morador'); if(response) action(`/api/occurrence-book/${o.id}/respond`,{response,status:'respondida'},'Ocorrência respondida');}}>Responder</button><button onClick={()=>action(`/api/occurrence-book/${o.id}/respond`,{response:o.response||'Fechada pelo painel',status:'fechada'},'Ocorrência fechada')}>Fechar</button></td>}</>}/></Panel>; }
