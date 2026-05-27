@@ -561,7 +561,7 @@ CREATE TABLE IF NOT EXISTS audit(
     ['messages','resident_id INTEGER'], ['messages','user_id INTEGER'], ['messages','unit TEXT'], ['messages','subject TEXT'], ['messages','body TEXT'], ['messages','assigned_employee_id INTEGER'], ['messages','status TEXT DEFAULT \'nova\''], ['messages','response TEXT'], ['messages','responded_by TEXT'], ['messages','created_at TIMESTAMP DEFAULT now()'], ['messages','responded_at TIMESTAMP'],
 
     // packages / visitors
-    ['packages','tracking TEXT'], ['packages','recipient TEXT'], ['packages','unit TEXT'], ['packages','resident_id INTEGER'], ['packages','status TEXT DEFAULT \'pendente\''], ['packages','label TEXT'], ['packages','photo_url TEXT'], ['packages','notes TEXT'], ['packages','extracted_text TEXT'], ['packages','pickup_code TEXT'], ['packages','delivery_preference TEXT DEFAULT \'nao_informado\''], ['packages','notification_channels JSONB DEFAULT \'{}\'::jsonb'], ['packages','notification_status TEXT DEFAULT \'pendente\''], ['packages','created_at TIMESTAMP DEFAULT now()'], ['packages','delivered_at TIMESTAMP'], ['packages','resident_response_at TIMESTAMP'], ['packages','deleted_at TIMESTAMP'],
+    ['packages','tracking TEXT'], ['packages','recipient TEXT'], ['packages','unit TEXT'], ['packages','resident_id INTEGER'], ['packages','status TEXT DEFAULT \'pendente\''], ['packages','label TEXT'], ['packages','photo_url TEXT'], ['packages','notes TEXT'], ['packages','extracted_text TEXT'], ['packages','pickup_code TEXT'], ['packages','delivery_preference TEXT DEFAULT \'nao_informado\''], ['packages','notification_channels JSONB DEFAULT \'{}\'::jsonb'], ['packages','notification_status TEXT DEFAULT \'pendente\''], ['packages','created_at TIMESTAMP DEFAULT now()'], ['packages','delivered_at TIMESTAMP'], ['packages','resident_response_at TIMESTAMP'], ['packages','staff_delivered_at TIMESTAMP'], ['packages','resident_delivered_at TIMESTAMP'], ['packages','delivered_by_staff INTEGER'], ['packages','delivered_by_resident INTEGER'], ['packages','deleted_at TIMESTAMP'],
     ['visitors','name TEXT'], ['visitors','document TEXT'], ['visitors','unit TEXT'], ['visitors','authorized_by TEXT'], ['visitors','status TEXT DEFAULT \'autorizado\''], ['visitors','plate TEXT'], ['visitors','phone TEXT'], ['visitors','recurring BOOLEAN DEFAULT false'], ['visitors','weekdays JSONB DEFAULT \'[]\'::jsonb'], ['visitors','valid_from DATE'], ['visitors','valid_until DATE'], ['visitors','announce_required BOOLEAN DEFAULT true'], ['visitors','announcement_channel TEXT DEFAULT \'interfone\''], ['visitors','notification_channels JSONB DEFAULT \'{}\'::jsonb'], ['visitors','photo_data TEXT'], ['visitors','reservation_id INTEGER'], ['visitors','notes TEXT'], ['visitors','deleted_at TIMESTAMP'], ['visitors','created_at TIMESTAMP DEFAULT now()'],
 
     // reservations / common areas / boletos / finance
@@ -939,8 +939,31 @@ async function findResident({ unit='', recipient='', resident_id=null, user_id=n
   return null;
 }
 async function createNotification({ resident_id=null, user_id=null, title, body, channel='app', channels={}, action_url='', payload={}, status='enviando' }) {
-  const r=await q('INSERT INTO notifications(user_id,resident_id,title,body,channel,channels,status,delivery_status,delivery_started_at,action_url,payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,now(),$9,$10) RETURNING *',[user_id,resident_id,title,body,channel,JSON.stringify(channels || {}),status,JSON.stringify({ app:'registrada' }),action_url,JSON.stringify(payload || {})]);
-  return r.rows[0];
+  const normalizedChannels = { ...(channels || {}) };
+  const normalizedPayload = { ...(payload || {}) };
+  const r=await q('INSERT INTO notifications(user_id,resident_id,title,body,channel,channels,status,delivery_status,delivery_started_at,action_url,payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,now(),$9,$10) RETURNING *',[user_id,resident_id,title,body,channel,JSON.stringify(normalizedChannels),status,JSON.stringify({ app:'registrada' }),action_url,JSON.stringify(normalizedPayload)]);
+  const notification = r.rows[0];
+
+  // v12.5.0: notificações criadas diretamente pelo sistema também disparam Telegram.
+  // Antes, o Telegram funcionava em testes/emergência/encomenda, mas vários módulos apenas gravavam
+  // a notificação no banco. Esta entrega automática cobre ocorrências, suporte, auditorias internas etc.
+  if (normalizedChannels.telegram && !normalizedPayload.__skip_auto_delivery) {
+    try {
+      let target = null;
+      if (resident_id) target = (await q('SELECT telegram_chat_id, notification_preferences FROM residents WHERE id=$1',[resident_id])).rows[0] || null;
+      if (!target && user_id) target = (await q('SELECT telegram_chat_id, notification_preferences FROM users WHERE id=$1',[user_id])).rows[0] || null;
+      const prefs = parseJson(target?.notification_preferences, { telegram:true });
+      if (prefs.telegram !== false) {
+        const result = await sendTelegramMessage(target?.telegram_chat_id || '', `${title || 'Notificação Vitória Régia'}
+
+${body || ''}`, { disable_web_page_preview:true }).catch(e=>({ ok:false, error:e.message }));
+        await updateNotificationDelivery(notification.id, { telegram: result }).catch(()=>null);
+      }
+    } catch(e) {
+      await updateNotificationDelivery(notification.id, { telegram:{ ok:false, error:e.message } }).catch(()=>null);
+    }
+  }
+  return notification;
 }
 async function updateNotificationDelivery(id, delivery={}) {
   if (!id) return null;
@@ -952,7 +975,7 @@ async function updateNotificationDelivery(id, delivery={}) {
 }
 async function notifyResident(resident, { title, body, channels={}, action_url='', payload={} }) {
   const prefs = await filterChannelsByPlan({ app:true, browser:true, email:true, telegram:true, whatsapp:false, ...parseJson(resident?.notification_preferences, {}) , ...channels });
-  const notification = await createNotification({ resident_id: resident?.id || null, title, body, channel:'app', channels:prefs, action_url, payload, status:'enviando' }).catch(()=>null);
+  const notification = await createNotification({ resident_id: resident?.id || null, title, body, channel:'app', channels:prefs, action_url, payload:{ ...payload, __skip_auto_delivery:true }, status:'enviando' }).catch(()=>null);
   const jobs = {};
   if (prefs.telegram) jobs.telegram = withTimeout(sendTelegramMessage(resident?.telegram_chat_id || '', body, payload?.telegram_reply_markup ? { reply_markup: payload.telegram_reply_markup, disable_web_page_preview:true } : { disable_web_page_preview:true }).catch(e=>({ ok:false, error:e.message })), Number(process.env.TELEGRAM_TIMEOUT_MS || 6500), 'Telegram');
   if (prefs.email && resident?.email) jobs.email = withTimeout(sendEmailSmart({ to: resident.email, subject:title, text:body, actionUrl: action_url, actionLabel:'Abrir no sistema' }).catch(e=>({ ok:false, error:e.message })), Number(process.env.EMAIL_TIMEOUT_MS || 12000), 'E-mail');
@@ -967,7 +990,7 @@ async function notifyStaff({ title, body, action_url='', channels={} }) {
   const staff = (await q("SELECT * FROM users WHERE role IN ('master','sindico','admin','portaria') AND active=true")).rows;
   const notifIds=[];
   for (const user of staff) {
-    const n = await createNotification({ user_id:user.id, title, body, channel:'app', channels:{ app:true, browser:true, telegram:true, email:true, ...channels }, action_url, status:'enviando' }).catch(()=>null);
+    const n = await createNotification({ user_id:user.id, title, body, channel:'app', channels:{ app:true, browser:true, telegram:true, email:true, ...channels }, action_url, payload:{ __skip_auto_delivery:true }, status:'enviando' }).catch(()=>null);
     if (n?.id) notifIds.push(n.id);
   }
   const jobs = {};
