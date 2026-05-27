@@ -587,7 +587,7 @@ CREATE TABLE IF NOT EXISTS audit(
     ['push_subscriptions','user_id INTEGER'], ['push_subscriptions','endpoint TEXT'], ['push_subscriptions','payload JSONB'], ['push_subscriptions','created_at TIMESTAMP DEFAULT now()'],
     ['system_updates','update_code TEXT'], ['system_updates','version TEXT'], ['system_updates','title TEXT'], ['system_updates','notes TEXT'], ['system_updates','from_version TEXT'], ['system_updates','to_version TEXT'], ['system_updates','status TEXT DEFAULT \'disponivel\''], ['system_updates','validation_token_hash TEXT'], ['system_updates','payload_sha256 TEXT'], ['system_updates','manifest JSONB DEFAULT \'{}\'::jsonb'], ['system_updates','package_data BYTEA'], ['system_updates','announced_at TIMESTAMP'], ['system_updates','validated_at TIMESTAMP'], ['system_updates','applied_at TIMESTAMP'], ['system_updates','created_by INTEGER'], ['system_updates','applied_by INTEGER'], ['system_updates','error TEXT'], ['system_updates','created_at TIMESTAMP DEFAULT now()'],
     ['manuals','title TEXT'], ['manuals',"audience TEXT DEFAULT 'geral'"], ['manuals','file_name TEXT'], ['manuals',"mime_type TEXT DEFAULT 'application/pdf'"], ['manuals','file_size INTEGER DEFAULT 0'], ['manuals','file_data BYTEA'], ['manuals','uploaded_by INTEGER'], ['manuals','created_at TIMESTAMP DEFAULT now()'],
-    ['documents','description TEXT'], ['documents',"audience TEXT DEFAULT 'publico'"], ['documents','is_public BOOLEAN DEFAULT true'], ['documents','uploaded_by INTEGER'], ['documents','created_at TIMESTAMP DEFAULT now()'],
+    ['documents','description TEXT'], ['documents',"audience TEXT DEFAULT 'publico'"], ['documents','is_public BOOLEAN DEFAULT true'], ['documents','file_name TEXT'], ['documents',"mime_type TEXT DEFAULT 'application/octet-stream'"], ['documents','file_size INTEGER DEFAULT 0'], ['documents','file_data BYTEA'], ['documents','uploaded_by INTEGER'], ['documents','created_at TIMESTAMP DEFAULT now()'],
     ['occurrence_book',"category TEXT DEFAULT 'queixa'"], ['occurrence_book',"priority TEXT DEFAULT 'normal'"], ['occurrence_book',"status TEXT DEFAULT 'aberta'"], ['occurrence_book','created_by INTEGER'], ['occurrence_book','assigned_to INTEGER'], ['occurrence_book','response TEXT'], ['occurrence_book','updated_at TIMESTAMP DEFAULT now()'], ['occurrence_book','closed_at TIMESTAMP'],
     ['support_tickets',"priority TEXT DEFAULT 'normal'"], ['support_tickets',"target TEXT DEFAULT 'suporte'"], ['support_tickets','created_by INTEGER'], ['support_tickets','response TEXT'], ['support_tickets','updated_at TIMESTAMP DEFAULT now()'],
     ['audit','actor TEXT'], ['audit','action TEXT'], ['audit','entity TEXT'], ['audit','created_at TIMESTAMP DEFAULT now()']
@@ -1873,7 +1873,35 @@ app.post('/api/notify/email/preview', auth, can('settings.manage'), async (req,r
 const uploadManual = multer({ storage: multer.memoryStorage(), limits:{ fileSize: 20 * 1024 * 1024 } });
 
 app.get('/api/documents', auth, async (req,res,next)=>{ try { if (req.user.role === 'sindico' || req.user.role === 'subsindico' || req.user.role === 'admin' || req.user.role === 'master') return res.json((await q('SELECT id,title,description,audience,is_public,file_name,mime_type,file_size,created_at FROM documents ORDER BY id DESC')).rows); res.json((await q('SELECT id,title,description,audience,is_public,file_name,mime_type,file_size,created_at FROM documents WHERE is_public=true ORDER BY id DESC')).rows); } catch(e){ next(e); } });
-app.post('/api/documents/upload', auth, can('documents.manage'), uploadDocument.single('document'), async (req,res,next)=>{ try { if(!req.file) return res.status(400).json({ error:'Envie um arquivo.' }); const r=await q('INSERT INTO documents(title,description,audience,is_public,file_name,mime_type,file_size,file_data,uploaded_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id,title,description,audience,is_public,file_name,file_size,created_at',[req.body.title || req.file.originalname, req.body.description || '', req.body.audience || 'publico', String(req.body.is_public) !== 'false', req.file.originalname, req.file.mimetype || 'application/octet-stream', req.file.size, req.file.buffer, req.user.id]); await audit(req.user.email,'enviou documento',r.rows[0].title); res.json(r.rows[0]); } catch(e){ next(e); } });
+app.post('/api/documents/upload', auth, can('documents.manage'), uploadDocument.single('document'), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Envie um arquivo.' });
+
+    const result = await q(`
+      INSERT INTO documents(
+        title, description, audience, is_public,
+        file_name, mime_type, file_size, file_data, uploaded_by
+      )
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      RETURNING id,title,description,audience,is_public,file_name,mime_type,file_size,created_at
+    `, [
+      req.body.title || req.file.originalname,
+      req.body.description || '',
+      req.body.audience || 'publico',
+      String(req.body.is_public) !== 'false',
+      req.file.originalname,
+      req.file.mimetype || 'application/octet-stream',
+      req.file.size,
+      req.file.buffer,
+      req.user.id
+    ]);
+
+    await audit(req.user.email, 'enviou documento', result.rows[0].title);
+    return res.json(result.rows[0]);
+  } catch (e) {
+    return next(e);
+  }
+});
 app.get('/api/documents/:id/download', auth, async (req,res,next)=>{ try { const r=(await q('SELECT * FROM documents WHERE id=$1',[req.params.id])).rows[0]; if(!r) return res.status(404).send('Documento não encontrado.'); if(!r.is_public && !['sindico','subsindico','admin','master'].includes(req.user.role)) return res.status(403).send('Documento restrito.'); res.setHeader('Content-Type', r.mime_type || 'application/octet-stream'); res.setHeader('Content-Disposition', `inline; filename="${String(r.file_name || 'documento').replace(/"/g,'')}"`); res.send(r.file_data); } catch(e){ next(e); } });
 
 app.get('/api/occurrence-book', auth, can('occurrences.view'), async (req,res,next)=>{ try { if (isResident(req.user) && req.user.resident_id) return res.json((await q('SELECT * FROM occurrence_book WHERE created_by=$1 OR unit=$2 ORDER BY id DESC',[req.user.id, req.user.unit||''])).rows); res.json((await q('SELECT o.*, u.name created_by_name FROM occurrence_book o LEFT JOIN users u ON u.id=o.created_by ORDER BY o.id DESC LIMIT 300')).rows); } catch(e){ next(e); } });
