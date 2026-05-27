@@ -17,7 +17,7 @@ import { randomBytes, createHash, verify as cryptoVerify } from 'node:crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v12.4.3';
+const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v12.4.6';
 const JWT_SECRET = process.env.JWT_SECRET || 'troque-este-segredo-em-producao';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/vitoriaregia';
 const DB_SSL_MODE = String(process.env.DATABASE_SSL_MODE || process.env.DATABASE_SSL || 'auto').trim().toLowerCase();
@@ -1180,42 +1180,56 @@ function canonicalUpdateManifest(m={}) {
     channel: m.channel || 'stable'
   });
 }
-function updateSignatureRequired() {
+function updateSignatureRequired(manifest={}) {
   const env = String(process.env.UPDATE_REQUIRE_SIGNATURE || '').toLowerCase().trim();
+  const manifestFlag = String(manifest.requires_signature ?? manifest.require_signature ?? '').toLowerCase().trim();
+  // O próprio pacote pode declarar que não exige assinatura. Nesse caso, token interno + hash bastam.
+  if (['0','false','nao','não','no','off'].includes(manifestFlag)) return false;
   return ['1','true','sim','yes','on'].includes(env);
 }
 function verifyManifestSignature(manifest) {
-  const required = updateSignatureRequired();
+  const required = updateSignatureRequired(manifest);
   const hasSignature = Boolean(manifest.signature);
-  // Quando a assinatura digital não é obrigatória, a Central valida por token interno + hash SHA-256.
-  // Isso evita bloqueio indevido de pacotes oficiais gerados sem a chave RSA antiga.
   if (!required) return true;
   if (!hasSignature) {
-    throw new Error('Autenticação digital exigida: o pacote não possui assinatura. Configure UPDATE_REQUIRE_SIGNATURE=false para validar por token interno + hash SHA-256 ou envie um ZIP assinado.');
+    throw new Error('Atualização validada por token/hash, mas o Render está exigindo assinatura digital. Defina UPDATE_REQUIRE_SIGNATURE=false ou use um ZIP assinado.');
   }
   if (!UPDATE_PUBLIC_KEY) {
-    throw new Error('Autenticação digital exigida: UPDATE_PUBLIC_KEY não configurada no Render.');
+    throw new Error('UPDATE_PUBLIC_KEY não configurada no Render para validar a assinatura digital.');
   }
   const ok = cryptoVerify('RSA-SHA256', Buffer.from(canonicalUpdateManifest(manifest)), UPDATE_PUBLIC_KEY, Buffer.from(String(manifest.signature), 'base64'));
   if (!ok) throw new Error('Assinatura digital inválida para esta chave pública.');
   return true;
 }
+function normalizeUpdateManifest(raw={}) {
+  const manifest = { ...raw };
+  manifest.system = manifest.system || 'vitoria-regia-pro';
+  manifest.update_code = manifest.update_code || manifest.code || manifest.codigo || '';
+  manifest.version = manifest.version || manifest.to_version || manifest.name || '';
+  manifest.to_version = manifest.to_version || manifest.version || '';
+  manifest.title = manifest.title || manifest.name || `Atualização ${manifest.update_code}`;
+  manifest.payload_file = manifest.payload_file || manifest.payload || 'payload.zip';
+  manifest.validation_token = manifest.validation_token || manifest.token || manifest.update_token || '';
+  manifest.token = manifest.token || manifest.validation_token || '';
+  return manifest;
+}
 function validateUpdatePackage(buffer, validationCode='') {
   const zip = new AdmZip(buffer);
   const manifestEntry = zip.getEntry('vr-update.json') || zip.getEntry('vitoria-regia-update.json') || zip.getEntry('manifest.json');
-  if (!manifestEntry) throw new Error('Pacote sem vr-update.json.');
-  const manifest = JSON.parse(manifestEntry.getData().toString('utf8'));
+  if (!manifestEntry) throw new Error('Pacote sem vr-update.json. Envie o ZIP oficial de atualização, não o ZIP completo do sistema.');
+  const manifest = normalizeUpdateManifest(JSON.parse(manifestEntry.getData().toString('utf8')));
   if (manifest.system !== 'vitoria-regia-pro') throw new Error('Pacote não pertence ao Sistema Vitória Régia Pro.');
-  if (!manifest.update_code || !manifest.payload_sha256) throw new Error('Manifesto de atualização incompleto.');
-  const payloadEntry = zip.getEntry(manifest.payload_file || 'payload.zip');
-  if (!payloadEntry) throw new Error('Pacote sem payload.zip.');
+  if (!manifest.update_code || !manifest.payload_sha256) throw new Error('Manifesto de atualização incompleto: faltam código da atualização ou hash do payload.');
+  const payloadEntry = zip.getEntry(manifest.payload_file || 'payload.zip') || zip.getEntry('payload.zip');
+  if (!payloadEntry) throw new Error('Pacote sem payload.zip. Envie o arquivo de atualização oficial.');
   const payloadBuffer = payloadEntry.getData();
   const payloadHash = sha256Hex(payloadBuffer);
-  if (payloadHash !== String(manifest.payload_sha256).toLowerCase()) throw new Error('Hash do payload não confere. O ZIP pode estar corrompido.');
+  if (payloadHash !== String(manifest.payload_sha256).toLowerCase()) throw new Error('Hash do payload não confere. O ZIP pode estar corrompido ou foi alterado.');
   const token = String(validationCode || manifest.validation_token || manifest.token || '').trim();
-  if (!token) throw new Error('Código/token de validação não informado no pacote.');
+  if (!token) throw new Error('Token interno ausente no pacote de atualização. Gere novamente o ZIP oficial.');
   const expectedTokenHash = sha256Hex(Buffer.from(`${token}:${manifest.update_code}:${payloadHash}`));
-  if (manifest.validation_token_hash && expectedTokenHash !== String(manifest.validation_token_hash).toLowerCase()) throw new Error('Código/token de validação inválido para este pacote.');
+  if (manifest.validation_token_hash && expectedTokenHash !== String(manifest.validation_token_hash).toLowerCase()) throw new Error('Token interno inválido para este pacote.');
+  // A assinatura digital é opcional por padrão. Quando desativada, o pacote é autenticado por token interno + hash SHA-256.
   verifyManifestSignature(manifest);
   const payloadZip = new AdmZip(payloadBuffer);
   const files = payloadZip.getEntries().filter(e => !e.isDirectory).map(e => safeUpdatePath(e.entryName));

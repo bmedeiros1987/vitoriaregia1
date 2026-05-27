@@ -11,7 +11,7 @@ import {
 import './styles.css';
 
 const API = import.meta.env.VITE_API_URL || '';
-const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v12.4.5';
+const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v12.4.6';
 const money = (v) => Number(v || 0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
 const date = (v) => v ? new Date(String(v)).toLocaleDateString('pt-BR', { timeZone:'UTC' }) : '-';
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -113,7 +113,25 @@ function App(){
   }, [settings.APPEARANCE, settings.UI_DENSITY, settings.THEME_TEXT_SIZE, settings.THEME_ACCENT, settings.THEME_ACCENT_2, settings.THEME_SECONDARY]);
   useEffect(() => { if(session) loadAll(); else request('/api/public-config').then(s => setData(d => ({ ...d, settings:s }))).catch(()=>null); }, [session]);
   useEffect(() => { if(!session) return; const id=setInterval(() => { request('/api/notifications').then(notifications => setData(d => ({...d, notifications}))).catch(()=>null); }, 5000); return () => clearInterval(id); }, [session]);
-  useEffect(() => { const fn=()=>{ const r=routeState(location.hash || 'dashboard'); setActive(r.active); if(r.sub) setSub(r.sub); }; window.addEventListener('hashchange', fn); return()=>window.removeEventListener('hashchange', fn); }, []);
+  useEffect(() => {
+    const fn=()=>{
+      const hash = location.hash || '#/dashboard';
+      const r=routeState(hash || 'dashboard');
+
+      if(hash.includes('/reservas')){
+        setActive('reservas');
+        setSub('calendario');
+        return;
+      }
+
+      setActive(r.active);
+      if(r.sub) setSub(r.sub);
+    };
+
+    fn();
+    window.addEventListener('hashchange', fn);
+    return()=>window.removeEventListener('hashchange', fn);
+  }, []);
 
   function setForm(group, patch){ setForms(f => ({ ...f, [group]:{ ...f[group], ...patch } })); }
   function notify(message, fail=false){ setToast(message); if(fail) document.body.classList.add('shake'); setTimeout(()=>{ setToast(''); document.body.classList.remove('shake'); }, 3800); }
@@ -172,7 +190,7 @@ function App(){
     <aside><div className="brand brandCompact brandLogoOnly"><img src="/logo-vitoria-regia-menu.svg" className="brandLogo"/><button className="insideClose menuToggle" title={menuOpen ? 'Fechar menu' : (menuClosed?'Expandir menu':'Recolher menu')} onClick={()=>{ if(window.innerWidth < 861) setMenuOpen(false); else setMenuClosed(!menuClosed); }}>{window.innerWidth < 861 ? <X/> : (menuClosed ? <ChevronRight/> : <PanelLeft/>)}</button></div><nav>{menuItems.map(([key,label,Icon]) => <button key={key} className={active===key?'active':''} aria-current={active===key?'page':undefined} onClick={()=>go(key)}><Icon /><span>{label}</span></button>)}</nav><div className="sideBottom"><button onClick={()=>go('perfil')}><UserCheck/><span>Meu perfil</span></button><button onClick={logout}><LogOut/><span>Sair</span></button></div></aside>
     {can('emergency.use') && <button className="floatingEmergency" onClick={()=>go('emergencia')}><Siren/><span>Emergência</span></button>}
     <main className="content"><Topbar session={session} settings={settings} data={data} setActive={go}/>{toast && <div className="toast">{toast}</div>}
-      {active==='dashboard' && <Dashboard {...props}/>} {active==='portaria' && <Portaria {...props}/>} {active==='reservas' && <Reservations {...props}/>} {active==='financeiro' && <Financeiro {...props}/>} {active==='cadastros' && <Cadastros {...props}/>} {active==='comunicacao' && <Comunicacao {...props}/>} {active==='ocorrencias' && <OccurrenceBook {...props}/>} {active==='emergencia' && <Emergency {...props}/>} {active==='suporte' && <SupportPage {...props}/>} {active==='configuracoes' && <SettingsPage {...props}/>} {active==='central' && <CentralPro {...props}/>} {active==='updates' && <Updates {...props}/>} {active==='perfil' && <Profile {...props}/>} 
+      {active==='dashboard' && <Dashboard {...props}/>} {active==='portaria' && <Portaria {...props}/>} {(active==='reservas' || window.location.hash.includes('/reservas')) && <Reservations {...props}/>} {active==='financeiro' && <Financeiro {...props}/>} {active==='cadastros' && <Cadastros {...props}/>} {active==='comunicacao' && <Comunicacao {...props}/>} {active==='ocorrencias' && <OccurrenceBook {...props}/>} {active==='emergencia' && <Emergency {...props}/>} {active==='suporte' && <SupportPage {...props}/>} {active==='configuracoes' && <SettingsPage {...props}/>} {active==='central' && <CentralPro {...props}/>} {active==='updates' && <Updates {...props}/>} {active==='perfil' && <Profile {...props}/>} 
     </main><nav className="bottomNav"><button className={active==='dashboard'?'active':''} onClick={()=>go('dashboard')}><Home/><span>Início</span></button><button className={active==='reservas'?'active':''} onClick={()=>go('reservas')}><CalendarDays/><span>Reservas</span></button><button className={active==='comunicacao'?'active':''} onClick={()=>go('comunicacao','notificacoes')}><Bell/><span>Comunicados</span></button><button className={active==='perfil'?'active':''} onClick={()=>go('perfil')}><UserCheck/><span>Perfil</span></button></nav>{confirm && <ConfirmModal confirm={confirm} onCancel={()=>setConfirm(null)} onConfirm={confirmRun}/>}<Footer /></div>;
 }
 function LoginPage({ forms,setForm,mode,setMode,doLogin,err,setShowPass,showPass,action,settings }){
