@@ -493,6 +493,41 @@ CREATE TABLE IF NOT EXISTS error_logs(
   payload JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMP DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS occurrence_book(
+  id SERIAL PRIMARY KEY,
+  title TEXT,
+  description TEXT,
+  unit TEXT,
+  category TEXT DEFAULT 'queixa',
+  priority TEXT DEFAULT 'normal',
+  status TEXT DEFAULT 'aberta',
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  assigned_to INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  response TEXT,
+  created_at TIMESTAMP DEFAULT now(),
+  updated_at TIMESTAMP DEFAULT now(),
+  closed_at TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS support_tickets(
+  id SERIAL PRIMARY KEY,
+  subject TEXT,
+  body TEXT,
+  priority TEXT DEFAULT 'normal',
+  target TEXT DEFAULT 'suporte',
+  status TEXT DEFAULT 'aberto',
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  response TEXT,
+  created_at TIMESTAMP DEFAULT now(),
+  updated_at TIMESTAMP DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS faqs(
+  id SERIAL PRIMARY KEY,
+  question TEXT,
+  answer TEXT,
+  active BOOLEAN DEFAULT true,
+  sort_order INTEGER DEFAULT 0,
+  created_at TIMESTAMP DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS system_updates(
   id SERIAL PRIMARY KEY,
   update_code TEXT UNIQUE NOT NULL,
@@ -588,8 +623,9 @@ CREATE TABLE IF NOT EXISTS audit(
     ['system_updates','update_code TEXT'], ['system_updates','version TEXT'], ['system_updates','title TEXT'], ['system_updates','notes TEXT'], ['system_updates','from_version TEXT'], ['system_updates','to_version TEXT'], ['system_updates','status TEXT DEFAULT \'disponivel\''], ['system_updates','validation_token_hash TEXT'], ['system_updates','payload_sha256 TEXT'], ['system_updates','manifest JSONB DEFAULT \'{}\'::jsonb'], ['system_updates','package_data BYTEA'], ['system_updates','announced_at TIMESTAMP'], ['system_updates','validated_at TIMESTAMP'], ['system_updates','applied_at TIMESTAMP'], ['system_updates','created_by INTEGER'], ['system_updates','applied_by INTEGER'], ['system_updates','error TEXT'], ['system_updates','created_at TIMESTAMP DEFAULT now()'],
     ['manuals','title TEXT'], ['manuals',"audience TEXT DEFAULT 'geral'"], ['manuals','file_name TEXT'], ['manuals',"mime_type TEXT DEFAULT 'application/pdf'"], ['manuals','file_size INTEGER DEFAULT 0'], ['manuals','file_data BYTEA'], ['manuals','uploaded_by INTEGER'], ['manuals','created_at TIMESTAMP DEFAULT now()'],
     ['documents','description TEXT'], ['documents',"audience TEXT DEFAULT 'publico'"], ['documents','is_public BOOLEAN DEFAULT true'], ['documents','file_name TEXT'], ['documents',"mime_type TEXT DEFAULT 'application/octet-stream'"], ['documents','file_size INTEGER DEFAULT 0'], ['documents','file_data BYTEA'], ['documents','uploaded_by INTEGER'], ['documents','created_at TIMESTAMP DEFAULT now()'],
-    ['occurrence_book',"category TEXT DEFAULT 'queixa'"], ['occurrence_book',"priority TEXT DEFAULT 'normal'"], ['occurrence_book',"status TEXT DEFAULT 'aberta'"], ['occurrence_book','created_by INTEGER'], ['occurrence_book','assigned_to INTEGER'], ['occurrence_book','response TEXT'], ['occurrence_book','updated_at TIMESTAMP DEFAULT now()'], ['occurrence_book','closed_at TIMESTAMP'],
-    ['support_tickets',"priority TEXT DEFAULT 'normal'"], ['support_tickets',"target TEXT DEFAULT 'suporte'"], ['support_tickets','created_by INTEGER'], ['support_tickets','response TEXT'], ['support_tickets','updated_at TIMESTAMP DEFAULT now()'],
+    ['occurrence_book','title TEXT'], ['occurrence_book','description TEXT'], ['occurrence_book','unit TEXT'], ['occurrence_book',"category TEXT DEFAULT 'queixa'"], ['occurrence_book',"priority TEXT DEFAULT 'normal'"], ['occurrence_book',"status TEXT DEFAULT 'aberta'"], ['occurrence_book','created_by INTEGER'], ['occurrence_book','assigned_to INTEGER'], ['occurrence_book','response TEXT'], ['occurrence_book','created_at TIMESTAMP DEFAULT now()'], ['occurrence_book','updated_at TIMESTAMP DEFAULT now()'], ['occurrence_book','closed_at TIMESTAMP'],
+    ['support_tickets','subject TEXT'], ['support_tickets','body TEXT'], ['support_tickets',"priority TEXT DEFAULT 'normal'"], ['support_tickets',"target TEXT DEFAULT 'suporte'"], ['support_tickets',"status TEXT DEFAULT 'aberto'"], ['support_tickets','created_by INTEGER'], ['support_tickets','response TEXT'], ['support_tickets','created_at TIMESTAMP DEFAULT now()'], ['support_tickets','updated_at TIMESTAMP DEFAULT now()'],
+    ['faqs','question TEXT'], ['faqs','answer TEXT'], ['faqs','active BOOLEAN DEFAULT true'], ['faqs','sort_order INTEGER DEFAULT 0'], ['faqs','created_at TIMESTAMP DEFAULT now()'],
     ['audit','actor TEXT'], ['audit','action TEXT'], ['audit','entity TEXT'], ['audit','created_at TIMESTAMP DEFAULT now()']
   ];
   for (const [table, col] of columns) await addColumn(table, col);
@@ -607,7 +643,7 @@ CREATE TABLE IF NOT EXISTS audit(
   await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_reservation_slot ON reservations(area, reserved_for, start_time, end_time) WHERE status <> 'cancelada'").catch(e => console.warn('Índice de reservas ignorado:', e.message));
 
   const defaultSettings = {
-    THEME_ACCENT: '#126b5f', THEME_TEXT_SIZE: 'comfort', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light', APP_VERSION:'Vitória Régia Pro v12.3',
+    THEME_ACCENT: '#126b5f', THEME_TEXT_SIZE: 'comfort', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light', APP_VERSION:'Vitória Régia Pro v12.5.3',
     CONDO_NAME: 'Condomínio Vitória Régia', DEVELOPED_BY: 'CrewCheck', CREWCHECK_SITE: 'https://www.crewcheck.online/', CREWCHECK_FOOTER: 'Desenvolvido por CrewCheck - todos os direitos reservados', CONDO_ADDRESS: '', WEATHER_CITY: 'João Pessoa', WEATHER_LAT: '-7.1195', WEATHER_LON: '-34.8450',
     ELEVATOR_OPERATOR_NAME: 'Operadora do elevador', ELEVATOR_EMERGENCY_PHONE: '', EMERGENCY_EMAILS: process.env.SENDGRID_TO_DEFAULT || '',
     EMERGENCY_APPROVAL_REQUIRED: 'true', FOOTER_MODE: 'minimal', EMAIL_PROVIDER: process.env.MAIL_PROVIDER || 'sendgrid',

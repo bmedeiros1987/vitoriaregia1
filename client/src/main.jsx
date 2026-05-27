@@ -71,6 +71,9 @@ function routeState(raw='dashboard', explicitSub){
   const cleanRoute = String(raw || 'dashboard').replace(/^#?\/?/, '').replace(/^\//, '');
   const [first, second] = cleanRoute.split('/').filter(Boolean);
   const key = first || 'dashboard';
+  if(key === 'reservas' || key === 'reserva'){
+    return { active:'reservas', sub: explicitSub || second || 'calendario' };
+  }
   if(routeAliases[key]){
     const [active, aliasSub] = routeAliases[key];
     return { active, sub: explicitSub || second || aliasSub || routeDefaults[active] };
@@ -82,12 +85,13 @@ function routeHash(active, sub){
 }
 function currentRouteState(){
   const hash = window.location.hash || '#/dashboard';
-  const normalized = hash.replace(/^#/, '') || '/dashboard';
+  const normalized = (hash.replace(/^#/, '') || '/dashboard').replace(/^\/?/, '/');
   if (/^\/reservas(\/|$)/i.test(normalized)) return { active:'reservas', sub:'calendario' };
   return routeState(hash || 'dashboard');
 }
 function isReservasHash(){
-  return /^#?\/reservas(\/|$)/i.test(window.location.hash || '');
+  const normalized = String(window.location.hash || '').replace(/^#/, '').replace(/^\/?/, '/');
+  return /^\/reservas(\/|$)/i.test(normalized);
 }
 
 function App(){
@@ -142,10 +146,10 @@ function App(){
   function notify(message, fail=false){ setToast(message); if(fail) document.body.classList.add('shake'); setTimeout(()=>{ setToast(''); document.body.classList.remove('shake'); }, 3800); }
   async function safe(path, fallback){ try { return await request(path); } catch { return fallback; } }
   async function loadAll(){
-    const [settingsRes,dashboard,residents,users,employees,shifts,messages,packagesRes,visitors,invoices,notices,reservations,finance,boletos,commonAreas,incidents,maintenance,emergencyTypes,emergencyRequests,registrationRequests,notifications,audit,weather,systemUpdates,manuals,notifyConfig] = await Promise.all([
-      safe('/api/settings',{}), safe('/api/dashboard',null), safe('/api/residents',[]), safe('/api/users',[]), safe('/api/employees',[]), safe('/api/shifts',[]), safe('/api/messages',[]), safe('/api/packages',[]), safe('/api/visitors',[]), safe('/api/invoices',[]), safe('/api/notices',[]), safe('/api/reservations',[]), safe('/api/finance',[]), safe('/api/boletos',[]), safe('/api/common-areas',[]), safe('/api/incidents',[]), safe('/api/maintenance',[]), safe('/api/emergency-types',[]), safe('/api/emergency-requests',[]), safe('/api/registration-requests',[]), safe('/api/notifications',[]), safe('/api/audit',[]), safe('/api/weather',null), safe('/api/system-updates',[]), safe('/api/manuals',[]), safe('/api/notify/config',null)
+    const [settingsRes,dashboard,residents,users,employees,shifts,messages,packagesRes,visitors,invoices,notices,reservations,finance,boletos,commonAreas,incidents,maintenance,emergencyTypes,emergencyRequests,registrationRequests,notifications,audit,weather,systemUpdates,manuals,documents,faqs,supportTickets,occurrenceBook,notifyConfig] = await Promise.all([
+      safe('/api/settings',{}), safe('/api/dashboard',null), safe('/api/residents',[]), safe('/api/users',[]), safe('/api/employees',[]), safe('/api/shifts',[]), safe('/api/messages',[]), safe('/api/packages',[]), safe('/api/visitors',[]), safe('/api/invoices',[]), safe('/api/notices',[]), safe('/api/reservations',[]), safe('/api/finance',[]), safe('/api/boletos',[]), safe('/api/common-areas',[]), safe('/api/incidents',[]), safe('/api/maintenance',[]), safe('/api/emergency-types',[]), safe('/api/emergency-requests',[]), safe('/api/registration-requests',[]), safe('/api/notifications',[]), safe('/api/audit',[]), safe('/api/weather',null), safe('/api/system-updates',[]), safe('/api/manuals',[]), safe('/api/documents',[]), safe('/api/faqs',[]), safe('/api/support-tickets',[]), safe('/api/occurrence-book',[]), safe('/api/notify/config',null)
     ]);
-    setData({ settings:settingsRes, dashboard, residents, users, employees, shifts, messages, packages:packagesRes, visitors, invoices, notices, reservations, finance, boletos, commonAreas, incidents, maintenance, emergencyTypes, emergencyRequests, registrationRequests, notifications, audit, weather, systemUpdates, manuals, notifyConfig });
+    setData({ settings:settingsRes, dashboard, residents, users, employees, shifts, messages, packages:packagesRes, visitors, invoices, notices, reservations, finance, boletos, commonAreas, incidents, maintenance, emergencyTypes, emergencyRequests, registrationRequests, notifications, audit, weather, systemUpdates, manuals, documents, faqs, supportTickets, occurrenceBook, notifyConfig });
     setForms(f => ({ ...f, settings:settingsRes }));
   }
   async function doLogin(e){ e.preventDefault(); setErr(''); try { const r=await post('/api/login', forms.login); localStorage.setItem('vr_token', r.token); localStorage.setItem('vr_user', JSON.stringify(r.user)); setSession(r.user); if(r.user?.force_password_change){ setActive('perfil'); notify('Senha temporária detectada. Altere sua senha no Meu Perfil para continuar com segurança.'); } else { notify('Login realizado com segurança'); } } catch(e){ setErr(e.message); } }
@@ -196,7 +200,8 @@ function App(){
   if(!session) return <LoginPage forms={forms} setForm={setForm} mode={loginMode} setMode={setLoginMode} doLogin={doLogin} err={err} setShowPass={setShowPass} showPass={showPass} action={action} settings={settings} />;
   const menuItems = [ ['dashboard','Início',Home], ['portaria','Portaria',Package], ['reservas','Reservas',CalendarDays], ['financeiro','Financeiro',WalletCards], ['cadastros','Cadastros',Users], ['comunicacao','Comunicação',Bell], ['ocorrencias','Livro de Ocorrências',BookOpen], ['emergencia','Emergência',Siren], ['suporte','Suporte',HelpCircle], ['configuracoes','Configurações',Settings], ['central','Sistema e Apps',ShieldCheck], ['updates','Atualizações',RefreshCcw] ];
   const shellClass = ['appShell', menuOpen?'mobile-open':'', menuClosed?'menu-closed':'', `menu-${settings.MENU_ORIENTATION||'vertical'}`].join(' ');
-  const reservasRouteLocked = active==='reservas' || isReservasHash();
+  const routeNow = currentRouteState();
+  const reservasRouteLocked = active==='reservas' || routeNow.active==='reservas' || isReservasHash();
   const visualActive = reservasRouteLocked ? 'reservas' : active;
   const props = { data, forms, setForm, action, notify, loadAll, settings, session, can, openConfirm, lookup, lookupUnit, prefillResidentFromContext, readImage, reading, fileToData, setActive:go, sub, setSub, isAdminReserved, configTab, setConfigTab, del, logout };
   return <div className={shellClass}>
@@ -418,7 +423,7 @@ function ReservationCalendar({rows=[],areas=[],selectedArea,onSelectDate,session
 }
 function Reservations(props){
   const {data,forms,setForm,action,openConfirm,lookup,lookupUnit,prefillResidentFromContext,del,session}=props;
-  const f=forms.reservation; const areas=data.commonAreas.length?data.commonAreas:[];
+  const f=forms.reservation || {}; const areas=Array.isArray(data.commonAreas)?data.commonAreas:[];
   const [selectedArea,setSelectedArea] = useState(f.area || areas[0]?.name || '');
   useEffect(()=>{ if(session?.role==='morador' && session?.unit && !f.unit) setForm('reservation',{unit:session.unit, resident:session.name || f.resident}); },[session?.role, session?.unit]);
   useEffect(()=>{ if(!f.area && areas[0]?.name) setForm('reservation',{area:areas[0].name}); },[areas.length]);
@@ -426,7 +431,8 @@ function Reservations(props){
   const periods=reservationPeriodsForArea(area); const isCustom=f.reservation_mode==='horario'; const [presetStart,presetEnd]=reservationPeriodHours(f.reservation_mode);
   useEffect(()=>{ if(area) setForm('reservation',{ fee_amount:f.fee_amount || area.fee_amount || '', document_text:f.document_text || area.rules_document || '' }); },[f.area]);
   const isAllDay=f.reservation_mode==='dia_todo'||f.all_day===true; const displayTime=isAllDay?'Dia todo (00:00 às 23:59)':`${isCustom?f.start_time:presetStart} às ${isCustom?f.end_time:presetEnd}`;
-  const rowsByArea = selectedArea ? data.reservations.filter(r=>r.area===selectedArea) : data.reservations;
+  const reservationRows = Array.isArray(data.reservations) ? data.reservations : [];
+  const rowsByArea = selectedArea ? reservationRows.filter(r=>r.area===selectedArea) : reservationRows;
   const occupiedDates = new Set(rowsByArea.map(r=>String(r.reserved_for||'').slice(0,10)));
   const summary={Espaço:f.area,Unidade:f.unit,Morador:f.resident,Data:f.reserved_for,Período:reservationPeriodLabel(f.reservation_mode),Horário:displayTime,Taxa:money(f.fee_amount)};
   function pickDate(iso){ setForm('reservation',{reserved_for:iso, area:selectedArea || f.area}); window.scrollTo({top:0,behavior:'smooth'}); }
@@ -434,7 +440,7 @@ function Reservations(props){
     <div className="reservationWorkspace">
       <div className="spaceSidebar" role="navigation" aria-label="Espaços para reserva"><h3>Espaços</h3><button className={!selectedArea?'active':''} type="button" onClick={()=>setSelectedArea('')}>Todos os espaços</button>{areas.map(a=><button className={selectedArea===a.name?'active':''} type="button" key={a.id||a.name} onClick={()=>{setSelectedArea(a.name); setForm('reservation',{area:a.name});}}><b>{a.name}</b><small>{money(a.fee_amount)} · até {a.max_guests || '—'} convidados</small></button>)}</div>
       <div className="reservationMain">
-        <form className="formGrid reservationForm premiumReservationForm" onSubmit={e=>{e.preventDefault(); const payload={...f, period_label:reservationPeriodLabel(f.reservation_mode), all_day:isAllDay, start_time:isAllDay?'00:00':(isCustom?f.start_time:presetStart), end_time:isAllDay?'23:59':(isCustom?f.end_time:presetEnd), shift:f.reservation_mode}; const conflict=data.reservations.some(r=>r.area===payload.area && String(r.reserved_for).slice(0,10)===String(payload.reserved_for).slice(0,10) && (payload.all_day || r.all_day || (payload.start_time < r.end_time && payload.end_time > r.start_time))); if(conflict) return alert('Esse espaço já está ocupado nesse dia/período. Escolha outra data ou outro horário.'); openConfirm('Confirmar reserva de espaço', summary, ()=>action('/api/reservations', payload, 'Reserva criada e morador notificado'));}}>
+        <form className="formGrid reservationForm premiumReservationForm" onSubmit={e=>{e.preventDefault(); const payload={...f, period_label:reservationPeriodLabel(f.reservation_mode), all_day:isAllDay, start_time:isAllDay?'00:00':(isCustom?f.start_time:presetStart), end_time:isAllDay?'23:59':(isCustom?f.end_time:presetEnd), shift:f.reservation_mode}; const conflict=reservationRows.some(r=>r.area===payload.area && String(r.reserved_for).slice(0,10)===String(payload.reserved_for).slice(0,10) && (payload.all_day || r.all_day || (payload.start_time < r.end_time && payload.end_time > r.start_time))); if(conflict) return alert('Esse espaço já está ocupado nesse dia/período. Escolha outra data ou outro horário.'); openConfirm('Confirmar reserva de espaço', summary, ()=>action('/api/reservations', payload, 'Reserva criada e morador notificado'));}}>
           <label>Espaço *<select required value={f.area} onChange={e=>{setSelectedArea(e.target.value); setForm('reservation',{area:e.target.value});}}>{areas.map(a=><option key={a.id||a.name}>{a.name}</option>)}</select></label>
           <label>Unidade *<div className="inline"><input required disabled={session?.role==='morador'} value={f.unit} onChange={e=>setForm('reservation',{unit:e.target.value})} onBlur={()=>lookupUnit('reservation',f.unit,f.resident)}/><button type="button" disabled={session?.role==='morador'} onClick={()=>lookupUnit('reservation',f.unit,f.resident)}><Search/></button></div></label>
           <label>Morador *<input required disabled={session?.role==='morador'} value={f.resident} onChange={e=>setForm('reservation',{resident:e.target.value})}/></label>
@@ -448,7 +454,7 @@ function Reservations(props){
           <button><Plus/> Conferir e solicitar reserva</button>
         </form>
         <UnitLookupBox result={lookup.reservation} onRegister={()=>prefillResidentFromContext('reservation')}/>
-        <ReservationCalendar rows={data.reservations} areas={areas} selectedArea={selectedArea} onSelectDate={pickDate} session={session}/>
+        <ReservationCalendar rows={reservationRows} areas={areas} selectedArea={selectedArea} onSelectDate={pickDate} session={session}/>
       </div>
     </div>
     <GuestManager {...props}/>
