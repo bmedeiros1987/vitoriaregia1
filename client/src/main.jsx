@@ -11,7 +11,7 @@ import {
 import './styles.css';
 
 const API = import.meta.env.VITE_API_URL || '';
-const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v12.4.4';
+const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v12.4.5';
 const money = (v) => Number(v || 0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
 const date = (v) => v ? new Date(String(v)).toLocaleDateString('pt-BR', { timeZone:'UTC' }) : '-';
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -57,8 +57,9 @@ const post = (path, body) => request(path, { method:'POST', body:JSON.stringify(
 const put = (path, body) => request(path, { method:'PUT', body:JSON.stringify(body) });
 const del = (path) => request(path, { method:'DELETE' });
 
-const routeDefaults = { portaria:'encomendas', cadastros:'moradores', financeiro:'movimentos', comunicacao:'notificacoes', central:'apps', configuracoes:'aparencia' };
+const routeDefaults = { portaria:'encomendas', reservas:'calendario', cadastros:'moradores', financeiro:'movimentos', comunicacao:'notificacoes', central:'apps', configuracoes:'aparencia' };
 const routeAliases = {
+  reservas:['reservas','calendario'], reserva:['reservas','calendario'], espacos:['reservas','espacos'],
   encomendas:['portaria','encomendas'], visitantes:['portaria','visitantes'], escalas:['portaria','escalas'], mensagens:['portaria','mensagens'], portaria:['portaria','encomendas'],
   boletos:['financeiro','boletos'], movimentos:['financeiro','movimentos'], financeiro:['financeiro','movimentos'],
   moradores:['cadastros','moradores'], usuarios:['cadastros','usuarios'], solicitacoes:['cadastros','solicitacoes'], cadastros:['cadastros','moradores'],
@@ -399,7 +400,7 @@ function Reservations(props){
   function pickDate(iso){ setForm('reservation',{reserved_for:iso, area:selectedArea || f.area}); window.scrollTo({top:0,behavior:'smooth'}); }
   return <Panel title="Reservas" subtitle="Calendário premium por espaço, períodos configuráveis, cobrança, aceite das regras e convidados." icon={<CalendarDays/>}>
     <div className="reservationWorkspace">
-      <aside className="spaceSidebar"><h3>Espaços</h3><button className={!selectedArea?'active':''} type="button" onClick={()=>setSelectedArea('')}>Todos os espaços</button>{areas.map(a=><button className={selectedArea===a.name?'active':''} type="button" key={a.id||a.name} onClick={()=>{setSelectedArea(a.name); setForm('reservation',{area:a.name});}}><b>{a.name}</b><small>{money(a.fee_amount)} · até {a.max_guests || '—'} convidados</small></button>)}</aside>
+      <div className="spaceSidebar" role="navigation" aria-label="Espaços para reserva"><h3>Espaços</h3><button className={!selectedArea?'active':''} type="button" onClick={()=>setSelectedArea('')}>Todos os espaços</button>{areas.map(a=><button className={selectedArea===a.name?'active':''} type="button" key={a.id||a.name} onClick={()=>{setSelectedArea(a.name); setForm('reservation',{area:a.name});}}><b>{a.name}</b><small>{money(a.fee_amount)} · até {a.max_guests || '—'} convidados</small></button>)}</div>
       <div className="reservationMain">
         <form className="formGrid reservationForm premiumReservationForm" onSubmit={e=>{e.preventDefault(); const payload={...f, period_label:reservationPeriodLabel(f.reservation_mode), all_day:isAllDay, start_time:isAllDay?'00:00':(isCustom?f.start_time:presetStart), end_time:isAllDay?'23:59':(isCustom?f.end_time:presetEnd), shift:f.reservation_mode}; const conflict=data.reservations.some(r=>r.area===payload.area && String(r.reserved_for).slice(0,10)===String(payload.reserved_for).slice(0,10) && (payload.all_day || r.all_day || (payload.start_time < r.end_time && payload.end_time > r.start_time))); if(conflict) return alert('Esse espaço já está ocupado nesse dia/período. Escolha outra data ou outro horário.'); openConfirm('Confirmar reserva de espaço', summary, ()=>action('/api/reservations', payload, 'Reserva criada e morador notificado'));}}>
           <label>Espaço *<select required value={f.area} onChange={e=>{setSelectedArea(e.target.value); setForm('reservation',{area:e.target.value});}}>{areas.map(a=><option key={a.id||a.name}>{a.name}</option>)}</select></label>
