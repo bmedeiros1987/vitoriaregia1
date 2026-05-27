@@ -11,7 +11,7 @@ import {
 import './styles.css';
 
 const API = import.meta.env.VITE_API_URL || '';
-const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v12.4.9';
+const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v12.5.8';
 const money = (v) => Number(v || 0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
 const date = (v) => v ? new Date(String(v)).toLocaleDateString('pt-BR', { timeZone:'UTC' }) : '-';
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -416,6 +416,72 @@ function Shifts({data,forms,setForm,action,can,session,loadAll}){
 function Messages({data,forms,setForm,action}){ return <div className="stack"><form className="formGrid" onSubmit={e=>{e.preventDefault(); action('/api/messages', forms.message, 'Mensagem enviada ao funcionário em serviço');}}><label>Unidade<input value={forms.message.unit} onChange={e=>setForm('message',{unit:e.target.value})}/></label><label>Assunto<input required value={forms.message.subject} onChange={e=>setForm('message',{subject:e.target.value})}/></label><textarea required placeholder="Mensagem" value={forms.message.body} onChange={e=>setForm('message',{body:e.target.value})}/><button><Send/> Enviar</button></form><Table rows={data.messages} render={m=><><td><b>{m.subject}</b><small>{m.body}</small></td><td>Unidade {m.unit}<small>{m.employee_name?'Responsável: '+m.employee_name:'Sem funcionário em serviço'}</small></td><td><Status ok={m.status==='respondida'}>{m.status}</Status></td><td className="actions"><button onClick={()=>{const response=prompt('Resposta ao morador'); if(response) action(`/api/messages/${m.id}/respond`,{response},'Resposta enviada');}}>Responder</button></td></>}/></div>; }
 
 
+function Comunicacao(props){
+  const {data,forms,setForm,action,settings,can,session,loadAll,setSub}=props;
+  const availableTabs=[['notificacoes','Notificações'],['comunicados','Comunicados'],...(can('settings.manage')?[['testes','Testes']]:[])];
+  const activeTab=availableTabs.some(([k])=>k===props.sub)?props.sub:'notificacoes';
+  const changeTab=(v)=>{ setSub(v); window.history.replaceState(null, '', '#'+routeHash('comunicacao', v)); };
+  const notice=forms.notice||{};
+  const criteria=defaultCriteria(settings||{});
+  const targetCriteria=notice.target_criteria || {};
+  const notifications=data.notifications||[];
+  const notices=data.notices||[];
+  const canManageNotices=can('notices.manage') || ['master','admin','sindico'].includes(session?.role);
+  async function removeNotification(id){ await action(`/api/notifications/${id}`, {}, 'Notificação apagada', 'DELETE'); }
+  async function removeAllNotifications(){ if(!confirm('Apagar todas as notificações visíveis nesta tela?')) return; await action('/api/notifications', {}, 'Todas as notificações foram apagadas', 'DELETE'); }
+  async function markRead(id){ await action(`/api/notifications/${id}/read`, {}, 'Notificação marcada como lida'); }
+  function submitNotice(e){ e.preventDefault(); action('/api/notices', notice, 'Comunicado enviado'); }
+  return <Panel title="Comunicação" subtitle="Comunicados, notificações e testes de envio do condomínio." icon={<Bell/>}>
+    <SubTabs value={activeTab} setValue={changeTab} tabs={availableTabs}/>
+    {activeTab==='notificacoes' && <div className="stack communicationPanel">
+      <div className="noticeBox ok"><b>Central de notificações</b><small>Acompanhe os avisos enviados pelo sistema e remova o que já foi resolvido.</small></div>
+      <div className="toolbar notificationToolbar"><button type="button" className="secondaryAction" onClick={()=>loadAll?.()}><RefreshCcw/> Atualizar</button><button type="button" className="dangerAction" onClick={removeAllNotifications}><Trash2/> Apagar todas</button></div>
+      <Table rows={notifications} render={n=><>
+        <td><b>{n.title || 'Notificação'}</b><small>{n.body || n.message || '-'}</small><small>{date(n.created_at)}</small></td>
+        <td><Code>{channelNames[n.channel] || n.channel || 'Sistema'}</Code><small>{n.action_url || ''}</small></td>
+        <td><Status ok={['lida','enviada'].includes(String(n.status||''))}>{n.status || 'nova'}</Status></td>
+        <td className="actions"><button type="button" onClick={()=>markRead(n.id)}><CheckCircle2/> Lida</button><button type="button" className="dangerAction" onClick={()=>removeNotification(n.id)}><Trash2/> Apagar</button></td>
+      </>}/>
+    </div>}
+    {activeTab==='comunicados' && <div className="stack communicationPanel">
+      {canManageNotices && <form className="formGrid noticeComposer" onSubmit={submitNotice}>
+        <label>Título *<input required value={notice.title||''} onChange={e=>setForm('notice',{title:e.target.value})}/></label>
+        <label>Prioridade<select value={notice.priority||'normal'} onChange={e=>setForm('notice',{priority:e.target.value})}><option value="normal">Normal</option><option value="alta">Alta</option><option value="critica">Crítica</option></select></label>
+        <label>Público<select value={notice.target_role||'todos'} onChange={e=>setForm('notice',{target_role:e.target.value})}><option value="todos">Todos</option><option value="morador">Moradores</option><option value="sindico">Síndico/Administração</option><option value="portaria">Portaria</option></select></label>
+        <label className="full">Mensagem *<textarea required value={notice.body||''} onChange={e=>setForm('notice',{body:e.target.value})} placeholder="Digite o comunicado que será exibido no sistema e enviado aos canais configurados."/></label>
+        <div className="full criteriaBox"><b>Critérios de moradores</b><small>Use somente quando quiser segmentar moradores cadastrados com essas características.</small><div className="channels">{criteria.map(c=><label key={c.key}><input type="checkbox" checked={Boolean(targetCriteria[c.key])} onChange={e=>setForm('notice',{target_criteria:{...targetCriteria,[c.key]:e.target.checked}})}/>{c.label}</label>)}</div></div>
+        <button><Send/> Enviar comunicado</button>
+      </form>}
+      <Table rows={notices} render={n=><>
+        <td><b>{n.title}</b><small>{n.body}</small></td>
+        <td><Status ok={String(n.priority||'normal')==='normal'}>{n.priority || 'normal'}</Status><small>{date(n.created_at)}</small></td>
+        <td><Code>{n.target_role || 'todos'}</Code></td>
+      </>}/>
+    </div>}
+    {activeTab==='testes' && <NotifyTests forms={forms} setForm={setForm} action={action} data={data}/>} 
+  </Panel>;
+}
+
+function NotifyTests({forms,setForm,action,data}){
+  const f=forms.notifyTest || {};
+  const cfg=data.notifyConfig || {};
+  const channel=f.channel || 'email';
+  const target = channel==='telegram' ? (f.chat_id || f.to || '') : channel==='whatsapp' ? (f.phone || f.to || '') : (f.to || '');
+  const payload = { channel, to:target, chat_id:f.chat_id || target, phone:f.phone || target, subject:f.subject || 'Teste Vitória Régia', message:f.message || 'Mensagem de teste do Sistema Vitória Régia.' };
+  return <SettingCard title="Teste de notificações" icon={<Send/>}>
+    <div className="noticeBox ok"><b>Status dos canais</b><small>E-mail: {cfg.email?.enabled?'ativo':'verificar'} · Telegram: {cfg.telegram?.enabled?'ativo':'verificar'} · WhatsApp: {cfg.whatsapp?.enabled?'ativo':'verificar'} · Navegador: {cfg.browser?.enabled?'ativo':'verificar'}</small></div>
+    <form className="formGrid notifyTestForm" onSubmit={e=>{e.preventDefault(); action('/api/notify/test', payload, 'Teste enviado/processado');}}>
+      <label>Canal<select value={channel} onChange={e=>setForm('notifyTest',{channel:e.target.value})}><option value="email">E-mail</option><option value="telegram">Telegram</option><option value="whatsapp">WhatsApp</option><option value="browser">Navegador/Sistema</option></select></label>
+      {channel==='email' && <label>Destino<input type="email" value={f.to||''} onChange={e=>setForm('notifyTest',{to:e.target.value})} placeholder="email@dominio.com"/></label>}
+      {channel==='telegram' && <label>Chat ID Telegram<input value={f.chat_id||f.to||''} onChange={e=>setForm('notifyTest',{chat_id:e.target.value,to:e.target.value})} placeholder="Ex.: 8188648317"/></label>}
+      {channel==='whatsapp' && <label>WhatsApp<input value={f.phone||f.to||''} onChange={e=>setForm('notifyTest',{phone:e.target.value,to:e.target.value})} placeholder="5583999999999"/></label>}
+      <label>Assunto<input value={f.subject||''} onChange={e=>setForm('notifyTest',{subject:e.target.value})}/></label>
+      <label className="full">Mensagem<textarea required value={f.message||''} onChange={e=>setForm('notifyTest',{message:e.target.value})}/></label>
+      <button><Send/> Enviar teste</button>
+    </form>
+  </SettingCard>;
+}
+
 function reservationPeriodsForArea(area){
   const raw = area?.reservation_periods || area?.periods || '';
   const list = Array.isArray(raw) ? raw : String(raw||'dia_todo,manha,tarde,noite,horario').split(/[;,\n]/).map(x=>x.trim()).filter(Boolean);
@@ -431,57 +497,131 @@ function reservationGoogleUrlLocal(r){
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${fmt(safeDate,r.start_time)}/${fmt(safeDate,r.end_time||'23:59')}&details=${details}&location=${encodeURIComponent('Condomínio Vitória Régia')}`;
 }
 function reservationStatusLabel(s){ return ({pre_agendada:'Pré-agendada',pendente_pagamento:'Pendente pagamento',pendente_aceite_regras:'Pendente aceite',confirmada:'Confirmada',cancelada:'Cancelada'}[s] || s || 'Pendente'); }
-function ReservationCalendarRedesign({rows=[], selectedArea='', selectedDate, onSelectDate, session}){
-  const [monthAnchor,setMonthAnchor]=useState(()=>new Date(`${selectedDate || todayISO()}T12:00:00`));
-  useEffect(()=>{ if(selectedDate) setMonthAnchor(new Date(`${selectedDate}T12:00:00`)); },[selectedDate]);
-  const baseISO = `${monthAnchor.getFullYear()}-${String(monthAnchor.getMonth()+1).padStart(2,'0')}-01`;
-  const {month,days}=monthMatrix(baseISO);
-  const filtered = selectedArea ? rows.filter(r=>String(r.area||'')===String(selectedArea)) : rows;
-  const byDate={};
-  filtered.forEach(r=>{ const key=String(r.reserved_for||'').slice(0,10); if(key) (byDate[key] ||= []).push(r); });
-  const title = month.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+function reservationCalendarDays(anchorISO){
+  const anchor = new Date(`${anchorISO || todayISO()}T12:00:00`);
+  const y = anchor.getFullYear();
+  const m = anchor.getMonth();
+  const first = new Date(y, m, 1, 12);
+  const start = new Date(y, m, 1 - first.getDay(), 12);
+  return Array.from({ length:42 }, (_,i) => {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    return d;
+  });
+}
+function reservationISO(d){
+  const local = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12);
+  return local.toISOString().slice(0,10);
+}
+function reservationMonthTitle(anchorISO){
+  return new Date(`${anchorISO || todayISO()}T12:00:00`).toLocaleDateString('pt-BR', { month:'long', year:'numeric' });
+}
+function reservationMoveMonth(anchorISO, delta){
+  const d = new Date(`${anchorISO || todayISO()}T12:00:00`);
+  d.setMonth(d.getMonth() + delta, 1);
+  return reservationISO(d);
+}
+function ReservasCalendarioNovo({rows=[], selectedArea='', selectedDate='', setSelectedDate, setView, session}){
+  const [monthISO,setMonthISO] = useState(() => (selectedDate || todayISO()).slice(0,7) + '-01');
+  useEffect(() => {
+    if(selectedDate) setMonthISO(String(selectedDate).slice(0,7) + '-01');
+  }, [selectedDate]);
+  const monthDate = new Date(`${monthISO}T12:00:00`);
+  const days = reservationCalendarDays(monthISO);
   const isResident = session?.role === 'morador';
-  const moveMonth=(delta)=>setMonthAnchor(d=>new Date(d.getFullYear(), d.getMonth()+delta, 1, 12));
-  return <section className="vrReservaCalendarCard">
-    <div className="vrReservaCalendarTop"><div><b>Calendário de reservas</b><small>{selectedArea || 'Todos os espaços'} · visual mensal estável</small></div><div className="vrReservaMonthNav"><button type="button" onClick={()=>moveMonth(-1)}>‹</button><strong>{title}</strong><button type="button" onClick={()=>moveMonth(1)}>›</button></div></div>
+  const byDate = rows.reduce((acc,r) => {
+    if(selectedArea && String(r.area || '') !== String(selectedArea)) return acc;
+    const key = String(r.reserved_for || r.date || '').slice(0,10);
+    if(key) (acc[key] ||= []).push(r);
+    return acc;
+  }, {});
+  return <section className="vrReservaCalendarCard vrReservaCalendarFresh">
+    <div className="vrReservaCalendarTop">
+      <div><b>Calendário de reservas</b><small>Visual mensal redesenhado do zero, sem dependência do roteador antigo.</small></div>
+      <div className="vrReservaMonthNav"><button type="button" onClick={()=>setMonthISO(reservationMoveMonth(monthISO,-1))}>‹</button><strong>{reservationMonthTitle(monthISO)}</strong><button type="button" onClick={()=>setMonthISO(reservationMoveMonth(monthISO,1))}>›</button></div>
+    </div>
     <div className="vrReservaWeekdays">{['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map(d=><span key={d}>{d}</span>)}</div>
-    <div className="vrReservaMonthGrid">{days.map(d=>{ const iso=sameDateISO(d); const items=byDate[iso]||[]; const outside=d.getMonth()!==month.getMonth(); const selected=iso===selectedDate; return <button type="button" key={iso} className={[outside?'muted':'', selected?'selected':'', items.length?'busy':'free'].join(' ')} onClick={()=>onSelectDate(iso)}><strong>{d.getDate()}</strong>{items.length?items.slice(0,3).map(r=><span className="vrReservaEvent" key={r.id}><b>{isResident?'Reservado':r.area}</b><small>{isResident?'Ocupado':`${r.unit || '-'} · ${reservationStatusLabel(r.status)}`}</small></span>):<em>Livre</em>}{items.length>3&&<small>+{items.length-3} reservas</small>}</button>; })}</div>
+    <div className="vrReservaMonthGrid">{days.map(day => {
+      const iso = reservationISO(day);
+      const items = byDate[iso] || [];
+      const outside = day.getMonth() !== monthDate.getMonth();
+      const selected = iso === selectedDate;
+      return <button type="button" key={iso} className={[outside?'muted':'', selected?'selected':'', items.length?'busy':'free'].join(' ')} onClick={()=>{ setSelectedDate(iso); setView('nova'); }}>
+        <strong>{day.getDate()}</strong>
+        {items.length ? items.slice(0,3).map(r => <span className="vrReservaEvent" key={r.id || `${iso}-${r.area}-${r.unit}`}><b>{isResident ? 'Reservado' : (r.area || 'Espaço')}</b><small>{isResident ? 'Ocupado' : `Unidade ${r.unit || '-'} · ${reservationStatusLabel(r.status)}`}</small></span>) : <em>Livre</em>}
+        {items.length > 3 && <small>+{items.length - 3} reservas</small>}
+      </button>;
+    })}</div>
   </section>;
 }
 function Reservations(props){
-  const {data,forms,setForm,action,openConfirm,session,loadAll}=props;
-  const [view,setView]=useState('calendario');
-  const areas=data.commonAreas || [];
-  const rows=data.reservations || [];
-  const f=forms.reservation || {};
-  const defaultArea = f.area || areas[0]?.name || '';
-  const [selectedArea,setSelectedArea]=useState(defaultArea);
-  const [selectedDate,setSelectedDate]=useState(f.reserved_for || todayISO());
-  useEffect(()=>{ window.history.replaceState(null,'','#/reservas/calendario'); },[]);
-  useEffect(()=>{ if(!selectedArea && defaultArea) setSelectedArea(defaultArea); },[defaultArea, selectedArea]);
-  useEffect(()=>{ setForm('reservation',{ area:selectedArea || defaultArea, reserved_for:selectedDate || todayISO(), reservation_mode:f.reservation_mode || 'dia_todo' }); },[selectedArea, selectedDate]);
-  const selectedAreaObj = areas.find(a=>String(a.name||'')===String(selectedArea||defaultArea)) || areas[0] || {};
-  const periods=reservationPeriodsForArea(selectedAreaObj);
-  const period = f.reservation_mode || 'dia_todo';
+  const {data, forms, setForm, action, openConfirm, session}=props;
+  const areas = Array.isArray(data.commonAreas) ? data.commonAreas.filter(a => a?.active !== false) : [];
+  const rows = Array.isArray(data.reservations) ? data.reservations : [];
+  const f = forms.reservation || {};
+  const firstAreaName = areas[0]?.name || 'Salão de festas';
+  const [view,setView] = useState('calendario');
+  const [selectedArea,setSelectedArea] = useState(f.area || firstAreaName);
+  const [selectedDate,setSelectedDate] = useState(String(f.reserved_for || todayISO()).slice(0,10));
+
+  useEffect(() => {
+    if(window.location.hash !== '#/reservas/calendario') window.history.replaceState(null, '', '#/reservas/calendario');
+  }, []);
+  useEffect(() => {
+    if(!selectedArea && firstAreaName) setSelectedArea(firstAreaName);
+  }, [firstAreaName, selectedArea]);
+  useEffect(() => {
+    setForm('reservation', {
+      area:selectedArea || firstAreaName,
+      reserved_for:selectedDate || todayISO(),
+      reservation_mode:f.reservation_mode || 'noite'
+    });
+  }, [selectedArea, selectedDate]);
+
+  const selectedAreaObj = areas.find(a => String(a.name || '') === String(selectedArea || firstAreaName)) || { name:selectedArea || firstAreaName, fee_amount:0, reservation_periods:'dia_todo,manha,tarde,noite,horario' };
+  const periods = reservationPeriodsForArea(selectedAreaObj);
+  const period = f.reservation_mode || 'noite';
   const hours = reservationPeriodHours(period);
-  const unitDefault = session?.unit || f.unit || '';
-  const residentDefault = session?.name || f.resident || '';
-  const selectedDayReservations = rows.filter(r=>String(r.reserved_for||'').slice(0,10)===(selectedDate||'') && (!selectedArea || String(r.area||'')===String(selectedArea)));
-  function updateReservation(patch){ setForm('reservation',{...patch}); }
-  function choosePeriod(p){ const h=reservationPeriodHours(p); updateReservation({reservation_mode:p, shift:p, period_label:reservationPeriodLabel(p), all_day:p==='dia_todo', start_time:h[0], end_time:h[1]}); }
-  function submitReservation(e){
+  const unitDefault = f.unit || session?.unit || '';
+  const residentDefault = f.resident || session?.name || '';
+  const selectedDayReservations = rows.filter(r => String(r.reserved_for || '').slice(0,10) === selectedDate && (!selectedArea || String(r.area || '') === String(selectedArea)));
+
+  function updateReservation(patch){ setForm('reservation', patch); }
+  function choosePeriod(p){ const h=reservationPeriodHours(p); updateReservation({ reservation_mode:p, shift:p, period_label:reservationPeriodLabel(p), all_day:p==='dia_todo', start_time:h[0], end_time:h[1] }); }
+  async function submitReservation(e){
     e.preventDefault();
-    const body={...f, area:selectedArea || defaultArea, reserved_for:selectedDate || f.reserved_for || todayISO(), unit:unitDefault, resident:residentDefault, reservation_mode:period, shift:period, period_label:reservationPeriodLabel(period), all_day:period==='dia_todo', start_time:period==='horario'?(f.start_time||'19:00'):hours[0], end_time:period==='horario'?(f.end_time||'23:00'):hours[1], fee_amount:f.fee_amount ?? selectedAreaObj.fee_amount ?? 0};
-    action('/api/reservations', body, 'Reserva enviada para análise');
+    const body = {
+      ...f,
+      area:selectedArea || firstAreaName,
+      reserved_for:selectedDate || todayISO(),
+      unit:unitDefault,
+      resident:residentDefault,
+      reservation_mode:period,
+      shift:period,
+      period_label:reservationPeriodLabel(period),
+      all_day:period === 'dia_todo',
+      start_time:period === 'horario' ? (f.start_time || '19:00') : hours[0],
+      end_time:period === 'horario' ? (f.end_time || '23:00') : hours[1],
+      fee_amount:f.fee_amount ?? selectedAreaObj.fee_amount ?? 0
+    };
+    const ok = await action('/api/reservations', body, 'Reserva enviada para análise');
+    if(ok) setView('lista');
   }
-  function statusAction(r,status){ const label=reservationStatusLabel(status); openConfirm(`Alterar reserva para ${label}`, {Espaço:r.area, Unidade:r.unit, Data:String(r.reserved_for||'').slice(0,10)}, ()=>action(`/api/reservations/${r.id}/status`,{status},`Reserva ${label.toLowerCase()}`)); }
-  function cancelReservation(r){ const reason=prompt('Motivo do cancelamento') || 'Cancelada pelo sistema'; action(`/api/reservations/${r.id}/cancel`,{reason},'Reserva cancelada'); }
-  return <Panel title="Reservas" subtitle="Calendário de áreas comuns redesenhado, estável e sem fechamento automático." icon={<CalendarDays/>}>
-    <div className="vrReservaShell">
-      <div className="vrReservaToolbar"><div><b>Área comum</b><select value={selectedArea || defaultArea} onChange={e=>setSelectedArea(e.target.value)}>{areas.map(a=><option value={a.name} key={a.id || a.name}>{a.name}</option>)}{!areas.length&&<option value="Salão de festas">Salão de festas</option>}</select></div><div><b>Data selecionada</b><input type="date" value={selectedDate || todayISO()} onChange={e=>setSelectedDate(e.target.value)}/></div><div className="vrReservaViewBtns"><button type="button" className={view==='calendario'?'active':''} onClick={()=>setView('calendario')}>Calendário</button><button type="button" className={view==='lista'?'active':''} onClick={()=>setView('lista')}>Lista</button><button type="button" className={view==='nova'?'active':''} onClick={()=>setView('nova')}>Nova reserva</button></div></div>
-      {view==='calendario' && <div className="vrReservaMainGrid"><ReservationCalendarRedesign rows={rows} selectedArea={selectedArea} selectedDate={selectedDate} onSelectDate={(iso)=>{setSelectedDate(iso); setView('nova');}} session={session}/><aside className="vrReservaDayPanel"><h3>{new Date(`${selectedDate}T12:00:00`).toLocaleDateString('pt-BR')}</h3><p>{selectedDayReservations.length ? 'Reservas neste dia:' : 'Nenhuma reserva neste dia.'}</p>{selectedDayReservations.map(r=><article className="vrReservaMiniCard" key={r.id}><b>{r.area}</b><small>Unidade {r.unit || '-'} · {r.start_time || '--'} às {r.end_time || '--'}</small><Status ok={r.status==='confirmada'}>{reservationStatusLabel(r.status)}</Status></article>)}<button type="button" onClick={()=>setView('nova')}><Plus/> Solicitar reserva</button></aside></div>}
-      {view==='nova' && <form className="formGrid vrReservaForm" onSubmit={submitReservation}><label>Espaço<select value={selectedArea || defaultArea} onChange={e=>setSelectedArea(e.target.value)}>{areas.map(a=><option value={a.name} key={a.id || a.name}>{a.name}</option>)}{!areas.length&&<option>Salão de festas</option>}</select></label><label>Data<input type="date" required value={selectedDate || todayISO()} onChange={e=>setSelectedDate(e.target.value)}/></label><label>Período<select value={period} onChange={e=>choosePeriod(e.target.value)}>{periods.map(p=><option value={p} key={p}>{reservationPeriodLabel(p)}</option>)}</select></label><label>Início<input type="time" disabled={period!=='horario'} value={period==='horario'?(f.start_time||'19:00'):hours[0]} onChange={e=>updateReservation({start_time:e.target.value})}/></label><label>Fim<input type="time" disabled={period!=='horario'} value={period==='horario'?(f.end_time||'23:00'):hours[1]} onChange={e=>updateReservation({end_time:e.target.value})}/></label><label>Unidade<input value={unitDefault} onChange={e=>updateReservation({unit:e.target.value})}/></label><label>Morador<input value={residentDefault} onChange={e=>updateReservation({resident:e.target.value})}/></label><label>Taxa<input type="number" step="0.01" value={f.fee_amount ?? selectedAreaObj.fee_amount ?? 0} onChange={e=>updateReservation({fee_amount:e.target.value})}/></label><label className="check"><input type="checkbox" checked={f.terms_accepted===true} onChange={e=>updateReservation({terms_accepted:e.target.checked})}/>Li e aceito as regras de utilização do espaço</label><label className="full">Observações<textarea value={f.notes||''} onChange={e=>updateReservation({notes:e.target.value})} placeholder="Observações da reserva, convidados ou necessidades especiais"/></label><button><CalendarDays/> Enviar reserva</button></form>}
-      {view==='lista' && <Table rows={rows} render={r=><><td><b>{r.area}</b><small>{String(r.reserved_for||'').slice(0,10)} · {r.start_time || '--'} às {r.end_time || '--'}</small></td><td>Unidade {r.unit || '-'}<small>{r.resident || ''}</small></td><td><Status ok={r.status==='confirmada'}>{reservationStatusLabel(r.status)}</Status></td><td className="actions"><button onClick={()=>window.open(reservationGoogleUrlLocal(r),'_blank')}><CalendarDays/> Agenda</button><button onClick={()=>statusAction(r,'confirmada')}>Confirmar</button><button onClick={()=>statusAction(r,'pendente_pagamento')}>Pagamento</button><button className="dangerAction" onClick={()=>cancelReservation(r)}>Cancelar</button></td></>}/>} 
+  function statusAction(r,status){
+    const label=reservationStatusLabel(status);
+    openConfirm(`Alterar reserva para ${label}`, {Espaço:r.area, Unidade:r.unit, Data:String(r.reserved_for||'').slice(0,10)}, () => action(`/api/reservations/${r.id}/status`, {status}, `Reserva ${label.toLowerCase()}`));
+  }
+  function cancelReservation(r){ const reason=prompt('Motivo do cancelamento') || 'Cancelada pelo sistema'; action(`/api/reservations/${r.id}/cancel`, {reason}, 'Reserva cancelada'); }
+  return <Panel title="Reservas" subtitle="Tela redesenhada do zero: calendário mensal, lista e nova reserva em rota fixa." icon={<CalendarDays/>}>
+    <div className="vrReservaShell vrReservaFreshShell">
+      <div className="vrReservaToolbar">
+        <div><b>Área comum</b><select value={selectedArea || firstAreaName} onChange={e=>setSelectedArea(e.target.value)}>{areas.map(a=><option value={a.name} key={a.id || a.name}>{a.name}</option>)}{!areas.length && <option value="Salão de festas">Salão de festas</option>}</select></div>
+        <div><b>Data selecionada</b><input type="date" value={selectedDate || todayISO()} onChange={e=>setSelectedDate(e.target.value)}/></div>
+        <div className="vrReservaViewBtns"><button type="button" className={view==='calendario'?'active':''} onClick={()=>setView('calendario')}>Calendário</button><button type="button" className={view==='lista'?'active':''} onClick={()=>setView('lista')}>Lista</button><button type="button" className={view==='nova'?'active':''} onClick={()=>setView('nova')}>Nova reserva</button></div>
+      </div>
+      {view === 'calendario' && <div className="vrReservaMainGrid"><ReservasCalendarioNovo rows={rows} selectedArea={selectedArea} selectedDate={selectedDate} setSelectedDate={setSelectedDate} setView={setView} session={session}/><aside className="vrReservaDayPanel"><h3>{new Date(`${selectedDate || todayISO()}T12:00:00`).toLocaleDateString('pt-BR')}</h3><p>{selectedDayReservations.length ? 'Reservas neste dia:' : 'Nenhuma reserva neste dia.'}</p>{selectedDayReservations.map(r => <article className="vrReservaMiniCard" key={r.id}><b>{r.area || 'Espaço comum'}</b><small>Unidade {r.unit || '-'} · {r.start_time || '--'} às {r.end_time || '--'}</small><Status ok={r.status === 'confirmada'}>{reservationStatusLabel(r.status)}</Status></article>)}<button type="button" onClick={()=>setView('nova')}><Plus/> Solicitar reserva</button></aside></div>}
+      {view === 'nova' && <form className="formGrid vrReservaForm" onSubmit={submitReservation}><label>Espaço<select value={selectedArea || firstAreaName} onChange={e=>setSelectedArea(e.target.value)}>{areas.map(a=><option value={a.name} key={a.id || a.name}>{a.name}</option>)}{!areas.length && <option value="Salão de festas">Salão de festas</option>}</select></label><label>Data<input type="date" required value={selectedDate || todayISO()} onChange={e=>setSelectedDate(e.target.value)}/></label><label>Período<select value={period} onChange={e=>choosePeriod(e.target.value)}>{periods.map(p=><option value={p} key={p}>{reservationPeriodLabel(p)}</option>)}</select></label><label>Início<input type="time" disabled={period!=='horario'} value={period==='horario'?(f.start_time||'19:00'):hours[0]} onChange={e=>updateReservation({start_time:e.target.value})}/></label><label>Fim<input type="time" disabled={period!=='horario'} value={period==='horario'?(f.end_time||'23:00'):hours[1]} onChange={e=>updateReservation({end_time:e.target.value})}/></label><label>Unidade<input value={unitDefault} onChange={e=>updateReservation({unit:e.target.value})}/></label><label>Morador<input value={residentDefault} onChange={e=>updateReservation({resident:e.target.value})}/></label><label>Taxa<input type="number" step="0.01" value={f.fee_amount ?? selectedAreaObj.fee_amount ?? 0} onChange={e=>updateReservation({fee_amount:e.target.value})}/></label><label className="check"><input type="checkbox" checked={f.terms_accepted===true} onChange={e=>updateReservation({terms_accepted:e.target.checked})}/>Li e aceito as regras de utilização do espaço</label><label className="full">Observações<textarea value={f.notes||''} onChange={e=>updateReservation({notes:e.target.value})} placeholder="Observações da reserva, convidados ou necessidades especiais"/></label><button><CalendarDays/> Enviar reserva</button></form>}
+      {view === 'lista' && <Table rows={rows} render={r=><><td><b>{r.area || 'Espaço comum'}</b><small>{String(r.reserved_for||'').slice(0,10)} · {r.start_time || '--'} às {r.end_time || '--'}</small></td><td>Unidade {r.unit || '-'}<small>{r.resident || ''}</small></td><td><Status ok={r.status==='confirmada'}>{reservationStatusLabel(r.status)}</Status></td><td className="actions"><button onClick={()=>window.open(reservationGoogleUrlLocal(r),'_blank')}><CalendarDays/> Agenda</button>{session?.role !== 'morador' && <><button onClick={()=>statusAction(r,'confirmada')}>Confirmar</button><button onClick={()=>statusAction(r,'pendente_pagamento')}>Pagamento</button><button className="dangerAction" onClick={()=>cancelReservation(r)}>Cancelar</button></>}</td></>}/>} 
     </div>
   </Panel>;
 }
@@ -527,7 +667,34 @@ function BankSettings({forms,setForm,action}){ const s=forms.settings; const key
 function CondoSettings({forms,setForm,action}){ const s=forms.settings; return <SettingCard title="Condomínio" icon={<Building2/>}><div className="formGrid"><label>Nome<input value={s.CONDO_NAME||''} onChange={e=>setForm('settings',{CONDO_NAME:e.target.value})}/></label><label>Endereço<input value={s.CONDO_ADDRESS||''} onChange={e=>setForm('settings',{CONDO_ADDRESS:e.target.value})}/></label><label>Operadora do elevador<input value={s.ELEVATOR_OPERATOR_NAME||''} onChange={e=>setForm('settings',{ELEVATOR_OPERATOR_NAME:e.target.value})}/></label><label>Telefone emergência elevador<input value={s.ELEVATOR_EMERGENCY_PHONE||''} onChange={e=>setForm('settings',{ELEVATOR_EMERGENCY_PHONE:e.target.value})}/></label><label className="check"><input type="checkbox" checked={bool(s.ALLOW_MULTIPLE_RESIDENTS_PER_UNIT,false)} onChange={e=>setForm('settings',{ALLOW_MULTIPLE_RESIDENTS_PER_UNIT:String(e.target.checked)})}/>Autorizar cadastro de moradores adicionais por unidade</label><label>Quantidade máxima de moradores por unidade<input type="number" min="1" value={s.MAX_RESIDENTS_PER_UNIT||''} onChange={e=>setForm('settings',{MAX_RESIDENTS_PER_UNIT:e.target.value})}/></label><button onClick={()=>saveSettings(forms,action)}><Save/> Salvar condomínio</button></div></SettingCard>; }
 function AreasSettings({data,forms,setForm,action}){ const f=forms.commonArea; return <SettingCard title="Áreas de lazer e períodos de reserva" icon={<CalendarDays/>}><form className="formGrid" onSubmit={e=>{e.preventDefault(); action('/api/common-areas',f,'Área de lazer salva');}}><label>Nome da área<input required value={f.name} onChange={e=>setForm('commonArea',{name:e.target.value})}/></label><label>Taxa de reserva<input type="number" value={f.fee_amount} onChange={e=>setForm('commonArea',{fee_amount:e.target.value})}/></label><label>Limite de convidados<input type="number" value={f.max_guests} onChange={e=>setForm('commonArea',{max_guests:e.target.value})}/></label><label>Períodos permitidos<textarea placeholder="Um por linha: dia_todo, manha, tarde, noite, horario" value={(f.reservation_periods||'').replace(/,/g,'\n')} onChange={e=>setForm('commonArea',{reservation_periods:e.target.value.split('\n').map(x=>x.trim()).filter(Boolean).join(',')})}/></label><label className="check"><input type="checkbox" checked={f.count_children!==false} onChange={e=>setForm('commonArea',{count_children:e.target.checked})}/>Crianças contam no limite</label><label className="check"><input type="checkbox" checked={f.count_infants===true} onChange={e=>setForm('commonArea',{count_infants:e.target.checked})}/>Bebês de colo contam no limite</label><label>Regras<textarea value={f.rules_document} onChange={e=>setForm('commonArea',{rules_document:e.target.value})}/></label><button><Save/> Salvar área</button></form><Table rows={data.commonAreas} render={a=><><td><b>{a.name}</b><small>Períodos: {reservationPeriodsForArea(a).map(reservationPeriodLabel).join(', ')}</small></td><td>{money(a.fee_amount)}</td><td>{a.max_guests} convidados</td></>}/></SettingCard>; }
 function AppsSettings({forms,setForm,action}){ const s=forms.settings; return <SettingCard title="Aplicativos" icon={<AppWindow/>}><div className="channels"><label><input type="checkbox" checked={bool(s.ENABLE_APP_PORTARIA,true)} onChange={e=>setForm('settings',{ENABLE_APP_PORTARIA:String(e.target.checked)})}/>Portaria</label><label><input type="checkbox" checked={bool(s.ENABLE_APP_SINDICO,true)} onChange={e=>setForm('settings',{ENABLE_APP_SINDICO:String(e.target.checked)})}/>Síndico</label><label><input type="checkbox" checked={bool(s.ENABLE_APP_MORADOR,true)} onChange={e=>setForm('settings',{ENABLE_APP_MORADOR:String(e.target.checked)})}/>Morador</label></div><div className="formGrid"><label>URL APK Portaria<input value={s.APK_PORTARIA_URL||''} onChange={e=>setForm('settings',{APK_PORTARIA_URL:e.target.value})}/></label><label>URL APK Síndico<input value={s.APK_SINDICO_URL||''} onChange={e=>setForm('settings',{APK_SINDICO_URL:e.target.value})}/></label><label>URL APK Morador<input value={s.APK_MORADOR_URL||''} onChange={e=>setForm('settings',{APK_MORADOR_URL:e.target.value})}/></label><button onClick={()=>saveSettings(forms,action)}><Save/> Salvar apps</button></div></SettingCard>; }
-function UpdateSettings({forms,setForm,action,settings,isAdminReserved}){ return <SettingCard title="Atualizações pelo site" icon={<RefreshCcw/>}><div className="formGrid"><label className="check"><input type="checkbox" checked={bool(forms.settings.SHOW_UPDATES_TO_SINDICO,false)} onChange={e=>setForm('settings',{SHOW_UPDATES_TO_SINDICO:String(e.target.checked)})}/>Mostrar menu de atualização para o síndico</label><label>Canal<select value={forms.settings.UPDATE_CHANNEL||'stable'} onChange={e=>setForm('settings',{UPDATE_CHANNEL:e.target.value})}><option value="stable">Estável</option><option value="beta">Teste</option></select></label><label>Feed de atualização<input value={forms.settings.UPDATE_FEED_URL||''} onChange={e=>setForm('settings',{UPDATE_FEED_URL:e.target.value})}/></label><button onClick={()=>saveSettings(forms,action)}><Save/> Salvar atualização</button></div>{!isAdminReserved && <p>A validação e aplicação automática fica disponível somente para área reservada; o síndico pode visualizar quando liberado.</p>}</SettingCard>; }
+function UpdateSettings({forms,setForm,action,settings,isAdminReserved}){
+  const [testMsg,setTestMsg]=useState('');
+  async function testGithub(){
+    setTestMsg('Testando credenciais do GitHub...');
+    const saved = await saveSettings(forms,action);
+    if(!saved){ setTestMsg('Não foi possível salvar as configurações antes do teste.'); return; }
+    try{
+      const r = await request('/api/system-updates/github-test',{method:'POST',body:JSON.stringify({}),headers:{'Content-Type':'application/json'}});
+      setTestMsg(r.message || 'GitHub testado com sucesso.');
+    }catch(e){ setTestMsg(e.message); }
+  }
+  return <SettingCard title="Atualizações pelo site" icon={<RefreshCcw/>}>
+    <div className="formGrid">
+      <label className="check"><input type="checkbox" checked={bool(forms.settings.SHOW_UPDATES_TO_SINDICO,false)} onChange={e=>setForm('settings',{SHOW_UPDATES_TO_SINDICO:String(e.target.checked)})}/>Mostrar menu de atualização para o síndico</label>
+      <label>Canal<select value={forms.settings.UPDATE_CHANNEL||'stable'} onChange={e=>setForm('settings',{UPDATE_CHANNEL:e.target.value})}><option value="stable">Estável</option><option value="beta">Teste</option></select></label>
+      <label>Modo de aplicação<select value={forms.settings.UPDATE_APPLY_MODE||'github'} onChange={e=>setForm('settings',{UPDATE_APPLY_MODE:e.target.value})}><option value="github">GitHub automático</option><option value="manual">Manual / apenas validar</option><option value="local">Local/VPS</option></select></label>
+      <label>Repositório GitHub<input placeholder="bmedeiros1987/vitoriaregia1" value={forms.settings.UPDATE_GITHUB_REPO||''} onChange={e=>setForm('settings',{UPDATE_GITHUB_REPO:e.target.value})}/></label>
+      <label>Branch<input placeholder="main" value={forms.settings.UPDATE_GITHUB_BRANCH||''} onChange={e=>setForm('settings',{UPDATE_GITHUB_BRANCH:e.target.value})}/></label>
+      <label className="full">Token GitHub<input type="password" placeholder={settings.UPDATE_GITHUB_TOKEN ? 'Token configurado — preencha somente para trocar' : 'github_pat_...'} value={forms.settings.UPDATE_GITHUB_TOKEN||''} onChange={e=>setForm('settings',{UPDATE_GITHUB_TOKEN:e.target.value})}/><small>Para token fine-grained, libere Contents: Read and write no repositório correto. Se aparecer Bad credentials, gere um novo token.</small></label>
+      <label className="full">Deploy Hook Render<input placeholder="Opcional: URL do deploy hook do Render" value={forms.settings.RENDER_DEPLOY_HOOK_URL||''} onChange={e=>setForm('settings',{RENDER_DEPLOY_HOOK_URL:e.target.value})}/></label>
+      <label className="full">Feed de atualização<input value={forms.settings.UPDATE_FEED_URL||''} onChange={e=>setForm('settings',{UPDATE_FEED_URL:e.target.value})}/></label>
+      <button type="button" onClick={()=>saveSettings(forms,action)}><Save/> Salvar atualização</button>
+      <button type="button" className="secondaryAction" onClick={testGithub}><ShieldCheck/> Testar GitHub</button>
+    </div>
+    {testMsg && <div className={testMsg.toLowerCase().includes('bad credentials') || testMsg.toLowerCase().includes('não') || testMsg.toLowerCase().includes('recusou') ? 'noticeBox warn' : 'noticeBox ok'}><b>Resultado do teste</b><small>{testMsg}</small></div>}
+    {!isAdminReserved && <p>A validação e aplicação automática fica disponível somente para área reservada; o síndico pode visualizar quando liberado.</p>}
+  </SettingCard>;
+}
 function AuditPage({data,action}){ const grouped=useMemo(()=>{ const m={}; for(const a of data.audit) (m[a.action] ||= []).push(a); return m; },[data.audit]); return <div className="stack auditPremium"><div className="auditHero"><History/><div><h3>Auditoria do sistema</h3><small>Acompanhe ações, alterações e erros técnicos com organização por categoria.</small></div></div><SettingCard title="Logs de erro" icon={<Activity/>}><ErrorLogs action={action}/></SettingCard><SettingCard title="Log de notificações" icon={<Bell/>}><Table rows={data.notifications||[]} render={n=><><td><b>{n.title}</b><small>{n.body}</small></td><td><Code>{channelNames[n.channel]||n.channel}</Code></td><td><Status ok={['lida','enviada'].includes(n.status)}>{n.status}</Status><small>{date(n.created_at)}</small></td></>}/></SettingCard>{Object.entries(grouped).map(([action,rows])=><div className="subpanel auditGroup" key={action}><h3>{action}</h3><Table rows={rows} render={a=><><td><b>{a.actor}</b><small>{a.entity}</small></td><td>{date(a.created_at)}</td></>}/></div>)}</div>; }
 function CentralPro(props){ const showUpdates=props.isAdminReserved || bool(props.settings.SHOW_UPDATES_TO_SINDICO,false); return <Panel title="Sistema e Apps" subtitle="Aplicativos, manuais e atualizações do sistema." icon={<ShieldCheck/>}><SubTabs value={props.sub} setValue={props.setSub} tabs={[['apps','Aplicativos'], ...(showUpdates?[['updates','Atualizações']]:[]), ['manuais','Manuais'], ['documentos','Documentos']]} />{props.sub==='updates'&&showUpdates?<Updates {...props}/>:props.sub==='manuais'?<Manuals {...props}/>:props.sub==='documentos'?<Documents {...props}/>:<AppsDownload {...props}/>}</Panel>; }
 function AppsDownload({settings}){ const apps=[['Portaria','APK_PORTARIA_URL','ENABLE_APP_PORTARIA','#/portaria'],['Síndico','APK_SINDICO_URL','ENABLE_APP_SINDICO','#/dashboard'],['Morador','APK_MORADOR_URL','ENABLE_APP_MORADOR','#/perfil']]; return <div className="appCards downloadApps">{apps.filter(([,u,e])=>bool(settings[e],true)).map(([name,key,,hash])=><article key={name}><Smartphone/><h3>Aplicativo {name}</h3><p>Use como PWA no celular ou baixe o APK quando ele estiver publicado.</p><div className="appActions"><a className="buttonlike" href={window.location.origin+'/'+hash}><AppWindow/> Abrir versão web/app</a>{settings[key]?<a className="buttonlike secondary" href={settings[key]} target="_blank" rel="noreferrer"><Download/> Baixar APK</a>:<button className="buttonlike disabled" type="button" disabled><Download/> APK não publicado</button>}</div></article>)}</div>; }
@@ -568,7 +735,7 @@ function Updates({data,forms,setForm,notify,loadAll,isAdminReserved}){
       setProgress(16); setProgressText('Preparando aplicação da atualização...');
       await new Promise(r=>setTimeout(r,300));
       setProgress(45); setProgressText('Publicando atualização no repositório/deploy...');
-      const result=await request(`/api/system-updates/${u.id}/apply`,{method:'POST',body:JSON.stringify({validation_code:forms.systemUpdate.validation_code}),headers:{'Content-Type':'application/json'}});
+      const result=await request(`/api/system-updates/${u.id}/apply`,{method:'POST',body:JSON.stringify({validation_code:forms.systemUpdate.validation_code, mode:forms.settings.UPDATE_APPLY_MODE || forms.systemUpdate.mode || 'github'}),headers:{'Content-Type':'application/json'}});
       setProgress(80); setProgressText('Atualização enviada. Reiniciando sessão para carregar a nova versão...');
       notify(result.message || 'Atualização aplicada. Você será direcionado para a tela de login.');
       setTimeout(()=>{ localStorage.removeItem('vr_token'); localStorage.removeItem('vr_user'); window.location.href='/'; }, 4800);

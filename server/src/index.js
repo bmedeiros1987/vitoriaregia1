@@ -17,7 +17,7 @@ import { randomBytes, createHash, verify as cryptoVerify } from 'node:crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v12.4.6';
+const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v12.5.8';
 const JWT_SECRET = process.env.JWT_SECRET || 'troque-este-segredo-em-producao';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/vitoriaregia';
 const DB_SSL_MODE = String(process.env.DATABASE_SSL_MODE || process.env.DATABASE_SSL || 'auto').trim().toLowerCase();
@@ -643,7 +643,7 @@ CREATE TABLE IF NOT EXISTS audit(
   await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_reservation_slot ON reservations(area, reserved_for, start_time, end_time) WHERE status <> 'cancelada'").catch(e => console.warn('Índice de reservas ignorado:', e.message));
 
   const defaultSettings = {
-    THEME_ACCENT: '#126b5f', THEME_TEXT_SIZE: 'comfort', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light', APP_VERSION:'Vitória Régia Pro v12.5.3',
+    THEME_ACCENT: '#126b5f', THEME_TEXT_SIZE: 'comfort', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light', APP_VERSION:'Vitória Régia Pro v12.5.8',
     CONDO_NAME: 'Condomínio Vitória Régia', DEVELOPED_BY: 'CrewCheck', CREWCHECK_SITE: 'https://www.crewcheck.online/', CREWCHECK_FOOTER: 'Desenvolvido por CrewCheck - todos os direitos reservados', CONDO_ADDRESS: '', WEATHER_CITY: 'João Pessoa', WEATHER_LAT: '-7.1195', WEATHER_LON: '-34.8450',
     ELEVATOR_OPERATOR_NAME: 'Operadora do elevador', ELEVATOR_EMERGENCY_PHONE: '', EMERGENCY_EMAILS: process.env.SENDGRID_TO_DEFAULT || '',
     EMERGENCY_APPROVAL_REQUIRED: 'true', FOOTER_MODE: 'minimal', EMAIL_PROVIDER: process.env.MAIL_PROVIDER || 'sendgrid',
@@ -1347,14 +1347,36 @@ async function notifyUpdateAvailable(manifest, actor='sistema') {
 function updateRowValues(manifest, payloadHash, packageBuffer=null, userId=null, status='validado') {
   return [manifest.update_code, manifest.version || manifest.to_version || '', manifest.title || 'Atualização Vitória Régia', manifest.notes || '', manifest.from_version || '', manifest.to_version || manifest.version || '', status, manifest.validation_token_hash || '', payloadHash || manifest.payload_sha256 || '', JSON.stringify(manifest), packageBuffer, userId];
 }
+function friendlyGithubError(status, data={}, repo='', endpoint='') {
+  const raw = String(data?.message || data?.raw || '').trim();
+  if (status === 401 || /bad credentials/i.test(raw)) {
+    return 'GitHub recusou o token: Bad credentials. Crie um novo token no GitHub com acesso ao repositório '+repo+' e configure UPDATE_GITHUB_TOKEN no Render. Para token fine-grained, libere Contents: Read and write. Depois salve e aplique novamente.';
+  }
+  if (status === 403) {
+    return 'GitHub recusou a atualização: o token não tem permissão de escrita no repositório '+repo+'. Confira se o token tem Contents: Read and write, acesso ao repositório correto e se a branch aceita push.';
+  }
+  if (status === 404) {
+    return 'GitHub não encontrou o repositório ou branch configurados. Confira UPDATE_GITHUB_REPO e UPDATE_GITHUB_BRANCH nas configurações de atualização.';
+  }
+  return raw || `Erro GitHub ${status} ao acessar ${endpoint}`;
+}
 async function githubApi(repo, endpoint, options={}) {
   const token = await getRuntimeSecret('UPDATE_GITHUB_TOKEN', process.env.GITHUB_TOKEN || '');
-  if (!token) throw new Error('Configure UPDATE_GITHUB_TOKEN nas variáveis do Render ou em Configurações → Atualizações.');
-  const response = await fetch(`https://api.github.com/repos/${repo}${endpoint}`, { ...options, headers:{ 'Accept':'application/vnd.github+json', 'Authorization':`Bearer ${token}`, 'X-GitHub-Api-Version':'2022-11-28', ...(options.headers || {}) } });
+  if (!token) throw new Error('Configure UPDATE_GITHUB_TOKEN nas variáveis do Render ou em Configurações → Atualizações antes de aplicar pelo GitHub.');
+  const cleanToken = String(token).replace(/^Bearer\s+/i, '').trim();
+  const response = await fetch(`https://api.github.com/repos/${repo}${endpoint}`, { ...options, headers:{ 'Accept':'application/vnd.github+json', 'Authorization':`Bearer ${cleanToken}`, 'X-GitHub-Api-Version':'2022-11-28', ...(options.headers || {}) } });
   const text = await response.text();
   let data = {}; try { data = text ? JSON.parse(text) : {}; } catch { data = { raw:text }; }
-  if (!response.ok) throw new Error(data.message || text || `Erro GitHub ${response.status}`);
+  if (!response.ok) throw new Error(friendlyGithubError(response.status, data, repo, endpoint));
   return data;
+}
+async function testGithubUpdateAccess() {
+  const repo = await getRuntimeSecret('UPDATE_GITHUB_REPO','bmedeiros1987/vitoriaregia1');
+  const branch = await getRuntimeSecret('UPDATE_GITHUB_BRANCH','main');
+  const token = await getRuntimeSecret('UPDATE_GITHUB_TOKEN', process.env.GITHUB_TOKEN || '');
+  if (!token) return { ok:false, repo, branch, message:'UPDATE_GITHUB_TOKEN não está configurado.' };
+  await githubApi(repo, `/git/ref/heads/${encodeURIComponent(branch)}`);
+  return { ok:true, repo, branch, message:'Token GitHub válido para ler a branch configurada. A aplicação pode prosseguir.' };
 }
 async function applyUpdateViaGithub(payloadBuffer, manifest) {
   const repo = await getRuntimeSecret('UPDATE_GITHUB_REPO','bmedeiros1987/vitoriaregia1');
@@ -1898,6 +1920,10 @@ app.get('/api/system-updates/config', auth, canViewUpdates, async (_req,res,next
   });
 } catch(e){ next(e); } });
 app.get('/api/system-updates', auth, canViewUpdates, async (_req,res,next)=>{ try { res.json((await q("SELECT id,update_code,version,title,notes,from_version,to_version,status,payload_sha256,manifest,announced_at,validated_at,applied_at,error,created_at FROM system_updates ORDER BY id DESC LIMIT 100")).rows); } catch(e){ next(e); } });
+app.post('/api/system-updates/github-test', auth, masterOnly, async (_req,res,next)=>{ try {
+  const result = await testGithubUpdateAccess();
+  res.status(result.ok ? 200 : 400).json(result);
+} catch(e){ next(e); } });
 app.post('/api/system-updates/upload', auth, masterOnly, uploadUpdateZip.single('update_zip'), async (req,res,next)=>{ try {
   if (!boolValue(await getSetting('ENABLE_SYSTEM_UPDATES','true'), true)) return res.status(403).json({ error:'Central de atualizações bloqueada nas configurações.' });
   let packageBuffer = req.file?.buffer || null;
@@ -1931,7 +1957,10 @@ app.post('/api/system-updates/:id/apply', auth, masterOnly, async (req,res,next)
   const validation = validateUpdatePackage(row.package_data, req.body?.validation_code || parseJson(row.manifest, {}).validation_token || '');
   const mode = String(req.body?.mode || await getSetting('UPDATE_APPLY_MODE', process.env.UPDATE_APPLY_MODE || 'github')).toLowerCase();
   let result;
-  if (mode === 'github') result = await applyUpdateViaGithub(validation.payloadBuffer, validation.manifest);
+  if (mode === 'github') {
+    await testGithubUpdateAccess();
+    result = await applyUpdateViaGithub(validation.payloadBuffer, validation.manifest);
+  }
   else if (mode === 'local') result = await applyUpdateLocally(validation.payloadBuffer);
   else result = { manual:true, message:'Atualização validada. Modo manual selecionado; publique o payload pelo GitHub.' };
   await q("UPDATE system_updates SET status=$1, applied_by=$2, applied_at=now(), error=NULL WHERE id=$3", [mode === 'manual' ? 'validado' : 'aplicado', req.user.id, req.params.id]);
