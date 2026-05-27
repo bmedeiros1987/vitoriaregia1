@@ -17,7 +17,7 @@ import { randomBytes, createHash, verify as cryptoVerify } from 'node:crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v12.4';
+const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v12.4.2';
 const JWT_SECRET = process.env.JWT_SECRET || 'troque-este-segredo-em-producao';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/vitoriaregia';
 const DB_SSL_MODE = String(process.env.DATABASE_SSL_MODE || process.env.DATABASE_SSL || 'auto').trim().toLowerCase();
@@ -1871,6 +1871,7 @@ app.post('/api/notify/email/preview', auth, can('settings.manage'), async (req,r
   res.send(html);
 } catch(e){ next(e); } });
 const uploadManual = multer({ storage: multer.memoryStorage(), limits:{ fileSize: 20 * 1024 * 1024 } });
+const uploadDocument = multer({ storage: multer.memoryStorage(), limits:{ fileSize: Number(process.env.DOCUMENT_UPLOAD_LIMIT_MB || 25) * 1024 * 1024 } });
 
 app.get('/api/documents', auth, async (req,res,next)=>{ try { if (req.user.role === 'sindico' || req.user.role === 'subsindico' || req.user.role === 'admin' || req.user.role === 'master') return res.json((await q('SELECT id,title,description,audience,is_public,file_name,mime_type,file_size,created_at FROM documents ORDER BY id DESC')).rows); res.json((await q('SELECT id,title,description,audience,is_public,file_name,mime_type,file_size,created_at FROM documents WHERE is_public=true ORDER BY id DESC')).rows); } catch(e){ next(e); } });
 app.post('/api/documents/upload', auth, can('documents.manage'), uploadDocument.single('document'), async (req, res, next) => {
