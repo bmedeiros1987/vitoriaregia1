@@ -17,7 +17,7 @@ import { randomBytes, createHash, verify as cryptoVerify } from 'node:crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v12.6.9';
+const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v12.7.1';
 const DEFAULT_TELEGRAM_CHAT_ID = '8188648317';
 const JWT_SECRET = process.env.JWT_SECRET || 'troque-este-segredo-em-producao';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/vitoriaregia';
@@ -119,6 +119,7 @@ async function ensureCriticalLegacySchema() {
     ['users','whatsapp_phone TEXT'],
     ['users','telegram_chat_id TEXT'],
     ['users','telegram_username TEXT'],
+    ['users','telegram_link_token TEXT'], ['users','telegram_linked_at TIMESTAMP'],
     ['users','notification_preferences JSONB DEFAULT \'{"app":true,"email":true,"telegram":true,"whatsapp":false,"browser":true}\'::jsonb'],
     ['users','active BOOLEAN DEFAULT true'],
     ['users','force_password_change BOOLEAN DEFAULT false'],
@@ -476,6 +477,8 @@ CREATE TABLE IF NOT EXISTS registration_requests(
   whatsapp_phone TEXT,
   telegram_chat_id TEXT,
   telegram_username TEXT,
+  telegram_link_token TEXT,
+  telegram_linked_at TIMESTAMP,
   preferred_channels JSONB DEFAULT '{"email":true,"whatsapp":false,"telegram":false}'::jsonb,
   unit TEXT,
   document TEXT,
@@ -602,6 +605,7 @@ CREATE TABLE IF NOT EXISTS audit(
     ['users','permissions JSONB DEFAULT \'{}\'::jsonb'], ['users','resident_id INTEGER'], ['users','employee_id INTEGER'],
     ['users','phone TEXT'], ['users','whatsapp_phone TEXT'], ['users','telegram_chat_id TEXT'],
     ['users','telegram_username TEXT'],
+    ['users','telegram_link_token TEXT'], ['users','telegram_linked_at TIMESTAMP'],
     ['users','notification_preferences JSONB DEFAULT \'{"app":true,"email":true,"telegram":true,"whatsapp":false,"browser":true}\'::jsonb'],
     ['users','active BOOLEAN DEFAULT true'], ['users','force_password_change BOOLEAN DEFAULT false'], ['users','last_login TIMESTAMP'], ['users','created_at TIMESTAMP DEFAULT now()'],
 
@@ -640,7 +644,7 @@ CREATE TABLE IF NOT EXISTS audit(
     // settings / workflows / updates / audit
     ['settings','value TEXT'], ['settings','updated_at TIMESTAMP DEFAULT now()'],
     ['emergency_types','label TEXT'], ['emergency_types','phone TEXT'], ['emergency_types','supplier TEXT'], ['emergency_types','instructions TEXT'], ['emergency_types','notify_all BOOLEAN DEFAULT false'], ['emergency_types','active BOOLEAN DEFAULT true'], ['emergency_types','sort_order INTEGER DEFAULT 0'], ['emergency_types','updated_at TIMESTAMP DEFAULT now()'],
-    ['registration_requests','name TEXT'], ['registration_requests','email TEXT'], ['registration_requests','phone TEXT'], ['registration_requests','whatsapp_phone TEXT'], ['registration_requests','telegram_chat_id TEXT'], ['registration_requests','telegram_username TEXT'], ['registration_requests','preferred_channels JSONB DEFAULT \'{"email":true,"whatsapp":false,"telegram":false}\'::jsonb'], ['registration_requests','unit TEXT'], ['registration_requests','document TEXT'], ['registration_requests','role TEXT DEFAULT \'morador\''], ['registration_requests','status TEXT DEFAULT \'pendente\''], ['registration_requests','notes TEXT'], ['registration_requests','created_at TIMESTAMP DEFAULT now()'], ['registration_requests','approved_by INTEGER'], ['registration_requests','approved_at TIMESTAMP'],
+    ['registration_requests','name TEXT'], ['registration_requests','email TEXT'], ['registration_requests','phone TEXT'], ['registration_requests','whatsapp_phone TEXT'], ['registration_requests','telegram_chat_id TEXT'], ['registration_requests','telegram_username TEXT'], ['registration_requests','telegram_link_token TEXT'], ['registration_requests','telegram_linked_at TIMESTAMP'], ['registration_requests','preferred_channels JSONB DEFAULT \'{"email":true,"whatsapp":false,"telegram":false}\'::jsonb'], ['registration_requests','unit TEXT'], ['registration_requests','document TEXT'], ['registration_requests','role TEXT DEFAULT \'morador\''], ['registration_requests','status TEXT DEFAULT \'pendente\''], ['registration_requests','notes TEXT'], ['registration_requests','created_at TIMESTAMP DEFAULT now()'], ['registration_requests','approved_by INTEGER'], ['registration_requests','approved_at TIMESTAMP'],
     ['password_resets','user_id INTEGER'], ['password_resets','token TEXT'], ['password_resets','temp_password TEXT'], ['password_resets','used BOOLEAN DEFAULT false'], ['password_resets','expires_at TIMESTAMP'], ['password_resets','created_at TIMESTAMP DEFAULT now()'],
     ['push_subscriptions','user_id INTEGER'], ['push_subscriptions','endpoint TEXT'], ['push_subscriptions','payload JSONB'], ['push_subscriptions','created_at TIMESTAMP DEFAULT now()'],
     ['system_updates','update_code TEXT'], ['system_updates','version TEXT'], ['system_updates','title TEXT'], ['system_updates','notes TEXT'], ['system_updates','from_version TEXT'], ['system_updates','to_version TEXT'], ['system_updates','status TEXT DEFAULT \'disponivel\''], ['system_updates','validation_token_hash TEXT'], ['system_updates','payload_sha256 TEXT'], ['system_updates','manifest JSONB DEFAULT \'{}\'::jsonb'], ['system_updates','package_data BYTEA'], ['system_updates','announced_at TIMESTAMP'], ['system_updates','validated_at TIMESTAMP'], ['system_updates','applied_at TIMESTAMP'], ['system_updates','created_by INTEGER'], ['system_updates','applied_by INTEGER'], ['system_updates','error TEXT'], ['system_updates','created_at TIMESTAMP DEFAULT now()'],
@@ -666,7 +670,7 @@ CREATE TABLE IF NOT EXISTS audit(
   await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_reservation_slot ON reservations(area, reserved_for, start_time, end_time) WHERE status <> 'cancelada'").catch(e => console.warn('Índice de reservas ignorado:', e.message));
 
   const defaultSettings = {
-    THEME_ACCENT: '#126b5f', THEME_TEXT_SIZE: 'comfort', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light', APP_VERSION:'Vitória Régia Pro v12.6.9',
+    THEME_ACCENT: '#126b5f', THEME_TEXT_SIZE: 'comfort', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light', APP_VERSION:'Vitória Régia Pro v12.7.0',
     CONDO_NAME: 'Condomínio Vitória Régia', DEVELOPED_BY: 'CrewCheck', CREWCHECK_SITE: 'https://www.crewcheck.online/', CREWCHECK_FOOTER: 'Desenvolvido por CrewCheck - todos os direitos reservados', CONDO_ADDRESS: '', WEATHER_CITY: 'João Pessoa', WEATHER_LAT: '-7.1195', WEATHER_LON: '-34.8450',
     ELEVATOR_OPERATOR_NAME: 'Operadora do elevador', ELEVATOR_EMERGENCY_PHONE: '', EMERGENCY_EMAILS: process.env.SENDGRID_TO_DEFAULT || '',
     EMERGENCY_APPROVAL_REQUIRED: 'true', FOOTER_MODE: 'minimal', EMAIL_PROVIDER: process.env.MAIL_PROVIDER || 'sendgrid',
@@ -752,7 +756,7 @@ CREATE TABLE IF NOT EXISTS audit(
 
 function sanitizeUser(row) {
   const role = row.role || 'morador';
-  return { id: row.id, name: row.name, email: row.email, role, user_type: row.user_type || role, is_outsourced: row.is_outsourced === true, unit: row.unit || '', phone: row.phone || '', whatsapp_phone: row.whatsapp_phone || row.phone || '', telegram_chat_id: row.telegram_chat_id || '', telegram_username: row.telegram_username || '', notification_preferences: parseJson(row.notification_preferences, {}), active: row.active !== false, resident_id: row.resident_id || null, employee_id: row.employee_id || null, permissions: normalizePermissions(row.permissions, role), force_password_change: row.force_password_change === true, last_login: row.last_login || null, created_at: row.created_at || null };
+  return { id: row.id, name: row.name, email: row.email, role, user_type: row.user_type || role, is_outsourced: row.is_outsourced === true, unit: row.unit || '', phone: row.phone || '', whatsapp_phone: row.whatsapp_phone || row.phone || '', telegram_chat_id: row.telegram_chat_id || '', telegram_username: row.telegram_username || '', telegram_link_token: row.telegram_link_token || '', telegram_linked_at: row.telegram_linked_at || null, notification_preferences: parseJson(row.notification_preferences, {}), active: row.active !== false, resident_id: row.resident_id || null, employee_id: row.employee_id || null, permissions: normalizePermissions(row.permissions, role), force_password_change: row.force_password_change === true, last_login: row.last_login || null, created_at: row.created_at || null };
 }
 function auth(req, res, next) { try { const token=(req.headers.authorization||'').replace(/^Bearer\s+/i,''); const payload=jwt.verify(token, JWT_SECRET); payload.permissions=normalizePermissions(payload.permissions, payload.role); req.user=payload; next(); } catch { res.status(401).json({ error: 'Não autorizado' }); } }
 function hasPermission(user, permission) { if (!permission) return true; if (user?.role === 'master' || user?.role === 'admin') return true; if (user?.role === 'sindico') return !['platform.manage','bank.manage','system.update'].includes(permission); return Boolean(user?.permissions?.[permission]); }
@@ -770,6 +774,62 @@ async function getTelegramPortariaChatId() {
 async function getTelegramSupportChatId() {
   const fallback = await getTelegramDefaultChatId();
   return String(await getSetting('TELEGRAM_SUPPORT_CHAT_ID', process.env.TELEGRAM_SUPPORT_CHAT_ID || fallback) || fallback).trim();
+}
+function normalizeTelegramUsername(value='') {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  return '@' + raw.replace(/^@+/, '').toLowerCase().replace(/[^a-z0-9_]/g, '');
+}
+async function getTelegramBotUsername() {
+  const bot = String(await getSetting('TELEGRAM_BOT_USERNAME', process.env.TELEGRAM_BOT_USERNAME || 'vitoriaregia_bot') || 'vitoriaregia_bot').replace(/^@+/, '').trim();
+  return bot || 'vitoriaregia_bot';
+}
+async function telegramStartLink(payload='vincular_telegram') {
+  const configured = String(await getSetting('TELEGRAM_START_URL', process.env.TELEGRAM_START_URL || '') || '').trim();
+  const base = configured && /^https?:\/\//i.test(configured) ? configured.replace(/\?.*$/, '').replace(/\/$/, '') : `https://t.me/${await getTelegramBotUsername()}`;
+  return `${base}?start=${encodeURIComponent(String(payload || 'vincular_telegram'))}`;
+}
+function newTelegramLinkToken(prefix='tg') {
+  const clean = String(prefix || 'tg').toLowerCase().replace(/[^a-z0-9_]/g,'').slice(0,12) || 'tg';
+  return `${clean}_${randomCode(8).toLowerCase()}_${randomBytes(5).toString('hex')}`;
+}
+async function ensureTelegramLinkFor(entity, id) {
+  const map = { request:'registration_requests', registration:'registration_requests', user:'users', resident:'residents', morador:'residents', usuario:'users' };
+  const table = map[String(entity || '').toLowerCase()];
+  if (!table || !id) { const err=new Error('Entidade inválida para vínculo Telegram.'); err.status=400; throw err; }
+  const current = (await q(`SELECT id, telegram_link_token FROM ${table} WHERE id=$1`, [id])).rows[0];
+  if (!current) { const err=new Error('Registro não encontrado para gerar vínculo Telegram.'); err.status=404; throw err; }
+  let token = current.telegram_link_token || newTelegramLinkToken(table === 'registration_requests' ? 'cadastro' : table === 'users' ? 'usuario' : 'morador');
+  if (!current.telegram_link_token) await q(`UPDATE ${table} SET telegram_link_token=$1 WHERE id=$2`, [token, id]);
+  return { token, url: await telegramStartLink(token), entity: table, id: Number(id) };
+}
+async function linkTelegramByStartPayload(payload='', from={}, chat={}) {
+  const token = String(payload || '').trim();
+  const chatId = String(chat?.id || from?.id || '').trim();
+  const username = normalizeTelegramUsername(from?.username || '');
+  const displayName = [from?.first_name, from?.last_name].filter(Boolean).join(' ').trim() || username || `Telegram ${chatId}`;
+  if (!chatId) return { ok:false, error:'Chat ID não informado pelo Telegram.' };
+  if (!token || token === 'vincular_telegram') {
+    return { ok:true, generic:true, chat_id:chatId, username, message:'Telegram identificado. Para vínculo automático, use o QR/link gerado no cadastro ou no perfil.' };
+  }
+  const tables = [
+    { table:'registration_requests', label:'solicitação de cadastro' },
+    { table:'users', label:'usuário' },
+    { table:'residents', label:'morador' }
+  ];
+  for (const item of tables) {
+    const found = (await q(`SELECT * FROM ${item.table} WHERE telegram_link_token=$1 LIMIT 1`, [token]).catch(()=>({rows:[]}))).rows[0];
+    if (!found) continue;
+    await q(`UPDATE ${item.table} SET telegram_chat_id=$1, telegram_username=COALESCE(NULLIF($2,''), telegram_username), telegram_linked_at=now() WHERE id=$3`, [chatId, username, found.id]);
+    if (item.table === 'registration_requests') {
+      if (found.email) await q("UPDATE users SET telegram_chat_id=$1, telegram_username=COALESCE(NULLIF($2,''), telegram_username), telegram_linked_at=now() WHERE lower(email)=lower($3)", [chatId, username, found.email]).catch(()=>null);
+      if (found.unit) await q("UPDATE residents SET telegram_chat_id=$1, telegram_username=COALESCE(NULLIF($2,''), telegram_username), telegram_linked_at=now() WHERE upper(replace(coalesce(unit,''),' ',''))=$3 AND (lower(coalesce(email,''))=lower($4) OR lower(coalesce(name,''))=lower($5))", [chatId, username, normalizeUnit(found.unit), found.email || '', found.name || '']).catch(()=>null);
+    }
+    if (item.table === 'users' && found.resident_id) await q("UPDATE residents SET telegram_chat_id=$1, telegram_username=COALESCE(NULLIF($2,''), telegram_username), telegram_linked_at=now() WHERE id=$3", [chatId, username, found.resident_id]).catch(()=>null);
+    await audit(username || chatId, 'vinculou Telegram automaticamente', `${item.label} ${found.id}`).catch(()=>null);
+    return { ok:true, linked:true, entity:item.table, id:found.id, chat_id:chatId, username, display_name:displayName };
+  }
+  return { ok:false, not_found:true, chat_id:chatId, username, message:'Token de vínculo não localizado ou expirado.' };
 }
 async function telegramPortariaEnabled(kind='') {
   if (!boolValue(await getSetting('TELEGRAM_PORTARIA_ENABLED','true'), true)) return false;
@@ -833,7 +893,7 @@ const PLATFORM_SETTING_KEYS = new Set(['ENABLE_EMAIL','ENABLE_TELEGRAM','ENABLE_
 function containsProtectedSettings(body={}) { return Object.keys(body || {}).some(k => PLATFORM_SETTING_KEYS.has(k)); }
 async function publicSettingsObject() {
   const s = await getSettingsObject();
-  const keys = ['CONDO_NAME','APPEARANCE','THEME_ACCENT','ENABLE_EMAIL','ENABLE_TELEGRAM','ENABLE_WHATSAPP','ENABLE_BROWSER_PUSH','ENABLE_APP_PORTARIA','ENABLE_APP_SINDICO','ENABLE_APP_MORADOR','REGISTRATION_REQUIRE_EMAIL','REGISTRATION_REQUIRE_WHATSAPP','REGISTRATION_REQUIRE_TELEGRAM','APK_PORTARIA_URL','APK_SINDICO_URL','APK_MORADOR_URL','RESERVATION_MAX_GUESTS_DEFAULT','RESERVATION_COUNT_CHILDREN','RESERVATION_COUNT_INFANTS','RESIDENT_CRITERIA','EMERGENCY_CRITICAL_ALERTS','ALLOW_MULTIPLE_RESIDENTS_PER_UNIT','MAX_RESIDENTS_PER_UNIT','SHOW_UPDATES_TO_SINDICO','CREWCHECK_SITE','DEVELOPED_BY','THEME_TEXT_SIZE'];
+  const keys = ['CONDO_NAME','APPEARANCE','THEME_ACCENT','ENABLE_EMAIL','ENABLE_TELEGRAM','ENABLE_WHATSAPP','ENABLE_BROWSER_PUSH','ENABLE_APP_PORTARIA','ENABLE_APP_SINDICO','ENABLE_APP_MORADOR','REGISTRATION_REQUIRE_EMAIL','REGISTRATION_REQUIRE_WHATSAPP','REGISTRATION_REQUIRE_TELEGRAM','APK_PORTARIA_URL','APK_SINDICO_URL','APK_MORADOR_URL','RESERVATION_MAX_GUESTS_DEFAULT','RESERVATION_COUNT_CHILDREN','RESERVATION_COUNT_INFANTS','RESIDENT_CRITERIA','EMERGENCY_CRITICAL_ALERTS','ALLOW_MULTIPLE_RESIDENTS_PER_UNIT','MAX_RESIDENTS_PER_UNIT','SHOW_UPDATES_TO_SINDICO','CREWCHECK_SITE','DEVELOPED_BY','THEME_TEXT_SIZE','TELEGRAM_BOT_USERNAME','TELEGRAM_START_URL'];
   return Object.fromEntries(keys.map(k => [k, s[k] ?? '']));
 }
 function loginEmailFromChannels(body={}) {
@@ -1288,21 +1348,27 @@ async function sendRegistrationAcknowledgement(request={}) {
   if (!request?.email || !(await featureEnabled('email'))) return { ok:false, skipped:true, reason:'E-mail não informado ou canal de e-mail desativado.' };
   const roleName = String(request.role || 'morador') === 'funcionario' ? 'funcionário do condomínio' : 'morador';
   const unitLine = request.unit ? `\nUnidade/setor informado: ${request.unit}` : '';
+  let linkUrl = '';
+  try {
+    if (request.id && request.telegram_link_token) linkUrl = await telegramStartLink(request.telegram_link_token);
+    else if (request.id) linkUrl = (await ensureTelegramLinkFor('request', request.id)).url;
+  } catch {}
+  const telegramLine = linkUrl ? `\n\nPara ativar notificações pelo Telegram, clique no botão de vínculo ou escaneie o QR Code exibido no sistema. Após abrir o bot, toque em START / INICIAR.` : '';
   const text = `Olá, ${request.name || 'usuário'}.
 
 Recebemos sua solicitação de cadastro como ${roleName} no Sistema Vitória Régia.${unitLine}
 
 Seu cadastro será analisado pela administração em até 48 horas.
 
-Se aprovado, você receberá um novo aviso com seu usuário de acesso e uma senha temporária. No primeiro acesso, o sistema solicitará a alteração da senha para sua segurança.
+Se aprovado, você receberá um novo aviso com seu usuário de acesso e uma senha temporária. No primeiro acesso, o sistema solicitará a alteração da senha para sua segurança.${telegramLine}
 
 Esta é uma mensagem automática de confirmação.`;
   return sendEmailSmart({
     to: request.email,
     subject: 'Solicitação de cadastro recebida - Vitória Régia',
     text,
-    actionUrl: '',
-    actionLabel: 'Acessar sistema'
+    actionUrl: linkUrl,
+    actionLabel: linkUrl ? 'Vincular Telegram' : 'Acessar sistema'
   });
 }
 
@@ -1632,11 +1698,14 @@ app.post('/api/register', async (req,res,next)=>{ try {
   if (hasWhats && !whatsappEnabled) { const err=new Error('Cadastro por WhatsApp ainda não está liberado neste condomínio.'); err.status=400; throw err; }
   if (hasTelegram && !telegramEnabled) { const err=new Error('Cadastro por Telegram ainda não está liberado neste condomínio.'); err.status=400; throw err; }
   const channels = await filterChannelsByPlan({ email:hasEmail, whatsapp:hasWhats, telegram:hasTelegram, app:true, browser:true });
-  const r=await q('INSERT INTO registration_requests(name,email,phone,whatsapp_phone,telegram_chat_id,telegram_username,preferred_channels,unit,document,role,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *', [req.body.name, req.body.email || '', req.body.phone || req.body.whatsapp_phone || '', req.body.whatsapp_phone || req.body.phone || '', req.body.telegram_chat_id || '', req.body.telegram_username || '', JSON.stringify(channels), requiresUnit ? (req.body.unit || '') : (req.body.unit || ''), req.body.document || '', requestedRole, req.body.notes || '']);
+  const telegramLinkToken = telegramEnabled ? newTelegramLinkToken('cadastro') : '';
+  const cleanTelegramUsername = normalizeTelegramUsername(req.body.telegram_username || '');
+  const r=await q('INSERT INTO registration_requests(name,email,phone,whatsapp_phone,telegram_chat_id,telegram_username,telegram_link_token,preferred_channels,unit,document,role,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *', [req.body.name, req.body.email || '', req.body.phone || req.body.whatsapp_phone || '', req.body.whatsapp_phone || req.body.phone || '', req.body.telegram_chat_id || '', cleanTelegramUsername, telegramLinkToken, JSON.stringify(channels), requiresUnit ? (req.body.unit || '') : (req.body.unit || ''), req.body.document || '', requestedRole, req.body.notes || '']);
   const savedRequest = r.rows[0];
+  const telegramLinkUrl = telegramLinkToken ? await telegramStartLink(telegramLinkToken).catch(()=> '') : '';
   const emailAck = hasEmail ? await sendRegistrationAcknowledgement(savedRequest).catch(e => ({ ok:false, error:e.message })) : { ok:false, skipped:true, reason:'E-mail não informado.' };
   await audit(req.body.email || req.body.phone || req.body.telegram_chat_id || 'cadastro', 'solicitou cadastro', req.body.unit || '');
-  res.json({ ok:true, message: hasEmail && emailAck.ok ? 'Solicitação enviada. Enviamos um e-mail confirmando que seu cadastro será analisado em até 48h.' : 'Solicitação enviada para aprovação. Se o e-mail não chegar, acompanhe pelo sistema ou confira com a administração.', request:savedRequest, email_ack:emailAck });
+  res.json({ ok:true, message: hasEmail && emailAck.ok ? 'Solicitação enviada. Enviamos um e-mail confirmando que seu cadastro será analisado em até 48h.' : 'Solicitação enviada para aprovação. Se o e-mail não chegar, acompanhe pelo sistema ou confira com a administração.', request:{...savedRequest, telegram_link_url:telegramLinkUrl}, telegram_link_url:telegramLinkUrl, email_ack:emailAck });
 } catch(e){ next(e); } });
 
 app.post('/api/residents/request-same-unit', auth, async (req,res,next)=>{ try {
@@ -1653,7 +1722,8 @@ app.post('/api/residents/request-same-unit', auth, async (req,res,next)=>{ try {
   if (req.body.email) await requireNoDuplicate('Usuário', (await q('SELECT id,email FROM users WHERE lower(email)=lower($1) AND COALESCE(active,true)=true LIMIT 1',[req.body.email])).rows[0]);
   if (req.body.email) await requireNoDuplicate('Solicitação de cadastro', (await q("SELECT id,email,status FROM registration_requests WHERE lower(email)=lower($1) AND status='pendente' LIMIT 1",[req.body.email])).rows[0]);
   const channels = await filterChannelsByPlan({ app:true, browser:true, email:Boolean(req.body.email), whatsapp:Boolean(req.body.whatsapp_phone || req.body.phone), telegram:true });
-  const r=await q('INSERT INTO registration_requests(name,email,phone,whatsapp_phone,telegram_chat_id,telegram_username,preferred_channels,unit,document,role,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',[req.body.name,req.body.email||'',req.body.phone||req.body.whatsapp_phone||'',req.body.whatsapp_phone||req.body.phone||'',req.body.telegram_chat_id||'',req.body.telegram_username||'',JSON.stringify(channels),unit,req.body.document||'','morador',`Solicitação interna feita por usuário da unidade ${unit}.`]);
+  const telegramLinkToken = newTelegramLinkToken('cadastro');
+  const r=await q('INSERT INTO registration_requests(name,email,phone,whatsapp_phone,telegram_chat_id,telegram_username,telegram_link_token,preferred_channels,unit,document,role,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',[req.body.name,req.body.email||'',req.body.phone||req.body.whatsapp_phone||'',req.body.whatsapp_phone||req.body.phone||'',req.body.telegram_chat_id||'',normalizeTelegramUsername(req.body.telegram_username||''),telegramLinkToken,JSON.stringify(channels),unit,req.body.document||'','morador',`Solicitação interna feita por usuário da unidade ${unit}.`]);
   if (req.body.email) await sendRegistrationAcknowledgement(r.rows[0]).catch(()=>null);
   await audit(req.user.email,'solicitou morador adicional',`${req.body.name} - unidade ${unit}`);
   res.json({ ok:true, message:'Solicitação enviada ao síndico para aprovação. Se aprovada, o novo usuário receberá senha temporária nos canais cadastrados.', request:r.rows[0] });
@@ -1777,11 +1847,11 @@ app.post('/api/registration-requests/:id/approve', auth, can('users.manage'), as
   let resident=null;
   if (needsResident) {
     resident=await findResident({ unit: rr.unit, recipient: rr.name });
-    if (!resident) resident=(await q('INSERT INTO residents(name,unit,phone,whatsapp_phone,email,document,telegram_chat_id,telegram_username,notification_preferences) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',[rr.name,rr.unit,rr.phone||rr.whatsapp_phone||'',rr.whatsapp_phone||rr.phone||'',rr.email||'',rr.document,rr.telegram_chat_id||'',rr.telegram_username||'',JSON.stringify(prefs)])).rows[0];
+    if (!resident) resident=(await q('INSERT INTO residents(name,unit,phone,whatsapp_phone,email,document,telegram_chat_id,telegram_username,telegram_link_token,notification_preferences) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',[rr.name,rr.unit,rr.phone||rr.whatsapp_phone||'',rr.whatsapp_phone||rr.phone||'',rr.email||'',rr.document,rr.telegram_chat_id||'',rr.telegram_username||'',rr.telegram_link_token||newTelegramLinkToken('morador'),JSON.stringify(prefs)])).rows[0];
   }
   const temp=randomCode(8);
   const email=loginEmailFromChannels(rr);
-  const user=(await q('INSERT INTO users(name,email,password_hash,role,user_type,unit,resident_id,phone,whatsapp_phone,telegram_chat_id,telegram_username,notification_preferences,permissions,active,force_password_change) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,true,true) ON CONFLICT(email) DO UPDATE SET active=true,resident_id=EXCLUDED.resident_id, unit=EXCLUDED.unit, phone=EXCLUDED.phone, whatsapp_phone=EXCLUDED.whatsapp_phone, telegram_chat_id=EXCLUDED.telegram_chat_id, telegram_username=EXCLUDED.telegram_username RETURNING *',[rr.name,email,await bcrypt.hash(temp,10),role,role,rr.unit || '',resident?.id || null,rr.phone||rr.whatsapp_phone||'',rr.whatsapp_phone||rr.phone||'',rr.telegram_chat_id||'',rr.telegram_username||'',JSON.stringify(prefs),JSON.stringify(rolePermissions(role))])).rows[0];
+  const user=(await q('INSERT INTO users(name,email,password_hash,role,user_type,unit,resident_id,phone,whatsapp_phone,telegram_chat_id,telegram_username,telegram_link_token,notification_preferences,permissions,active,force_password_change) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,true,true) ON CONFLICT(email) DO UPDATE SET active=true,resident_id=EXCLUDED.resident_id, unit=EXCLUDED.unit, phone=EXCLUDED.phone, whatsapp_phone=EXCLUDED.whatsapp_phone, telegram_chat_id=EXCLUDED.telegram_chat_id, telegram_username=EXCLUDED.telegram_username, telegram_link_token=COALESCE(users.telegram_link_token,EXCLUDED.telegram_link_token) RETURNING *',[rr.name,email,await bcrypt.hash(temp,10),role,role,rr.unit || '',resident?.id || null,rr.phone||rr.whatsapp_phone||'',rr.whatsapp_phone||rr.phone||'',rr.telegram_chat_id||'',rr.telegram_username||'',rr.telegram_link_token||newTelegramLinkToken('usuario'),JSON.stringify(prefs),JSON.stringify(rolePermissions(role))])).rows[0];
   await q("UPDATE registration_requests SET status='aprovada',approved_by=$1,approved_at=now() WHERE id=$2",[req.user.id,rr.id]);
   await sendTemporaryPasswordToUser({ ...user, email: rr.email || user.email, telegram_chat_id: rr.telegram_chat_id || user.telegram_chat_id, telegram_username: rr.telegram_username || user.telegram_username, whatsapp_phone: rr.whatsapp_phone || rr.phone || user.whatsapp_phone, phone: rr.phone || user.phone, notification_preferences: prefs }, temp, 'Cadastro aprovado - Vitória Régia').catch(()=>null);
   await audit(req.user.email,'aprovou cadastro',email);
@@ -2353,7 +2423,29 @@ app.post('/api/telegram/test', auth, can('settings.manage'), async (req,res,next
   const msg=req.body?.message || 'Teste do Telegram - Sistema Vitória Régia';
   res.json(await sendTelegramMessage(req.body?.chat_id || req.body?.to || '', telegramPremiumMessage({ title:'Teste do Telegram', body:msg, category:'sistema', actionUrl:fullActionUrl('/#/configuracoes/telegram') })));
 } catch(e){ next(e); } });
+app.post('/api/telegram/link-token', auth, async (req,res,next)=>{ try {
+  const entity = String(req.body?.entity || 'me').toLowerCase();
+  const requestedId = req.body?.id;
+  let targetEntity = entity;
+  let targetId = requestedId;
+  if (entity === 'me' || !targetId) { targetEntity = 'user'; targetId = req.user.id; }
+  const manage = hasPermission(req.user,'users.manage') || req.user.role === 'master' || req.user.role === 'admin';
+  if (!manage && !(targetEntity === 'user' && String(targetId) === String(req.user.id))) return res.status(403).json({ error:'Você só pode gerar vínculo do seu próprio Telegram.' });
+  const link = await ensureTelegramLinkFor(targetEntity, targetId);
+  res.json({ ok:true, ...link });
+} catch(e){ next(e); } });
 app.post('/api/telegram/webhook', async (req,res,next)=>{ try {
+  const msg=req.body?.message;
+  const startText=String(msg?.text || '').trim();
+  if (msg?.chat?.id && /^\/start(?:\s+(.+))?$/i.test(startText)) {
+    const payload = (startText.match(/^\/start(?:\s+(.+))?$/i)?.[1] || 'vincular_telegram').trim();
+    const result = await linkTelegramByStartPayload(payload, msg.from || {}, msg.chat || {});
+    const text = result.linked
+      ? telegramPremiumMessage({ title:'Telegram vinculado', body:'Seu Telegram foi vinculado ao Sistema Vitória Régia. A partir de agora você poderá receber avisos, encomendas e emergências por este canal.', category:'cadastro', details:{ Usuário: result.username || '-', Chat: result.chat_id || '-' } })
+      : telegramPremiumMessage({ title:'Telegram identificado', body:'Recebemos seu START. Para vincular automaticamente a um cadastro, use o QR Code ou botão gerado no sistema/e-mail. Se você acabou de se cadastrar, solicite o reenvio do link à portaria/síndico.', category:'cadastro', details:{ Usuário: result.username || '-', Chat: result.chat_id || msg.chat.id } });
+    await sendTelegramMessage(String(msg.chat.id), text, { allowDefaultChat:false, disable_web_page_preview:true }).catch(()=>null);
+    return res.json({ ok:true, type:'start', result });
+  }
   const cb=req.body?.callback_query;
   if (cb?.data) {
     const data=String(cb.data || '').trim();

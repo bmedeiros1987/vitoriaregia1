@@ -1,6 +1,6 @@
 {
   "name": "vitoria-regia-pro-server",
-  "version": "12.6.9",
+  "version": "12.7.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -24,5 +24,5 @@
   "engines": {
     "node": "20.19.0"
   },
-  "description": "Sistema Vitória Régia Pro v12.6.9 com local de emergência corrigido e alerta crítico persistente para usuários e moradores."
+  "description": "Sistema Vitória Régia Pro v12.7.0 com Auditoria recriada e protegida contra tela branca."
 }
