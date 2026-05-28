@@ -1,6 +1,6 @@
 {
   "name": "vitoria-regia-pro",
-  "version": "12.7.1",
+  "version": "12.7.2",
   "private": true,
   "description": "Sistema Vitória Régia Pro v12.7.0 com Auditoria recriada e protegida contra tela branca.",
   "scripts": {

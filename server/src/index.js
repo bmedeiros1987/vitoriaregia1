@@ -17,7 +17,7 @@ import { randomBytes, createHash, verify as cryptoVerify } from 'node:crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v12.7.1';
+const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v12.7.2';
 const DEFAULT_TELEGRAM_CHAT_ID = '8188648317';
 const JWT_SECRET = process.env.JWT_SECRET || 'troque-este-segredo-em-producao';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/vitoriaregia';
@@ -589,6 +589,20 @@ CREATE TABLE IF NOT EXISTS audit(
   action TEXT,
   entity TEXT,
   created_at TIMESTAMP DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS telegram_callback_events(
+  id SERIAL PRIMARY KEY,
+  callback_id TEXT UNIQUE,
+  chat_id TEXT,
+  username TEXT,
+  callback_data TEXT,
+  action_type TEXT,
+  entity_id TEXT,
+  status TEXT DEFAULT 'recebido',
+  result JSONB DEFAULT '{}'::jsonb,
+  raw JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMP DEFAULT now(),
+  processed_at TIMESTAMP
 );
 `);
 
@@ -1234,6 +1248,121 @@ async function telegramCallbackActor(cb={}) {
   const portariaChat = await getTelegramPortariaChatId();
   if ([defaultChat, portariaChat].filter(Boolean).map(String).includes(String(who.id))) return { type:'telegram', id:null, role:'portaria', name:who.name || who.username || 'Telegram autorizado' };
   return null;
+}
+
+async function logTelegramCallbackEvent(cb={}, patch={}) {
+  const who = callbackFromIdentity(cb);
+  const data = String(cb?.data || '').trim();
+  const callbackId = String(cb?.id || randomCode(12));
+  const base = {
+    callback_id: callbackId,
+    chat_id: String(cb?.message?.chat?.id || who.id || ''),
+    username: who.username || '',
+    callback_data: data,
+    action_type: patch.action_type || '',
+    entity_id: patch.entity_id || '',
+    status: patch.status || 'recebido',
+    result: patch.result || {},
+    raw: cb || {}
+  };
+  await q(`INSERT INTO telegram_callback_events(callback_id,chat_id,username,callback_data,action_type,entity_id,status,result,raw,processed_at)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,CASE WHEN $7 IN ('processado','erro','ignorado','nao_autorizado') THEN now() ELSE NULL END)
+           ON CONFLICT(callback_id) DO UPDATE SET status=EXCLUDED.status,result=EXCLUDED.result,processed_at=COALESCE(EXCLUDED.processed_at,telegram_callback_events.processed_at)`,
+           [base.callback_id,base.chat_id,base.username,base.callback_data,base.action_type,base.entity_id,base.status,JSON.stringify(base.result),JSON.stringify(base.raw)]).catch(()=>null);
+}
+function parseTelegramActionData(value='') {
+  const raw = String(value || '').trim();
+  if (!raw) return { type:'empty' };
+  if (raw === 'noop') return { type:'noop' };
+  // Aceita vários formatos para manter compatibilidade com mensagens antigas:
+  // pkg:123:receber_elevador, package_123_retirar_agora, encomenda|123|nao_reconhece
+  const pkg = raw.match(/^(?:pkg|package|encomenda|pack|parcel)[\s:_|\-]+(\d+)[\s:_|\-]+([a-z0-9_\-]+)$/i);
+  if (pkg) return { type:'package', id:pkg[1], action:normalizePackagePreference(pkg[2]) };
+  const emg = raw.match(/^(?:emg|emergency|emergencia)[\s:_|\-]+(\d+)[\s:_|\-]+([a-z0-9_\-]+)$/i);
+  if (emg) {
+    const a = /^(aprovar|approve|confirmar|confirm|sim|ok)$/i.test(emg[2]) ? 'aprovar' : (/^(rejeitar|reject|negar|falso|false|nao|não)$/i.test(emg[2]) ? 'rejeitar' : emg[2]);
+    return { type:'emergency', id:emg[1], action:a };
+  }
+  const msg = raw.match(/^msg[\s:_|\-]+(\d+)[\s:_|\-]+(recebido|confirmar|ok)$/i);
+  if (msg) return { type:'message', id:msg[1], action:'recebido' };
+  return { type:'unknown', raw };
+}
+async function editTelegramCallbackMessage(cb={}, suffix='', markupText='✅ Registrado') {
+  if (!cb?.message?.chat?.id || !cb?.message?.message_id) return;
+  const original=String(cb.message.text || cb.message.caption || '').slice(0,3400);
+  const finalText = `${original}\n\n${suffix}`.slice(0,4090);
+  await telegramApi('editMessageText',{ chat_id:cb.message.chat.id, message_id:cb.message.message_id, text:finalText, reply_markup:{ inline_keyboard:[[ { text:markupText, callback_data:'noop' } ]] } }).catch(()=>null);
+}
+async function handleTelegramCallbackQuery(cb={}) {
+  const parsed = parseTelegramActionData(cb?.data);
+  await logTelegramCallbackEvent(cb, { action_type:parsed.type, entity_id:parsed.id || '', status:'recebido', result:{ parsed } });
+  if (parsed.type === 'noop') {
+    await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text:'Esta ação já foi processada.' }).catch(()=>null);
+    await logTelegramCallbackEvent(cb, { action_type:'noop', status:'ignorado', result:{ ok:true } });
+    return { ok:true, noop:true };
+  }
+  if (parsed.type === 'package') {
+    const id=parsed.id;
+    const pref=normalizePackagePreference(parsed.action);
+    const existing=(await q('SELECT * FROM packages WHERE id=$1',[id]).catch(()=>({rows:[]}))).rows[0];
+    if (!existing) {
+      await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text:'Encomenda não encontrada no sistema.', show_alert:true }).catch(()=>null);
+      await logTelegramCallbackEvent(cb, { action_type:'package', entity_id:id, status:'erro', result:{ ok:false, error:'package_not_found' } });
+      return { ok:false, type:'package', not_found:true, id };
+    }
+    const r=await q('UPDATE packages SET delivery_preference=$1,resident_response_at=now(),notification_status=$2 WHERE id=$3 RETURNING *',[pref,'respondida_telegram',id]);
+    const pack=r.rows[0] || existing;
+    const label=formatDeliveryPreference(pref);
+    await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text:'Preferência registrada para a portaria.' }).catch(()=>null);
+    await notifyStaff({ title:'Preferência de entrega informada', body:`Encomenda ${pack?.tracking || id}: ${label}`, action_url:'/#/portaria/encomendas', channels:{ telegram:true,email:false,browser:true } }).catch(()=>null);
+    await sendPortariaTelegram({ title:'Resposta do morador sobre encomenda', body:`${pack?.tracking || id}: ${label}`, category:'encomenda', action_url:'/#/portaria/encomendas', details:{ Unidade:pack?.unit || '-', Encomenda:pack?.tracking || id, Preferência:label }, dedupeKey:`pkg-callback-portaria:${id}:${pref}` }).catch(()=>null);
+    await editTelegramCallbackMessage(cb, `✅ Resposta registrada: ${label}`);
+    await logTelegramCallbackEvent(cb, { action_type:'package', entity_id:id, status:'processado', result:{ ok:true, preference:pref } });
+    return { ok:true, type:'package', id, preference:pref };
+  }
+  if (parsed.type === 'emergency') {
+    const id=parsed.id;
+    const action=parsed.action === 'aprovar' ? 'aprovar' : 'rejeitar';
+    const actor=await telegramCallbackActor(cb);
+    if (!actor) {
+      await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text:'Telegram não autorizado para confirmar emergência.', show_alert:true }).catch(()=>null);
+      await logTelegramCallbackEvent(cb, { action_type:'emergency', entity_id:id, status:'nao_autorizado', result:{ ok:false } });
+      return { ok:false, unauthorized:true, id };
+    }
+    const existing=(await q('SELECT * FROM emergency_requests WHERE id=$1',[id]).catch(()=>({rows:[]}))).rows[0];
+    if (!existing) {
+      await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text:'Emergência não encontrada.', show_alert:true }).catch(()=>null);
+      await logTelegramCallbackEvent(cb, { action_type:'emergency', entity_id:id, status:'erro', result:{ ok:false, error:'emergency_not_found' } });
+      return { ok:false, not_found:true, id };
+    }
+    if (['aprovada','rejeitada','cancelada'].includes(String(existing.status||'').toLowerCase())) {
+      await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text:`Esta emergência já está ${existing.status}.` }).catch(()=>null);
+      await logTelegramCallbackEvent(cb, { action_type:'emergency', entity_id:id, status:'ignorado', result:{ ok:true, already:true, status:existing.status } });
+      return { ok:true, already:true, status:existing.status, id };
+    }
+    const status=action==='aprovar' ? 'aprovada' : 'rejeitada';
+    const r=await q("UPDATE emergency_requests SET status=$1,approved_by=COALESCE($2,approved_by),decision_note=$3,decided_at=now() WHERE id=$4 RETURNING *",[status,actor.id,`Decidido pelo Telegram por ${actor.name || actor.role || 'responsável'}`,id]);
+    const er=r.rows[0];
+    await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text: action==='aprovar' ? 'Emergência confirmada.' : 'Emergência rejeitada.' }).catch(()=>null);
+    await notifyEmergencyDecision(er, action).catch(()=>null);
+    await audit(actor.name || 'telegram','confirmou emergência pelo Telegram',`${er.type_label || er.type_code} ${status}`).catch(()=>null);
+    const decision=action==='aprovar' ? '✅ Emergência confirmada' : '❌ Emergência rejeitada';
+    await editTelegramCallbackMessage(cb, `${decision} por ${actor.name || 'responsável'}.`, '✅ Decisão registrada');
+    await logTelegramCallbackEvent(cb, { action_type:'emergency', entity_id:id, status:'processado', result:{ ok:true, status, actor:actor.name || actor.role } });
+    return { ok:true, type:'emergency', id, status };
+  }
+  if (parsed.type === 'message') {
+    const id=parsed.id;
+    await q("UPDATE messages SET status='recebida_pelo_morador' WHERE id=$1 RETURNING *",[id]).catch(()=>null);
+    await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text:'Confirmação registrada.' }).catch(()=>null);
+    await notifyStaff({ title:'Morador confirmou recebimento', body:`Mensagem ${id} confirmada pelo Telegram.`, action_url:'/#/comunicacao' }).catch(()=>null);
+    await editTelegramCallbackMessage(cb, '✅ Confirmação registrada.');
+    await logTelegramCallbackEvent(cb, { action_type:'message', entity_id:id, status:'processado', result:{ ok:true } });
+    return { ok:true, type:'message', id };
+  }
+  await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text:'Ação não reconhecida pelo sistema. Atualize a mensagem e tente novamente.', show_alert:true }).catch(()=>null);
+  await logTelegramCallbackEvent(cb, { action_type:'unknown', status:'erro', result:{ ok:false, unknown:parsed.raw || cb?.data } });
+  return { ok:false, unknown_callback:cb?.data };
 }
 async function notifyEmergencyDecision(er={}, action='aprovar') {
   const approved = action === 'aprovar';
@@ -2410,6 +2539,7 @@ app.get('/api/manuals/:id/download', auth, async (req,res,next)=>{ try { const r
 
 app.post('/api/telegram/get-me', auth, can('settings.manage'), async (_req,res,next)=>{ try { res.json(await telegramApi('getMe', {})); } catch(e){ next(e); } });
 app.post('/api/telegram/webhook-info', auth, can('settings.manage'), async (_req,res,next)=>{ try { res.json(await telegramApi('getWebhookInfo', {})); } catch(e){ next(e); } });
+app.get('/api/telegram/callback-events', auth, can('settings.manage'), async (_req,res,next)=>{ try { res.json((await q('SELECT * FROM telegram_callback_events ORDER BY id DESC LIMIT 80')).rows); } catch(e){ next(e); } });
 app.post('/api/telegram/set-webhook', auth, can('settings.manage'), async (req,res,next)=>{ try {
   const base = String(req.body?.base_url || await getSetting('PUBLIC_APP_URL', process.env.PUBLIC_APP_URL || process.env.RENDER_EXTERNAL_URL || '') || '').replace(/\/$/, '');
   if (!base || !/^https:\/\//i.test(base)) return res.status(400).json({ error:'Informe PUBLIC_APP_URL com HTTPS. Ex.: https://vitoriaregia-pro.onrender.com' });
@@ -2434,7 +2564,8 @@ app.post('/api/telegram/link-token', auth, async (req,res,next)=>{ try {
   const link = await ensureTelegramLinkFor(targetEntity, targetId);
   res.json({ ok:true, ...link });
 } catch(e){ next(e); } });
-app.post('/api/telegram/webhook', async (req,res,next)=>{ try {
+app.get('/api/telegram/webhook', async (_req,res)=>res.json({ ok:true, webhook:'telegram', version:APP_VERSION }));
+app.post('/api/telegram/webhook', async (req,res)=>{ try {
   const msg=req.body?.message;
   const startText=String(msg?.text || '').trim();
   if (msg?.chat?.id && /^\/start(?:\s+(.+))?$/i.test(startText)) {
@@ -2448,74 +2579,31 @@ app.post('/api/telegram/webhook', async (req,res,next)=>{ try {
   }
   const cb=req.body?.callback_query;
   if (cb?.data) {
-    const data=String(cb.data || '').trim();
-    if (data === 'noop') {
-      await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text:'Esta ação já foi processada.' }).catch(()=>null);
-      return res.json({ ok:true, noop:true });
-    }
-
-    const pkgMatch=data.match(/^(?:pkg|package):(\d+):(receber_elevador|elevador|retirar_portaria|retirar_mais_tarde|retirar_agora|chamar_interfone|nao_reconhece|nao_reconheco)$/i);
-    if (pkgMatch) {
-      const id=pkgMatch[1];
-      const pref=normalizePackagePreference(pkgMatch[2]);
-      const r=await q('UPDATE packages SET delivery_preference=$1,resident_response_at=now(),notification_status=$2 WHERE id=$3 RETURNING *',[pref,'respondida_telegram',id]);
-      const pack=r.rows[0];
-      const label=formatDeliveryPreference(pref);
-      await notifyStaff({ title:'Preferência de entrega informada', body:`Encomenda ${pack?.tracking || id}: ${label}`, action_url:'/#/portaria/encomendas', channels:{ telegram:true,email:false,browser:true } }).catch(()=>null);
-      await sendPortariaTelegram({ title:'Resposta do morador sobre encomenda', body:`${pack?.tracking || id}: ${label}`, category:'encomenda', action_url:'/#/portaria/encomendas', details:{ Unidade:pack?.unit || '-', Encomenda:pack?.tracking || id, Preferência:label }, dedupeKey:`pkg-callback-portaria:${id}:${pref}` }).catch(()=>null);
-      await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text:'Preferência registrada para a portaria.' }).catch(()=>null);
-      if (cb.message?.chat?.id && cb.message?.message_id) {
-        const original=String(cb.message.text || cb.message.caption || '').slice(0,3500);
-        await telegramApi('editMessageText',{ chat_id:cb.message.chat.id, message_id:cb.message.message_id, text:`${original}\n\n✅ Resposta registrada: ${label}`, reply_markup:{ inline_keyboard:[[ { text:'✅ Registrado', callback_data:'noop' } ]] } }).catch(()=>null);
-      }
-      return res.json({ ok:true, type:'package', id, preference:pref });
-    }
-
-    const emgMatch=data.match(/^(?:emg|emergency):(\d+):(aprovar|approve|confirmar|rejeitar|reject|negar)$/i);
-    if (emgMatch) {
-      const id=emgMatch[1];
-      const action=/^(aprovar|approve|confirmar)$/i.test(emgMatch[2]) ? 'aprovar' : 'rejeitar';
-      const actor=await telegramCallbackActor(cb);
-      if (!actor) {
-        await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text:'Telegram não autorizado para confirmar emergência.', show_alert:true }).catch(()=>null);
-        return res.json({ ok:false, unauthorized:true });
-      }
-      const status=action==='aprovar' ? 'aprovada' : 'rejeitada';
-      const existing=(await q('SELECT * FROM emergency_requests WHERE id=$1',[id])).rows[0];
-      if (!existing) {
-        await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text:'Emergência não encontrada.', show_alert:true }).catch(()=>null);
-        return res.json({ ok:false, not_found:true });
-      }
-      if (['aprovada','rejeitada','cancelada'].includes(String(existing.status||'').toLowerCase())) {
-        await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text:`Esta emergência já está ${existing.status}.` }).catch(()=>null);
-        return res.json({ ok:true, already:true, status:existing.status });
-      }
-      const r=await q("UPDATE emergency_requests SET status=$1,approved_by=COALESCE($2,approved_by),decision_note=$3,decided_at=now() WHERE id=$4 RETURNING *",[status,actor.id,`Decidido pelo Telegram por ${actor.name || actor.role || 'responsável'}`,id]);
-      const er=r.rows[0];
-      await notifyEmergencyDecision(er, action).catch(()=>null);
-      await audit(actor.name || 'telegram','confirmou emergência pelo Telegram',`${er.type_label || er.type_code} ${status}`).catch(()=>null);
-      await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text: action==='aprovar' ? 'Emergência confirmada.' : 'Emergência rejeitada.' }).catch(()=>null);
-      if (cb.message?.chat?.id && cb.message?.message_id) {
-        const original=String(cb.message.text || cb.message.caption || '').slice(0,3500);
-        const decision=action==='aprovar' ? '✅ Emergência confirmada' : '❌ Emergência rejeitada';
-        await telegramApi('editMessageText',{ chat_id:cb.message.chat.id, message_id:cb.message.message_id, text:`${original}\n\n${decision} por ${actor.name || 'responsável'}.`, reply_markup:{ inline_keyboard:[[ { text:'✅ Decisão registrada', callback_data:'noop' } ]] } }).catch(()=>null);
-      }
-      return res.json({ ok:true, type:'emergency', id, status });
-    }
-
-    if (/^msg:\d+:recebido$/.test(data)) {
-      const [,id]=data.split(':');
-      await q("UPDATE messages SET status='recebida_pelo_morador' WHERE id=$1 RETURNING *",[id]);
-      await notifyStaff({ title:'Morador confirmou recebimento', body:`Mensagem ${id} confirmada pelo Telegram.`, action_url:'/#/comunicacao' }).catch(()=>null);
-      await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text:'Confirmação registrada.' }).catch(()=>null);
-      return res.json({ ok:true, type:'message', id });
-    }
-
-    await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text:'Ação não reconhecida pelo sistema. Atualize a mensagem e tente novamente.', show_alert:true }).catch(()=>null);
-    return res.json({ ok:false, unknown_callback:data });
+    const result = await handleTelegramCallbackQuery(cb);
+    return res.json(result);
   }
-  res.json({ ok:true });
-} catch(e){ next(e); } });
+  return res.json({ ok:true, ignored:true });
+} catch(e){
+  console.error('Erro no webhook Telegram:', e);
+  // Nunca deixamos o webhook responder 500 para o Telegram ficar repetindo cliques antigos.
+  return res.json({ ok:false, error:e.message || 'Erro no webhook Telegram' });
+} });
+app.post('/api/telegram/webhook/:secret', async (req,res)=>{
+  // Compatibilidade com webhooks antigos configurados com segredo na URL.
+  req.url = '/api/telegram/webhook';
+  const msg=req.body?.message;
+  const cb=req.body?.callback_query;
+  try {
+    if (msg?.chat?.id && /^\/start/i.test(String(msg?.text || ''))) {
+      const payload = (String(msg.text).match(/^\/start(?:\s+(.+))?$/i)?.[1] || 'vincular_telegram').trim();
+      const result = await linkTelegramByStartPayload(payload, msg.from || {}, msg.chat || {});
+      await sendTelegramMessage(String(msg.chat.id), telegramPremiumMessage({ title: result.linked ? 'Telegram vinculado' : 'Telegram identificado', body: result.linked ? 'Seu Telegram foi vinculado ao Sistema Vitória Régia.' : 'Recebemos seu START. Use o link/QR de vínculo para associar ao cadastro.', category:'cadastro' }), { allowDefaultChat:false, disable_web_page_preview:true }).catch(()=>null);
+      return res.json({ ok:true, type:'start', result });
+    }
+    if (cb?.data) return res.json(await handleTelegramCallbackQuery(cb));
+    return res.json({ ok:true, ignored:true });
+  } catch(e){ console.error('Erro no webhook Telegram com segredo:', e); return res.json({ ok:false, error:e.message }); }
+});
 
 app.delete('/api/finance/:id', auth, can('finance.manage'), async (req,res,next)=>{ try { await q("UPDATE finance SET deleted_at=now(), status='removido' WHERE id=$1",[req.params.id]); await audit(req.user.email,'removeu financeiro',req.params.id); res.json({ ok:true }); } catch(e){ next(e); } });
 app.delete('/api/boletos/:id', auth, can('finance.manage'), async (req,res,next)=>{ try { await q("UPDATE boletos SET deleted_at=now(), status='removido' WHERE id=$1",[req.params.id]); await audit(req.user.email,'removeu boleto',req.params.id); res.json({ ok:true }); } catch(e){ next(e); } });
