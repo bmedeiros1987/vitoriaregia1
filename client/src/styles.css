@@ -744,3 +744,7 @@ body[data-appearance="dark"] .appShell>aside{background:linear-gradient(180deg,#
 .vrReservaEvent.cancelada{display:none!important}
 .vrReservaMiniCard .status{width:max-content}
 .financePage .premiumForm,.boletosPage .premiumForm,.invoicesPage .premiumForm,.residentsPage .premiumForm,.usersPage .premiumForm{margin-bottom:16px}
+
+
+/* v12.6.3 — Telegram Portaria Premium e Kiosk */
+.premiumTelegramBox{border-width:2px!important;background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 12%,var(--panel)),var(--panel2))!important}.packageActions .secondaryAction,.actions .secondaryAction{background:var(--panel2)!important;color:var(--accent)!important;border:1px solid color-mix(in srgb,var(--accent) 28%,var(--line))!important}.packageActions{gap:7px!important;flex-wrap:wrap!important}.packageActions button{min-width:118px}.settingsCard .full textarea{min-height:82px}
