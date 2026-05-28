@@ -1,8 +1,8 @@
 {
   "name": "vitoria-regia-pro",
-  "version": "12.6.4",
+  "version": "12.6.5",
   "private": true,
-  "description": "Sistema Vitória Régia Pro v12.6.4 com Telegram por usuário nos cadastros e testes.",
+  "description": "Sistema Vitória Régia Pro v12.6.5 com correção de Emergência e Telegram do Suporte.",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "npm --prefix client run dev",

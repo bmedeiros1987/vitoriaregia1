@@ -11,7 +11,7 @@ import {
 import './styles.css';
 
 const API = import.meta.env.VITE_API_URL || '';
-const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v12.6.4';
+const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v12.6.5';
 const DEFAULT_TELEGRAM_CHAT_ID = '8188648317';
 const money = (v) => Number(v || 0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
 const date = (v) => v ? new Date(String(v)).toLocaleDateString('pt-BR', { timeZone:'UTC' }) : '-';
@@ -768,8 +768,34 @@ function Reservations(props){
 
 function emergencyLocationOptions(settings={}){ return parseJson(settings.EMERGENCY_LOCATIONS, ['Minha unidade','Corredor','Vizinho','Elevador','Garagem','Salao de Festas','Brinquedoteca','Sauna','Piscina','Portaria','Zeladoria','Limpeza']); }
 function floorsList(){ return ['Garagem -1','Garagem 0','SL','0',...Array.from({length:11},(_,i)=>String(i+1))]; }
+const defaultEmergencyTypes = [
+  { code:'elevador', label:'Elevador', instructions:'Pessoa presa, falha ou barulho anormal no elevador.' },
+  { code:'incendio', label:'Incêndio', instructions:'Fumaça, fogo, cheiro forte ou risco imediato.' },
+  { code:'invasao', label:'Invasão', instructions:'Acesso indevido, arrombamento ou ameaça à segurança.' },
+  { code:'agua', label:'Vazamento de água', instructions:'Vazamento, infiltração ou ruptura hidráulica.' },
+  { code:'energia', label:'Falha elétrica', instructions:'Curto, queda de energia ou risco elétrico.' },
+  { code:'saude', label:'Emergência médica', instructions:'Mal-estar, queda, acidente ou necessidade de atendimento.' },
+  { code:'outros', label:'Outra emergência', instructions:'Informe rapidamente o que está acontecendo.' }
+];
+function emergencyStatusText(status='pendente'){
+  const key = String(status || 'pendente').toLowerCase();
+  if(['aprovada','aprovado','confirmada','confirmado'].includes(key)) return 'Aprovada';
+  if(['rejeitada','rejeitado','recusada','recusado'].includes(key)) return 'Rejeitada';
+  if(['cancelada','cancelado'].includes(key)) return 'Cancelada';
+  return 'Pendente';
+}
+function EmergencyIcon({code='', label=''}){
+  const key = String(code || label || '').toLowerCase();
+  if(/inc[eê]ndio|fire|fogo/.test(key)) return <Flame/>;
+  if(/invas|seguran|amea/.test(key)) return <ShieldAlert/>;
+  if(/m[eé]dic|sa[uú]de|ambul/.test(key)) return <Ambulance/>;
+  if(/agua|[áa]gua|vazamento|hidra/.test(key)) return <Droplets/>;
+  if(/energia|el[eé]tric|curto|luz/.test(key)) return <Zap/>;
+  if(/elev/.test(key)) return <Siren/>;
+  return <CircleAlert/>;
+}
 function Emergency({data,forms,setForm,action,openConfirm,settings,session}){
-  const types=data.emergencyTypes.length?data.emergencyTypes:[];
+  const types=Array.isArray(data.emergencyTypes) && data.emergencyTypes.length ? data.emergencyTypes : defaultEmergencyTypes;
   const f=forms.emergency;
   const selected=types.find(t=>t.code===f.type) || types[0] || {code:'elevador',label:'Elevador',instructions:'Solicite atendimento da portaria.'};
   const loginLocal=session?.unit || (['portaria','funcionario','sindico'].includes(session?.role)?roleLabel(session.role):'');

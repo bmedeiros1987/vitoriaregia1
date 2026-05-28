@@ -676,7 +676,7 @@ CREATE TABLE IF NOT EXISTS audit(
   for (const [key, value] of Object.entries(defaultSettings)) await q('INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING', [key, value]);
 
   // Sincroniza variáveis do Render para canais de comunicação sem gravar segredo no GitHub.
-  const envSyncKeys = ['ENABLE_TELEGRAM','TELEGRAM_ENABLED','TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID','TELEGRAM_PORTARIA_CHAT_ID','TELEGRAM_PORTARIA_LABEL','TELEGRAM_PORTARIA_ENABLED','TELEGRAM_PORTARIA_RECEIVE_EMERGENCY','TELEGRAM_PORTARIA_RECEIVE_PACKAGES','TELEGRAM_INTERCOM_FALLBACK_ENABLED','PACKAGE_ELEVATOR_AUTH_ENABLED','PACKAGE_TELEGRAM_DECISIONS_ENABLED','KIOSK_PORTARIA_PREMIUM_ENABLED','KIOSK_PORTARIA_PIN','KIOSK_ALLOWED_APPS','TELEGRAM_BOT_USERNAME','TELEGRAM_START_URL','TELEGRAM_WEBHOOK_SECRET','TELEGRAM_API_BASE_URL','TELEGRAM_PARSE_MODE','PUBLIC_APP_URL','ENABLE_EMAIL','SENDGRID_API_KEY','SMTP_PASS','SENDGRID_FROM_EMAIL','SENDGRID_FROM_NAME','SENDGRID_REPLY_TO','SENDGRID_TO_DEFAULT','EMAIL_PROVIDER','ENABLE_WHATSAPP','WHATSAPP_API_VERSION','WHATSAPP_PHONE_NUMBER_ID','WHATSAPP_BUSINESS_ACCOUNT_ID','WHATSAPP_ACCESS_TOKEN'];
+  const envSyncKeys = ['ENABLE_TELEGRAM','TELEGRAM_ENABLED','TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID','TELEGRAM_PORTARIA_CHAT_ID','TELEGRAM_PORTARIA_LABEL','TELEGRAM_PORTARIA_ENABLED','TELEGRAM_PORTARIA_RECEIVE_EMERGENCY','TELEGRAM_PORTARIA_RECEIVE_PACKAGES','TELEGRAM_INTERCOM_FALLBACK_ENABLED','PACKAGE_ELEVATOR_AUTH_ENABLED','PACKAGE_TELEGRAM_DECISIONS_ENABLED','KIOSK_PORTARIA_PREMIUM_ENABLED','KIOSK_PORTARIA_PIN','KIOSK_ALLOWED_APPS','TELEGRAM_BOT_USERNAME','TELEGRAM_START_URL','TELEGRAM_WEBHOOK_SECRET','TELEGRAM_API_BASE_URL','TELEGRAM_PARSE_MODE','TELEGRAM_SUPPORT_CHAT_ID','PUBLIC_APP_URL','ENABLE_EMAIL','SENDGRID_API_KEY','SMTP_PASS','SENDGRID_FROM_EMAIL','SENDGRID_FROM_NAME','SENDGRID_REPLY_TO','SENDGRID_TO_DEFAULT','EMAIL_PROVIDER','ENABLE_WHATSAPP','WHATSAPP_API_VERSION','WHATSAPP_PHONE_NUMBER_ID','WHATSAPP_BUSINESS_ACCOUNT_ID','WHATSAPP_ACCESS_TOKEN'];
   for (const key of envSyncKeys) {
     if (process.env[key] !== undefined && String(process.env[key]).trim() !== '') {
       await q('INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value', [key, String(process.env[key])]).catch(()=>null);
@@ -751,6 +751,10 @@ async function getTelegramPortariaChatId() {
   const fallback = await getTelegramDefaultChatId();
   return String(await getSetting('TELEGRAM_PORTARIA_CHAT_ID', process.env.TELEGRAM_PORTARIA_CHAT_ID || fallback) || fallback).trim();
 }
+async function getTelegramSupportChatId() {
+  const fallback = await getTelegramDefaultChatId();
+  return String(await getSetting('TELEGRAM_SUPPORT_CHAT_ID', process.env.TELEGRAM_SUPPORT_CHAT_ID || fallback) || fallback).trim();
+}
 async function telegramPortariaEnabled(kind='') {
   if (!boolValue(await getSetting('TELEGRAM_PORTARIA_ENABLED','true'), true)) return false;
   if (kind === 'emergencia') return boolValue(await getSetting('TELEGRAM_PORTARIA_RECEIVE_EMERGENCY','true'), true);
@@ -767,7 +771,7 @@ async function getRuntimeSecret(key, fallback='') {
   return dbValue !== '' && !dbValue.includes('***') && dbValue !== 'configurado' ? dbValue : fallback;
 }
 async function preserveCommunicationSettingsSnapshot() {
-  const keys=['ENABLE_EMAIL','EMAIL_PROVIDER','SENDGRID_API_KEY','SENDGRID_FROM_EMAIL','SENDGRID_FROM_NAME','SENDGRID_REPLY_TO','SENDGRID_TO_DEFAULT','SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','SMTP_SECURE','MAIL_FROM','ENABLE_TELEGRAM','TELEGRAM_ENABLED','TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID','TELEGRAM_TEST_CHAT_ID','TELEGRAM_BOT_USERNAME','TELEGRAM_START_URL','TELEGRAM_WEBHOOK_SECRET','TELEGRAM_API_BASE_URL','TELEGRAM_PARSE_MODE','ENABLE_WHATSAPP','WHATSAPP_ACCESS_TOKEN','WHATSAPP_PHONE_NUMBER_ID','PUBLIC_APP_URL','UPDATE_GITHUB_TOKEN','UPDATE_GITHUB_REPO','UPDATE_GITHUB_BRANCH','RENDER_DEPLOY_HOOK_URL'];
+  const keys=['ENABLE_EMAIL','EMAIL_PROVIDER','SENDGRID_API_KEY','SENDGRID_FROM_EMAIL','SENDGRID_FROM_NAME','SENDGRID_REPLY_TO','SENDGRID_TO_DEFAULT','SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','SMTP_SECURE','MAIL_FROM','ENABLE_TELEGRAM','TELEGRAM_ENABLED','TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID','TELEGRAM_TEST_CHAT_ID','TELEGRAM_BOT_USERNAME','TELEGRAM_START_URL','TELEGRAM_WEBHOOK_SECRET','TELEGRAM_API_BASE_URL','TELEGRAM_PARSE_MODE','TELEGRAM_SUPPORT_CHAT_ID','ENABLE_WHATSAPP','WHATSAPP_ACCESS_TOKEN','WHATSAPP_PHONE_NUMBER_ID','PUBLIC_APP_URL','UPDATE_GITHUB_TOKEN','UPDATE_GITHUB_REPO','UPDATE_GITHUB_BRANCH','RENDER_DEPLOY_HOOK_URL'];
   const out={};
   for (const k of keys) { const v = await getRuntimeSecret(k,''); if (v) out[k]=v; }
   return out;
@@ -2177,7 +2181,34 @@ app.post('/api/occurrence-book/:id/respond', auth, can('occurrences.manage'), as
 
 app.get('/api/faqs', auth, async (_req,res,next)=>{ try { res.json((await q('SELECT * FROM faqs WHERE active=true ORDER BY sort_order, id')).rows); } catch(e){ next(e); } });
 app.get('/api/support-tickets', auth, can('support.view'), async (req,res,next)=>{ try { if (isResident(req.user)) return res.json((await q('SELECT * FROM support_tickets WHERE created_by=$1 ORDER BY id DESC',[req.user.id])).rows); res.json((await q('SELECT s.*, u.name created_by_name FROM support_tickets s LEFT JOIN users u ON u.id=s.created_by ORDER BY s.id DESC LIMIT 300')).rows); } catch(e){ next(e); } });
-app.post('/api/support-tickets', auth, can('support.view'), async (req,res,next)=>{ try { requireFields(req.body,['subject','body']); const r=await q('INSERT INTO support_tickets(subject,body,priority,created_by,target,status) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',[req.body.subject,req.body.body,req.body.priority||'normal',req.user.id,req.body.target||'suporte','aberto']); await audit(req.user.email,'abriu suporte',req.body.subject); const admins=(await q("SELECT * FROM users WHERE role IN ('sindico','subsindico','admin','master') AND active=true")).rows; for(const u of admins) await createNotification({ user_id:u.id, title:'Novo pedido de suporte', body:req.body.subject, channel:'app', channels:{app:true,email:true,telegram:true}, action_url:'/#/suporte', payload:{ support_id:r.rows[0].id } }).catch(()=>null); res.json(r.rows[0]); } catch(e){ next(e); } });
+app.post('/api/support-tickets', auth, can('support.view'), async (req,res,next)=>{ try {
+  requireFields(req.body,['subject','body']);
+  const r=await q('INSERT INTO support_tickets(subject,body,priority,created_by,target,status) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',[req.body.subject,req.body.body,req.body.priority||'normal',req.user.id,req.body.target||'suporte','aberto']);
+  const ticket=r.rows[0];
+  await audit(req.user.email,'abriu suporte',req.body.subject);
+  const admins=(await q("SELECT * FROM users WHERE role IN ('sindico','subsindico','admin','master') AND active=true")).rows;
+  for(const u of admins) await createNotification({ user_id:u.id, title:'Novo pedido de suporte', body:req.body.subject, channel:'app', channels:{app:true,email:true,telegram:true}, action_url:'/#/suporte', payload:{ support_id:ticket.id, category:'suporte' } }).catch(()=>null);
+
+  // v12.6.5: suporte também envia uma mensagem Telegram direta para o chat de suporte/global.
+  // Isso garante que @bmedeiros1987 receba pelo Chat ID padrão 8188648317 mesmo se o usuário admin
+  // ainda não tiver telegram_chat_id individual cadastrado.
+  if (await featureEnabled('telegram')) {
+    const supportChat = await getTelegramSupportChatId();
+    const author = req.user.name || req.user.email || 'Usuário do sistema';
+    const unit = req.user.unit || req.body.unit || '-';
+    const text = telegramPremiumMessage({
+      title:'Novo pedido de suporte',
+      body:`${req.body.subject}
+
+${String(req.body.body || '').slice(0,900)}`,
+      category:'suporte',
+      actionUrl:fullActionUrl('/#/suporte'),
+      details:{ Ticket:ticket.id, Prioridade:req.body.priority||'normal', Solicitante:author, Unidade:unit }
+    });
+    await sendTelegramMessage(supportChat, text, { disable_web_page_preview:true, allowDefaultChat:true, dedupeKey:`support-ticket:${ticket.id}:${supportChat}` }).catch(e=>updateNotificationDelivery(ticket.id, { telegram_support:{ ok:false, error:e.message } }).catch(()=>null));
+  }
+  res.json(ticket);
+} catch(e){ next(e); } });
 
 app.get('/api/manuals', auth, async (_req,res,next)=>{ try { res.json((await q('SELECT id,title,audience,file_name,mime_type,file_size,created_at FROM manuals ORDER BY id DESC')).rows); } catch(e){ next(e); } });
 app.post('/api/manuals/upload', auth, masterOnly, uploadManual.single('manual'), async (req,res,next)=>{ try { if (!req.file) return res.status(400).json({ error:'Envie um arquivo PDF.' }); if (!/pdf/i.test(req.file.mimetype) && !/\.pdf$/i.test(req.file.originalname)) return res.status(400).json({ error:'Apenas PDF é permitido.' }); const r=await q('INSERT INTO manuals(title,audience,file_name,mime_type,file_size,file_data,uploaded_by) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,title,audience,file_name,file_size,created_at',[req.body.title || req.file.originalname, req.body.audience || 'geral', req.file.originalname, req.file.mimetype || 'application/pdf', req.file.size, req.file.buffer, req.user.id]); await audit(req.user.email,'enviou manual',r.rows[0].title); res.json(r.rows[0]); } catch(e){ next(e); } });
