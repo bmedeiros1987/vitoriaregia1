@@ -1,8 +1,8 @@
 {
   "name": "vitoria-regia-pro",
-  "version": "12.6.8",
+  "version": "12.6.9",
   "private": true,
-  "description": "Sistema Vitória Régia Pro v12.6.8 com correção dos botões Telegram de encomendas e confirmação de emergências por Telegram.",
+  "description": "Sistema Vitória Régia Pro v12.6.9 com local de emergência corrigido e alerta crítico persistente para usuários e moradores.",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "npm --prefix client run dev",

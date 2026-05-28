@@ -11,7 +11,7 @@ import {
 import './styles.css';
 
 const API = import.meta.env.VITE_API_URL || '';
-const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v12.6.7';
+const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v12.6.9';
 const DEFAULT_TELEGRAM_CHAT_ID = '8188648317';
 const money = (v) => Number(v || 0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
 const date = (v) => v ? new Date(String(v)).toLocaleDateString('pt-BR', { timeZone:'UTC' }) : '-';
@@ -42,7 +42,7 @@ function initialForms(){ return {
   finance:{ title:'', amount:'', type:'receita', due_date:'', unit:'', category:'geral', generate_boleto:false, digitable_line:'', payment_link:'', bank_name:'' }, boleto:{ title:'', amount:'', due_date:'', unit:'', bank_name:'', digitable_line:'', barcode:'', pdf_url:'', payment_link:'' },
   invoice:{ supplier:'', document_number:'', access_key:'', amount:'', issue_date:'', due_date:'', unit:'', category:'nota fiscal', extracted_text:'', file_name:'' },
   notice:{ title:'', body:'', priority:'normal', target_role:'todos', target_criteria:{} }, notifyTest:{ channel:'email', to:'', phone:'', chat_id:'', telegram_username:'', target_type:'padrao', resident_id:'', user_id:'', subject:'Teste Vitória Régia', message:'Mensagem de teste do Sistema Vitória Régia.' },
-  message:{ subject:'', body:'', unit:'' }, emergency:{ type:'elevador', unit:'', location_type:'login', occurrence_location:'login', neighbor_unit:'', floor:'', message:'' }, settings:{ TELEGRAM_CHAT_ID:DEFAULT_TELEGRAM_CHAT_ID, TELEGRAM_TEST_CHAT_ID:DEFAULT_TELEGRAM_CHAT_ID, ELEVATOR_MAINTENANCE_WHATSAPP:'', EMERGENCY_ALLOW_GENERAL_ALERT:'true' }, systemUpdate:{ validation_code:'', mode:'github' }, document:{ title:'', description:'', audience:'publico', is_public:true }, occurrence:{ title:'', description:'', category:'queixa', priority:'normal', unit:'' }, support:{ subject:'', body:'', priority:'normal' }, financeImport:{ text:'', unit:'', previewRows:[] }
+  message:{ subject:'', body:'', unit:'' }, emergency:{ type:'elevador', unit:'', location_type:'Minha unidade', occurrence_location:'Minha unidade', neighbor_unit:'', floor:'', message:'' }, settings:{ TELEGRAM_CHAT_ID:DEFAULT_TELEGRAM_CHAT_ID, TELEGRAM_TEST_CHAT_ID:DEFAULT_TELEGRAM_CHAT_ID, ELEVATOR_MAINTENANCE_WHATSAPP:'', EMERGENCY_ALLOW_GENERAL_ALERT:'true' }, systemUpdate:{ validation_code:'', mode:'github' }, document:{ title:'', description:'', audience:'publico', is_public:true }, occurrence:{ title:'', description:'', category:'queixa', priority:'normal', unit:'' }, support:{ subject:'', body:'', priority:'normal' }, financeImport:{ text:'', unit:'', previewRows:[] }
 };}
 function emptyData(){ return { settings:{}, dashboard:null, residents:[], users:[], employees:[], shifts:[], messages:[], packages:[], visitors:[], invoices:[], notices:[], reservations:[], finance:[], boletos:[], commonAreas:[], incidents:[], maintenance:[], emergencyTypes:[], emergencyRequests:[], registrationRequests:[], notifications:[], audit:[], weather:null, systemUpdates:[], manuals:[], documents:[], faqs:[], supportTickets:[], occurrenceBook:[], notifyConfig:null }; }
 async function request(path, opts={}){
@@ -112,6 +112,7 @@ function App(){
   const [confirm,setConfirm] = useState(null);
   const [reading,setReading] = useState('');
   const [cameraReader,setCameraReader] = useState(null);
+  const [criticalAlert,setCriticalAlert] = useState(null);
   const [lookup,setLookup] = useState({});
   const settings = { ...data.settings, ...Object.fromEntries(Object.entries(forms.settings || {}).filter(([,v]) => v !== '' && v !== undefined && v !== null)) };
   const isAdminReserved = ['master','admin'].includes(session?.role);
@@ -128,6 +129,39 @@ function App(){
   }, [settings.APPEARANCE, settings.UI_DENSITY, settings.THEME_TEXT_SIZE, settings.THEME_ACCENT, settings.THEME_ACCENT_2, settings.THEME_SECONDARY]);
   useEffect(() => { if(session) loadAll(); else request('/api/public-config').then(s => setData(d => ({ ...d, settings:s }))).catch(()=>null); }, [session]);
   useEffect(() => { if(!session) return; const id=setInterval(() => { request('/api/notifications').then(notifications => setData(d => ({...d, notifications}))).catch(()=>null); }, 5000); return () => clearInterval(id); }, [session]);
+  useEffect(() => {
+    if(!session) return;
+    const alert = (data.notifications || []).find(n => {
+      const payload = parseJson(n.payload, {});
+      const isEmergency = payload?.emergency || payload?.critical || /emerg[eê]ncia|alerta/i.test(`${n.title||''} ${n.body||''}`);
+      const alreadyAck = localStorage.getItem(`vr_emergency_ack_${n.id}`);
+      return isEmergency && !n.read_at && !alreadyAck;
+    });
+    setCriticalAlert(alert || null);
+  }, [data.notifications, session]);
+  useEffect(() => {
+    if(!criticalAlert) return;
+    document.body.classList.add('critical-alert-active');
+    let ctx = null;
+    function tone(){
+      try{
+        ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = 880;
+        gain.gain.value = 0.055;
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start();
+        setTimeout(()=>{ try{ osc.frequency.value = 1180; }catch{} }, 260);
+        setTimeout(()=>{ try{ osc.stop(); }catch{} }, 900);
+      }catch{}
+    }
+    function vibrate(){ try{ navigator.vibrate?.([1200,240,1200,240,1800,320,900]); }catch{} }
+    tone(); vibrate();
+    const id = setInterval(()=>{ tone(); vibrate(); }, 6500);
+    return () => { clearInterval(id); try{ navigator.vibrate?.(0); }catch{} document.body.classList.remove('critical-alert-active'); };
+  }, [criticalAlert?.id]);
   useEffect(() => {
     const syncRoute=()=>{
       const r=currentRouteState();
@@ -146,6 +180,13 @@ function App(){
 
   function setForm(group, patch){ setForms(f => ({ ...f, [group]:{ ...f[group], ...patch } })); }
   function notify(message, fail=false){ setToast(message); if(fail) document.body.classList.add('shake'); setTimeout(()=>{ setToast(''); document.body.classList.remove('shake'); }, 3800); }
+  function acknowledgeCriticalAlert(open=false){
+    if(criticalAlert?.id) localStorage.setItem(`vr_emergency_ack_${criticalAlert.id}`, String(Date.now()));
+    try{ navigator.vibrate?.(0); }catch{}
+    const goNow = open;
+    setCriticalAlert(null);
+    if(goNow) go('emergencia');
+  }
   async function safe(path, fallback){ try { return await request(path); } catch { return fallback; } }
   async function loadAll(){
     const [settingsRes,dashboard,residents,users,employees,shifts,messages,packagesRes,visitors,invoices,notices,reservations,finance,boletos,commonAreas,incidents,maintenance,emergencyTypes,emergencyRequests,registrationRequests,notifications,audit,weather,systemUpdates,manuals,documents,faqs,supportTickets,occurrenceBook,notifyConfig] = await Promise.all([
@@ -228,7 +269,7 @@ function App(){
     {can('emergency.use') && <button className="floatingEmergency" onClick={()=>go('emergencia')}><Siren/><span>Emergência</span></button>}
     <main className="content"><Topbar session={session} settings={settings} data={data} setActive={go}/>{toast && <div className="toast">{toast}</div>}
       {visualActive==='dashboard' && <Dashboard {...props}/>} {visualActive==='portaria' && <Portaria {...props}/>} {reservasRouteLocked && <Reservations {...props}/>} {visualActive==='financeiro' && <Financeiro {...props}/>} {visualActive==='cadastros' && <Cadastros {...props}/>} {visualActive==='comunicacao' && <Comunicacao {...props}/>} {visualActive==='ocorrencias' && <OccurrenceBook {...props}/>} {visualActive==='emergencia' && <Emergency {...props}/>} {visualActive==='suporte' && <SupportPage {...props}/>} {visualActive==='configuracoes' && <SettingsPage {...props}/>} {visualActive==='central' && <CentralPro {...props}/>} {visualActive==='updates' && <Updates {...props}/>} {visualActive==='perfil' && <Profile {...props}/>} 
-    </main><nav className="bottomNav"><button className={visualActive==='dashboard'?'active':''} onClick={()=>go('dashboard')}><Home/><span>Início</span></button><button className={visualActive==='reservas'?'active':''} onClick={()=>go('reservas','calendario')}><CalendarDays/><span>Reservas</span></button><button className={visualActive==='comunicacao'?'active':''} onClick={()=>go('comunicacao','notificacoes')}><Bell/><span>Comunicados</span></button><button className={visualActive==='perfil'?'active':''} onClick={()=>go('perfil')}><UserCheck/><span>Perfil</span></button></nav>{cameraReader && <CameraCaptureModal type={cameraReader.type} onClose={()=>setCameraReader(null)} onCapture={async(file,type)=>{ setCameraReader(null); await readImage(file,type); }} notify={notify}/>} {confirm && <ConfirmModal confirm={confirm} onCancel={()=>setConfirm(null)} onConfirm={confirmRun}/>}<Footer /></div>;
+    </main><nav className="bottomNav"><button className={visualActive==='dashboard'?'active':''} onClick={()=>go('dashboard')}><Home/><span>Início</span></button><button className={visualActive==='reservas'?'active':''} onClick={()=>go('reservas','calendario')}><CalendarDays/><span>Reservas</span></button><button className={visualActive==='comunicacao'?'active':''} onClick={()=>go('comunicacao','notificacoes')}><Bell/><span>Comunicados</span></button><button className={visualActive==='perfil'?'active':''} onClick={()=>go('perfil')}><UserCheck/><span>Perfil</span></button></nav>{criticalAlert && <CriticalEmergencyOverlay alert={criticalAlert} onOpen={()=>acknowledgeCriticalAlert(true)} onDismiss={()=>acknowledgeCriticalAlert(false)} />} {cameraReader && <CameraCaptureModal type={cameraReader.type} onClose={()=>setCameraReader(null)} onCapture={async(file,type)=>{ setCameraReader(null); await readImage(file,type); }} notify={notify}/>} {confirm && <ConfirmModal confirm={confirm} onCancel={()=>setConfirm(null)} onConfirm={confirmRun}/>}<Footer /></div>;
 }
 
 function CameraCaptureModal({type='package',onClose,onCapture,notify}){
@@ -845,12 +886,24 @@ function EmergencyIcon({code='', label=''}){
   if(/elev/.test(key)) return <Siren/>;
   return <CircleAlert/>;
 }
+function userDefaultEmergencyLocation(session={}){
+  const role = String(session?.role || '').toLowerCase();
+  if(role === 'portaria') return 'Portaria';
+  if(['funcionario','zeladoria','limpeza','manutencao','seguranca'].includes(role)) return session?.unit || session?.function || session?.position || roleLabel(role);
+  return session?.unit || '';
+}
+function normalizeEmergencyLocationInput(location, session={}){
+  const role = String(session?.role || '').toLowerCase();
+  const raw = String(location || '').trim();
+  if(!raw || raw.toLowerCase() === 'login') return role === 'portaria' ? 'Portaria' : (role === 'funcionario' ? userDefaultEmergencyLocation(session) : 'Minha unidade');
+  return raw;
+}
 function Emergency({data,forms,setForm,action,openConfirm,settings,session}){
   const types=Array.isArray(data.emergencyTypes) && data.emergencyTypes.length ? data.emergencyTypes : defaultEmergencyTypes;
   const f=forms.emergency;
   const selected=types.find(t=>t.code===f.type) || types[0] || {code:'elevador',label:'Elevador',instructions:'Solicite atendimento da portaria.'};
-  const loginLocal=session?.unit || (['portaria','funcionario','sindico'].includes(session?.role)?roleLabel(session.role):'');
-  const location=f.occurrence_location||'Minha unidade';
+  const loginLocal=userDefaultEmergencyLocation(session);
+  const location=normalizeEmergencyLocationInput(f.occurrence_location, session);
   const finalLocal= location==='Minha unidade' ? (loginLocal || f.unit || '') : location==='Vizinho' ? `Vizinho - unidade ${f.neighbor_unit || 'não informada'}` : location==='Corredor' ? `Corredor - andar ${f.floor || 'não informado'}` : location;
   const elevatorWhats = String(settings.ELEVATOR_MAINTENANCE_WHATSAPP || '').replace(/\D/g,'');
   const msgElevator = encodeURIComponent(`Olá, equipe de manutenção. Há uma ocorrência no elevador do Condomínio Vitória Régia. Local: ${finalLocal || 'a confirmar'}. Solicitante: ${session?.name || session?.email || 'usuário do sistema'}.`);
@@ -973,6 +1026,20 @@ function SubTabs({value,setValue,tabs}){ return <div className="subTabs">{tabs.m
 function Panel({title,subtitle,icon,children}){ return <section className="panel"><div className="panelHead"><div>{icon}<div><h2>{title}</h2><p>{subtitle}</p></div></div></div>{children}</section>; }
 function SettingCard({title,icon,children}){ return <section className="settingsCard"><h3>{icon} {title}</h3>{children}</section>; }
 function Metric({icon,label,value,onClick}){ return <button type="button" className="metric" onClick={onClick}><span>{icon}</span><div><b>{value}</b><small>{label}</small></div><ChevronRight className="metricArrow"/></button>; }
+function CriticalEmergencyOverlay({alert,onOpen,onDismiss}){
+  const payload=parseJson(alert?.payload,{});
+  return <div className="criticalEmergencyOverlay" role="alertdialog" aria-live="assertive" aria-modal="true">
+    <div className="criticalEmergencyCard">
+      <div className="criticalPulse"><Siren/></div>
+      <span className="criticalEyebrow">Alerta crítico do condomínio</span>
+      <h2>{alert?.title || 'Emergência'}</h2>
+      <p>{alert?.body || 'Há uma ocorrência de emergência em andamento. Verifique as orientações imediatamente.'}</p>
+      <div className="criticalMeta"><span>Tipo: {payload?.type || 'emergência'}</span><span>Notificação #{alert?.id}</span></div>
+      <div className="criticalActions"><button className="primary" onClick={onOpen}><Siren/> Abrir emergência</button><button onClick={onDismiss}>Estou ciente</button></div>
+      <small>O sistema tenta tocar som e vibrar de forma persistente enquanto esta tela estiver aberta. Em alguns celulares, o modo silencioso/Não Perturbe só pode ser superado por permissões nativas do Android/iOS.</small>
+    </div>
+  </div>;
+}
 function Status({ok,children}){ return <span className={'status '+(ok?'ok':'warn')}>{children}</span>; }
 function Code({children}){ return <code className="code">{children}</code>; }
 function Table({rows=[],render}){ return <div className="tableWrap"><table><tbody>{rows?.length?rows.map((r,i)=><tr key={r.id||i}>{render(r)}</tr>):<tr><td><small>Nenhum registro encontrado.</small></td></tr>}</tbody></table></div>; }

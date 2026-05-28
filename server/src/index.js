@@ -17,7 +17,7 @@ import { randomBytes, createHash, verify as cryptoVerify } from 'node:crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v12.6.6';
+const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v12.6.9';
 const DEFAULT_TELEGRAM_CHAT_ID = '8188648317';
 const JWT_SECRET = process.env.JWT_SECRET || 'troque-este-segredo-em-producao';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/vitoriaregia';
@@ -666,7 +666,7 @@ CREATE TABLE IF NOT EXISTS audit(
   await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_reservation_slot ON reservations(area, reserved_for, start_time, end_time) WHERE status <> 'cancelada'").catch(e => console.warn('Índice de reservas ignorado:', e.message));
 
   const defaultSettings = {
-    THEME_ACCENT: '#126b5f', THEME_TEXT_SIZE: 'comfort', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light', APP_VERSION:'Vitória Régia Pro v12.6.6',
+    THEME_ACCENT: '#126b5f', THEME_TEXT_SIZE: 'comfort', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light', APP_VERSION:'Vitória Régia Pro v12.6.9',
     CONDO_NAME: 'Condomínio Vitória Régia', DEVELOPED_BY: 'CrewCheck', CREWCHECK_SITE: 'https://www.crewcheck.online/', CREWCHECK_FOOTER: 'Desenvolvido por CrewCheck - todos os direitos reservados', CONDO_ADDRESS: '', WEATHER_CITY: 'João Pessoa', WEATHER_LAT: '-7.1195', WEATHER_LON: '-34.8450',
     ELEVATOR_OPERATOR_NAME: 'Operadora do elevador', ELEVATOR_EMERGENCY_PHONE: '', EMERGENCY_EMAILS: process.env.SENDGRID_TO_DEFAULT || '',
     EMERGENCY_APPROVAL_REQUIRED: 'true', FOOTER_MODE: 'minimal', EMAIL_PROVIDER: process.env.MAIL_PROVIDER || 'sendgrid',
@@ -993,7 +993,7 @@ async function sendBrowserPushToResident(residentId, title, body, url='/', paylo
   if (!(await featureEnabled('browser'))) return { ok:false, skipped:true, reason:'Notificação do navegador não liberada nas configurações.' };
   if (!residentId || !configureWebPush()) return { ok:false, skipped:true, reason:'VAPID não configurado' };
   const subs = await q('SELECT ps.* FROM push_subscriptions ps JOIN users u ON u.id=ps.user_id WHERE u.resident_id=$1', [residentId]).catch(()=>({ rows:[] }));
-  const payload = JSON.stringify({ title, body, url, icon:'/logo-vitoria-regia.svg', ...payloadExtra });
+  const payload = JSON.stringify({ title, body, url, icon:'/logo-vitoria-regia.svg', badge:'/logo-vitoria-regia.svg', ...payloadExtra });
   const results = [];
   for (const sub of subs.rows) {
     try {
@@ -1002,6 +1002,18 @@ async function sendBrowserPushToResident(residentId, title, body, url='/', paylo
       if ([404,410].includes(e.statusCode)) await q('DELETE FROM push_subscriptions WHERE id=$1',[sub.id]).catch(()=>null);
       results.push({ ok:false, error:e.message });
     }
+  }
+  return { ok:true, sent:results.length };
+}
+async function sendBrowserPushToUser(userId, title, body, url='/', payloadExtra={}) {
+  if (!(await featureEnabled('browser'))) return { ok:false, skipped:true, reason:'Notificação do navegador não liberada nas configurações.' };
+  if (!userId || !configureWebPush()) return { ok:false, skipped:true, reason:'VAPID não configurado' };
+  const subs = await q('SELECT * FROM push_subscriptions WHERE user_id=$1', [userId]).catch(()=>({ rows:[] }));
+  const payload = JSON.stringify({ title, body, url, icon:'/logo-vitoria-regia.svg', badge:'/logo-vitoria-regia.svg', ...payloadExtra });
+  const results = [];
+  for (const sub of subs.rows) {
+    try { results.push(await webpush.sendNotification(parseJson(sub.payload, {}), payload)); }
+    catch (e) { if ([404,410].includes(e.statusCode)) await q('DELETE FROM push_subscriptions WHERE id=$1',[sub.id]).catch(()=>null); results.push({ ok:false, error:e.message }); }
   }
   return { ok:true, sent:results.length };
 }
@@ -1168,7 +1180,7 @@ async function notifyEmergencyDecision(er={}, action='aprovar') {
   const title = approved ? 'Emergência confirmada' : 'Emergência rejeitada';
   const body = `${er.type_label || er.type_code || 'Emergência'} · Local: ${er.occurrence_location || er.unit || 'a confirmar'}.`;
   if (approved && er.notify_all) await notifyAllResidents({ title, body, channels:{ app:true,browser:true,email:false,telegram:true,whatsapp:true }, action_url:'/#/emergencia', payload:{ emergency:true, critical:true, type:er.type_code } }).catch(()=>null);
-  await notifyStaff({ title, body, action_url:'/#/emergencia', channels:{ telegram:false,email:false,browser:true } }).catch(()=>null);
+  await notifyStaff({ title, body, action_url:'/#/emergencia', channels:{ telegram:false,email:false,browser:true }, payload:{ emergency:true, critical:true, type:er.type_code, request_id:er.id } }).catch(()=>null);
 }
 async function sendWhatsAppText(phone, text) { if (!(await featureEnabled('whatsapp'))) return { ok:false, skipped:true, reason:'WhatsApp não liberado nas configurações.' }; const phoneId=await getSetting('WHATSAPP_PHONE_NUMBER_ID', process.env.WHATSAPP_PHONE_NUMBER_ID || ''); const token=await getSetting('WHATSAPP_ACCESS_TOKEN', process.env.WHATSAPP_ACCESS_TOKEN || process.env.WHATSAPP_API_TOKEN || ''); const version=await getSetting('WHATSAPP_API_VERSION', process.env.WHATSAPP_API_VERSION || 'v19.0'); const to = onlyDigits(phone); if (!phoneId || !token || !to) return { ok:false, skipped:true }; const r = await fetch(`https://graph.facebook.com/${version}/${phoneId}/messages`, { method:'POST', headers:{ 'content-type':'application/json', authorization:`Bearer ${token}` }, body: JSON.stringify({ messaging_product:'whatsapp', to, type:'text', text:{ body:text } }) }); return { ok:r.ok, data: await r.json().catch(()=>({})) }; }
 async function findResident({ unit='', recipient='', resident_id=null, user_id=null }={}) {
@@ -1240,17 +1252,20 @@ async function notifyResident(resident, { title, body, channels={}, action_url='
   await updateNotificationDelivery(notification?.id, delivery);
   return { ok: !Object.values(delivery).some(v=>v && !v.ok && !v.skipped), notification_id:notification?.id || null, delivery, resumo:Object.fromEntries(Object.entries(delivery).map(([k,v])=>[k,channelResultSummary(v)])) };
 }
-async function notifyStaff({ title, body, action_url='', channels={} }) {
+async function notifyStaff({ title, body, action_url='', channels={}, payload={} }) {
   const staff = (await q("SELECT * FROM users WHERE role IN ('master','admin','sindico','subsindico','portaria') AND active=true")).rows;
   const notifIds=[];
   for (const user of staff) {
-    const n = await createNotification({ user_id:user.id, title, body, channel:'app', channels:{ app:true, browser:true, telegram:true, email:true, ...channels }, action_url, payload:{ __skip_auto_delivery:true }, status:'enviando' }).catch(()=>null);
+    const n = await createNotification({ user_id:user.id, title, body, channel:'app', channels:{ app:true, browser:true, telegram:true, email:true, ...channels }, action_url, payload:{ ...(payload||{}), __skip_auto_delivery:true }, status:'enviando' }).catch(()=>null);
     if (n?.id) notifIds.push(n.id);
   }
   const jobs = {};
-  if (channels.telegram !== false && await featureEnabled('telegram')) { const category=notificationCategoryFrom(title, body, {}); jobs.telegram = withTimeout(sendTelegramMessage('', telegramPremiumMessage({ title, body, category, actionUrl:fullActionUrl(action_url) }), { disable_web_page_preview:true, dedupeKey:`staff:${title}:${body}` }).catch(e=>({ ok:false, error:e.message })), Number(process.env.TELEGRAM_TIMEOUT_MS || 6500), 'Telegram'); jobs.telegram_portaria = withTimeout(sendPortariaTelegram({ title, body, category, action_url, dedupeKey:`staff-portaria:${title}:${body}` }).catch(e=>({ ok:false, error:e.message })), Number(process.env.TELEGRAM_TIMEOUT_MS || 6500), 'Telegram Portaria'); }
+  if (channels.telegram !== false && await featureEnabled('telegram')) { const category=notificationCategoryFrom(title, body, payload||{}); jobs.telegram = withTimeout(sendTelegramMessage('', telegramPremiumMessage({ title, body, category, actionUrl:fullActionUrl(action_url) }), { disable_web_page_preview:true, dedupeKey:`staff:${title}:${body}` }).catch(e=>({ ok:false, error:e.message })), Number(process.env.TELEGRAM_TIMEOUT_MS || 6500), 'Telegram'); jobs.telegram_portaria = withTimeout(sendPortariaTelegram({ title, body, category, action_url, dedupeKey:`staff-portaria:${title}:${body}` }).catch(e=>({ ok:false, error:e.message })), Number(process.env.TELEGRAM_TIMEOUT_MS || 6500), 'Telegram Portaria'); }
+  if (channels.browser !== false) {
+    for (const user of staff) jobs[`browser_${user.id}`] = sendBrowserPushToUser(user.id, title, body, action_url || '/', payload || {}).catch(e=>({ ok:false, error:e.message }));
+  }
   const emails = staff.map(u=>u.email).filter(Boolean);
-  if (emails.length && await featureEnabled('email')) jobs.email = withTimeout(sendEmailSmart({ to: emails.join(','), subject:title, text:body, actionUrl: action_url, actionLabel:'Abrir no sistema' }).catch(e=>({ ok:false, error:e.message })), Number(process.env.EMAIL_TIMEOUT_MS || 12000), 'E-mail');
+  if (emails.length && channels.email !== false && await featureEnabled('email')) jobs.email = withTimeout(sendEmailSmart({ to: emails.join(','), subject:title, text:body, actionUrl: action_url, actionLabel:'Abrir no sistema' }).catch(e=>({ ok:false, error:e.message })), Number(process.env.EMAIL_TIMEOUT_MS || 12000), 'E-mail');
   const entries = await Promise.all(Object.entries(jobs).map(async ([k,p]) => [k, await p]));
   const delivery = Object.fromEntries(entries);
   for (const id of notifIds) await updateNotificationDelivery(id, delivery);
@@ -1968,6 +1983,26 @@ app.post('/api/maintenance', auth, can('maintenance.manage'), async (req,res,nex
 app.get('/api/emergency-types', auth, async (_req,res,next)=>{ try { res.json((await q('SELECT * FROM emergency_types WHERE active=true ORDER BY sort_order,label')).rows); } catch(e){ next(e); } });
 app.post('/api/emergency-types', auth, can('settings.manage'), async (req,res,next)=>{ try { requireFields(req.body,['code','label']); const r=await q('INSERT INTO emergency_types(code,label,phone,supplier,instructions,notify_all,active,sort_order,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,now()) ON CONFLICT(code) DO UPDATE SET label=$2,phone=$3,supplier=$4,instructions=$5,notify_all=$6,active=$7,sort_order=$8,updated_at=now() RETURNING *',[req.body.code,req.body.label,req.body.phone||'',req.body.supplier||'',req.body.instructions||'',req.body.notify_all===true,req.body.active!==false,req.body.sort_order||99]); res.json(r.rows[0]); } catch(e){ next(e); } });
 
+function emergencyRequesterDefaultLocation(user={}) {
+  const role = String(user?.role || '').toLowerCase();
+  if (role === 'portaria') return 'Portaria';
+  if (['funcionario','zeladoria','limpeza','manutencao','seguranca'].includes(role)) return user?.unit || roleLabel(role);
+  return user?.unit || '';
+}
+function normalizeEmergencyRequestLocation(raw='', user={}, {neighbor='', floor='', unit=''}={}) {
+  const role = String(user?.role || '').toLowerCase();
+  const value = String(raw || '').trim();
+  const defaultLoc = emergencyRequesterDefaultLocation(user) || unit || '';
+  if (!value || value.toLowerCase() === 'login') {
+    if (role === 'portaria') return { label:'Portaria', type:'Portaria', unit:'Portaria' };
+    if (['funcionario','zeladoria','limpeza','manutencao','seguranca'].includes(role)) return { label:defaultLoc || roleLabel(role), type:'Local informado', unit:defaultLoc || roleLabel(role) };
+    return { label:unit || defaultLoc || 'Unidade não informada', type:'Minha unidade', unit:unit || defaultLoc || '' };
+  }
+  if (value === 'Minha unidade') return { label:unit || defaultLoc || 'Unidade não informada', type:value, unit:unit || defaultLoc || '' };
+  if (value === 'Vizinho') return { label:`Vizinho - unidade ${neighbor || 'não informada'}`, type:value, unit:unit || defaultLoc || '' };
+  if (value === 'Corredor') return { label:`Corredor - andar ${floor || 'não informado'}`, type:value, unit:unit || defaultLoc || '' };
+  return { label:value, type:value, unit:unit || defaultLoc || value };
+}
 function emergencyLocationText(er={}) {
   return er.occurrence_location || er.unit || 'local a confirmar pela portaria';
 }
@@ -2004,18 +2039,19 @@ async function handleEmergencyRequest(req,res,next){ try {
     const residentRow = await q('SELECT unit FROM residents WHERE id=$1',[req.user.resident_id]).catch(()=>({ rows:[] }));
     loginUnit = residentRow.rows?.[0]?.unit || '';
   }
-  const roleLocation = ['portaria','zeladoria','limpeza','manutencao','seguranca'].includes(String(req.user?.role||'')) ? roleLabel(req.user.role).toLowerCase() : '';
-  const loc=req.body.occurrence_location || req.body.location_type || req.body.location || (loginUnit ? 'Minha unidade' : roleLocation);
   const neighbor=req.body.neighbor_unit || '';
   const floor=req.body.floor || '';
-  const finalLocation = loc === 'Minha unidade' ? (loginUnit || req.body.unit || '') : loc === 'Vizinho' ? `Vizinho - unidade ${neighbor || 'não informada'}` : loc === 'Corredor' ? `Corredor - andar ${floor || 'não informado'}` : (loc || req.body.unit || loginUnit || roleLocation || '');
-  const unit=req.body.unit || loginUnit || roleLocation || '';
+  const rawLoc=req.body.occurrence_location || req.body.location_type || req.body.location || (loginUnit ? 'Minha unidade' : 'login');
+  const resolvedLoc = normalizeEmergencyRequestLocation(rawLoc, req.user, { neighbor, floor, unit:req.body.unit || loginUnit || '' });
+  const loc=resolvedLoc.type;
+  const finalLocation = resolvedLoc.label;
+  const unit=resolvedLoc.unit || req.body.unit || loginUnit || '';
   const message=req.body.message || '';
   const notify_all=Boolean(type.notify_all);
   await ensureEmergencyRequestColumns();
   const r=await q('INSERT INTO emergency_requests(type_code,type_label,unit,message,requested_by,requested_role,status,notify_all,occurrence_location,location_type,neighbor_unit,floor) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',[code,type.label,unit,message,req.user.id,req.user.role,'pendente',notify_all,finalLocation,loc,neighbor,floor]);
   const body=`${type.label} solicitada. Local: ${finalLocation || unit || 'a confirmar'}. ${message}`;
-  await notifyStaff({ title:'Emergência aguardando aprovação', body, action_url:'/#/emergencia', channels:{ telegram:false,email:true,browser:true } }).catch(()=>null);
+  await notifyStaff({ title:'Emergência aguardando aprovação', body, action_url:'/#/emergencia', channels:{ telegram:false,email:true,browser:true }, payload:{ emergency:true, critical:true, type:code, request_id:r.rows[0]?.id } }).catch(()=>null);
   await sendEmergencyApprovalTelegram(r.rows[0]).catch(e=>console.warn('Falha ao enviar confirmação Telegram de emergência:', e.message));
   await q('INSERT INTO incidents(title,description,unit,severity,status) VALUES($1,$2,$3,$4,$5)', [`Emergência pendente: ${type.label}`, `${body}\nContato: ${type.supplier || '-'} ${type.phone || ''}\nOrientação: ${type.instructions || '-'}`, unit || finalLocation, 'critica', 'aberta']).catch(()=>null);
   res.json({ ok:true, request:r.rows[0], message:'Solicitação enviada para aprovação da portaria/síndico.', emergency:type });
@@ -2031,7 +2067,7 @@ app.post('/api/emergency-requests/:id/approve', auth, can('emergency.approve'), 
   if (er.notify_all) {
     await notifyAllResidents({ title:msg.title, body:msg.body, channels:{ app:true,browser:true,email:false,telegram:true,whatsapp:true }, action_url:'/#/emergencia', payload:{ emergency:true, critical:true, type:er.type_code } });
   } else {
-    await notifyStaff({ title:msg.title, body:msg.body, action_url:'/#/emergencia', channels:{ telegram:true,email:false,browser:true } });
+    await notifyStaff({ title:msg.title, body:msg.body, action_url:'/#/emergencia', channels:{ telegram:true,email:false,browser:true }, payload:{ emergency:true, critical:true, type:er.type_code, request_id:er.id } });
   }
   await audit(req.user.email,'aprovou emergência',er.type_label);
   res.json({ ...er, notification_title:msg.title });
