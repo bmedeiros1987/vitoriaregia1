@@ -17,7 +17,7 @@ import { randomBytes, createHash, verify as cryptoVerify } from 'node:crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v12.7.2';
+const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v12.7.3';
 const DEFAULT_TELEGRAM_CHAT_ID = '8188648317';
 const JWT_SECRET = process.env.JWT_SECRET || 'troque-este-segredo-em-producao';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/vitoriaregia';
@@ -131,6 +131,8 @@ async function ensureCriticalLegacySchema() {
     ['residents','whatsapp_phone TEXT'],
     ['residents','telegram_chat_id TEXT'],
     ['residents','telegram_username TEXT'],
+    ['residents','telegram_link_token TEXT'],
+    ['residents','telegram_linked_at TIMESTAMP'],
     ['residents','active BOOLEAN DEFAULT true'],
     ['residents','pet_name TEXT'],
     ['residents','vehicle_model TEXT'],
@@ -608,6 +610,7 @@ CREATE TABLE IF NOT EXISTS telegram_callback_events(
 
   await ensureCriticalLegacySchema();
   await ensureEmergencyRequestColumns();
+  await ensureTelegramLinkColumns();
 
   // Migração segura para bancos já existentes.
   // Observação: CREATE TABLE IF NOT EXISTS não altera tabelas antigas. Por isso,
@@ -627,7 +630,7 @@ CREATE TABLE IF NOT EXISTS telegram_callback_events(
     ['residents','name TEXT'], ['residents','unit TEXT'], ['residents','phone TEXT'], ['residents','whatsapp_phone TEXT'], ['residents','email TEXT'],
     ['residents','document TEXT'], ['residents','vehicle TEXT'], ['residents','vehicle_model TEXT'], ['residents','vehicle_plate TEXT'], ['residents','pet_name TEXT'], ['residents','notes TEXT'], ['residents','access_profile TEXT DEFAULT \'morador\''],
     ['residents','access_permissions JSONB DEFAULT \'{}\'::jsonb'], ['residents','telegram_chat_id TEXT'],
-    ['residents','telegram_username TEXT'],
+    ['residents','telegram_username TEXT'], ['residents','telegram_link_token TEXT'], ['residents','telegram_linked_at TIMESTAMP'],
     ['residents',"resident_tags JSONB DEFAULT '{}'::jsonb"],
     ['residents','notification_preferences JSONB DEFAULT \'{"app":true,"email":true,"telegram":true,"whatsapp":false,"browser":true}\'::jsonb'], ['residents','created_at TIMESTAMP DEFAULT now()'], ['residents','active BOOLEAN DEFAULT true'], ['residents','deleted_at TIMESTAMP'],
 
@@ -684,7 +687,7 @@ CREATE TABLE IF NOT EXISTS telegram_callback_events(
   await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_reservation_slot ON reservations(area, reserved_for, start_time, end_time) WHERE status <> 'cancelada'").catch(e => console.warn('Índice de reservas ignorado:', e.message));
 
   const defaultSettings = {
-    THEME_ACCENT: '#126b5f', THEME_TEXT_SIZE: 'comfort', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light', APP_VERSION:'Vitória Régia Pro v12.7.0',
+    THEME_ACCENT: '#126b5f', THEME_TEXT_SIZE: 'comfort', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light', APP_VERSION:'Vitória Régia Pro v12.7.3',
     CONDO_NAME: 'Condomínio Vitória Régia', DEVELOPED_BY: 'CrewCheck', CREWCHECK_SITE: 'https://www.crewcheck.online/', CREWCHECK_FOOTER: 'Desenvolvido por CrewCheck - todos os direitos reservados', CONDO_ADDRESS: '', WEATHER_CITY: 'João Pessoa', WEATHER_LAT: '-7.1195', WEATHER_LON: '-34.8450',
     ELEVATOR_OPERATOR_NAME: 'Operadora do elevador', ELEVATOR_EMERGENCY_PHONE: '', EMERGENCY_EMAILS: process.env.SENDGRID_TO_DEFAULT || '',
     EMERGENCY_APPROVAL_REQUIRED: 'true', FOOTER_MODE: 'minimal', EMAIL_PROVIDER: process.env.MAIL_PROVIDER || 'sendgrid',
@@ -798,6 +801,16 @@ async function getTelegramBotUsername() {
   const bot = String(await getSetting('TELEGRAM_BOT_USERNAME', process.env.TELEGRAM_BOT_USERNAME || 'vitoriaregia_bot') || 'vitoriaregia_bot').replace(/^@+/, '').trim();
   return bot || 'vitoriaregia_bot';
 }
+async function ensureTelegramLinkColumns() {
+  // Garante as colunas usadas pelo vínculo automático do Telegram antes de qualquer SELECT/UPDATE.
+  // Bancos vindos de versões antigas podem ter residents/users/registration_requests sem telegram_link_token.
+  const cols = [
+    ['users','telegram_chat_id TEXT'], ['users','telegram_username TEXT'], ['users','telegram_link_token TEXT'], ['users','telegram_linked_at TIMESTAMP'],
+    ['residents','telegram_chat_id TEXT'], ['residents','telegram_username TEXT'], ['residents','telegram_link_token TEXT'], ['residents','telegram_linked_at TIMESTAMP'],
+    ['registration_requests','telegram_chat_id TEXT'], ['registration_requests','telegram_username TEXT'], ['registration_requests','telegram_link_token TEXT'], ['registration_requests','telegram_linked_at TIMESTAMP']
+  ];
+  for (const [table, col] of cols) await addColumn(table, col);
+}
 async function telegramStartLink(payload='vincular_telegram') {
   const configured = String(await getSetting('TELEGRAM_START_URL', process.env.TELEGRAM_START_URL || '') || '').trim();
   const base = configured && /^https?:\/\//i.test(configured) ? configured.replace(/\?.*$/, '').replace(/\/$/, '') : `https://t.me/${await getTelegramBotUsername()}`;
@@ -808,6 +821,7 @@ function newTelegramLinkToken(prefix='tg') {
   return `${clean}_${randomCode(8).toLowerCase()}_${randomBytes(5).toString('hex')}`;
 }
 async function ensureTelegramLinkFor(entity, id) {
+  await ensureTelegramLinkColumns();
   const map = { request:'registration_requests', registration:'registration_requests', user:'users', resident:'residents', morador:'residents', usuario:'users' };
   const table = map[String(entity || '').toLowerCase()];
   if (!table || !id) { const err=new Error('Entidade inválida para vínculo Telegram.'); err.status=400; throw err; }
@@ -818,6 +832,7 @@ async function ensureTelegramLinkFor(entity, id) {
   return { token, url: await telegramStartLink(token), entity: table, id: Number(id) };
 }
 async function linkTelegramByStartPayload(payload='', from={}, chat={}) {
+  await ensureTelegramLinkColumns();
   const token = String(payload || '').trim();
   const chatId = String(chat?.id || from?.id || '').trim();
   const username = normalizeTelegramUsername(from?.username || '');
