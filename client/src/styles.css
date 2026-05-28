@@ -748,3 +748,19 @@ body[data-appearance="dark"] .appShell>aside{background:linear-gradient(180deg,#
 
 /* v12.6.3 — Telegram Portaria Premium e Kiosk */
 .premiumTelegramBox{border-width:2px!important;background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 12%,var(--panel)),var(--panel2))!important}.packageActions .secondaryAction,.actions .secondaryAction{background:var(--panel2)!important;color:var(--accent)!important;border:1px solid color-mix(in srgb,var(--accent) 28%,var(--line))!important}.packageActions{gap:7px!important;flex-wrap:wrap!important}.packageActions button{min-width:118px}.settingsCard .full textarea{min-height:82px}
+
+
+/* v12.6.7 — câmera ao vivo para leitura automática de etiquetas no celular/APK */
+.cameraOpenButton{min-height:48px!important;border-style:solid!important;background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 16%,var(--panel2)),var(--panel2))!important;}
+.cameraReaderOverlay{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:9999;display:grid;place-items:center;padding:14px;}
+.cameraReaderBox{width:min(720px,96vw);background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:28px;box-shadow:0 30px 100px rgba(0,0,0,.38);overflow:hidden;}
+.cameraReaderHead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:16px 18px;border-bottom:1px solid var(--line);}
+.cameraReaderHead b{font-size:18px;display:block}.cameraReaderHead button{width:42px;height:42px;border-radius:14px;background:var(--panel2);display:grid;place-items:center;}
+.cameraReaderStage{position:relative;background:#050b0a;aspect-ratio:4/3;display:grid;place-items:center;overflow:hidden;}
+.cameraReaderStage video{width:100%;height:100%;object-fit:cover;display:block;}
+.cameraGuide{position:absolute;inset:11%;border:3px dashed rgba(255,255,255,.82);border-radius:18px;display:grid;place-items:start center;pointer-events:none;box-shadow:0 0 0 999px rgba(0,0,0,.16);}
+.cameraGuide span{margin-top:10px;background:rgba(0,0,0,.55);color:#fff;border-radius:999px;padding:7px 12px;font-weight:900;font-size:13px;}
+.cameraReaderActions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;padding:16px 18px;}
+.cameraReaderActions button{display:inline-flex;align-items:center;gap:8px;border-radius:16px;padding:12px 15px;font-weight:950;border:1px solid var(--line);}
+.cameraReaderTip{padding:0 18px 16px;overflow-wrap:anywhere;}
+@media(max-width:620px){.cameraReaderOverlay{padding:0}.cameraReaderBox{width:100vw;min-height:100vh;border-radius:0;border:0;display:flex;flex-direction:column}.cameraReaderStage{aspect-ratio:auto;flex:1}.cameraReaderActions{justify-content:stretch}.cameraReaderActions button{flex:1 1 140px;justify-content:center}.cameraGuide{inset:8%;}}

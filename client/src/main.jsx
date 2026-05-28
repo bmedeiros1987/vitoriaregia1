@@ -11,7 +11,7 @@ import {
 import './styles.css';
 
 const API = import.meta.env.VITE_API_URL || '';
-const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v12.6.6';
+const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v12.6.7';
 const DEFAULT_TELEGRAM_CHAT_ID = '8188648317';
 const money = (v) => Number(v || 0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
 const date = (v) => v ? new Date(String(v)).toLocaleDateString('pt-BR', { timeZone:'UTC' }) : '-';
@@ -111,6 +111,7 @@ function App(){
   const [err,setErr] = useState('');
   const [confirm,setConfirm] = useState(null);
   const [reading,setReading] = useState('');
+  const [cameraReader,setCameraReader] = useState(null);
   const [lookup,setLookup] = useState({});
   const settings = { ...data.settings, ...Object.fromEntries(Object.entries(forms.settings || {}).filter(([,v]) => v !== '' && v !== undefined && v !== null)) };
   const isAdminReserved = ['master','admin'].includes(session?.role);
@@ -206,6 +207,13 @@ function App(){
     } finally { setReading(''); }
   }
   async function fileToData(file, cb){ if(!file) return; const reader = new FileReader(); reader.onload = () => cb(reader.result); reader.readAsDataURL(file); }
+  function openCameraReader(type='package'){
+    if(!navigator.mediaDevices?.getUserMedia){
+      notify('Este navegador/aparelho não liberou câmera ao vivo. Use o botão de arquivo/câmera ou confira a permissão de câmera do app.', true);
+      return;
+    }
+    setCameraReader({ type });
+  }
 
   if(!session) return <LoginPage forms={forms} setForm={setForm} mode={loginMode} setMode={setLoginMode} doLogin={doLogin} err={err} setShowPass={setShowPass} showPass={showPass} action={action} settings={settings} />;
   const menuItems = [ ['dashboard','Início',Home], ['portaria','Portaria',Package], ['reservas','Reservas',CalendarDays], ['financeiro','Financeiro',WalletCards], ['cadastros','Cadastros',Users], ['comunicacao','Comunicação',Bell], ['ocorrencias','Livro de Ocorrências',BookOpen], ['emergencia','Emergência',Siren], ['suporte','Suporte',HelpCircle], ['configuracoes','Configurações',Settings], ['central','Sistema e Apps',ShieldCheck], ['updates','Atualizações',RefreshCcw] ];
@@ -213,15 +221,57 @@ function App(){
   const routeNow = currentRouteState();
   const reservasRouteLocked = active==='reservas' || routeNow.active==='reservas' || isReservasHash();
   const visualActive = reservasRouteLocked ? 'reservas' : active;
-  const props = { data, forms, setForm, action, notify, loadAll, settings, session, can, openConfirm, lookup, lookupUnit, prefillResidentFromContext, readImage, reading, fileToData, setActive:go, sub, setSub, isAdminReserved, configTab, setConfigTab, del, logout };
+  const props = { data, forms, setForm, action, notify, loadAll, settings, session, can, openConfirm, lookup, lookupUnit, prefillResidentFromContext, readImage, openCameraReader, reading, fileToData, setActive:go, sub, setSub, isAdminReserved, configTab, setConfigTab, del, logout };
   return <div className={shellClass}>
     <button className="mobileMenu" onClick={()=>setMenuOpen(true)}><Menu /></button>{menuOpen && <div className="overlay" onClick={()=>setMenuOpen(false)} />}
     <aside><div className="brand brandCompact brandLogoOnly"><img src="/logo-vitoria-regia-menu.svg" className="brandLogo"/><button className="insideClose menuToggle" title={menuOpen ? 'Fechar menu' : (menuClosed?'Expandir menu':'Recolher menu')} onClick={()=>{ if(window.innerWidth < 861) setMenuOpen(false); else setMenuClosed(!menuClosed); }}>{window.innerWidth < 861 ? <X/> : (menuClosed ? <ChevronRight/> : <PanelLeft/>)}</button></div><nav>{menuItems.map(([key,label,Icon]) => <button key={key} className={visualActive===key?'active':''} aria-current={visualActive===key?'page':undefined} onClick={()=>go(key, key==='reservas'?'calendario':undefined)}><Icon /><span>{label}</span></button>)}</nav><div className="sideBottom"><button onClick={()=>go('perfil')}><UserCheck/><span>Meu perfil</span></button><button onClick={logout}><LogOut/><span>Sair</span></button></div></aside>
     {can('emergency.use') && <button className="floatingEmergency" onClick={()=>go('emergencia')}><Siren/><span>Emergência</span></button>}
     <main className="content"><Topbar session={session} settings={settings} data={data} setActive={go}/>{toast && <div className="toast">{toast}</div>}
       {visualActive==='dashboard' && <Dashboard {...props}/>} {visualActive==='portaria' && <Portaria {...props}/>} {reservasRouteLocked && <Reservations {...props}/>} {visualActive==='financeiro' && <Financeiro {...props}/>} {visualActive==='cadastros' && <Cadastros {...props}/>} {visualActive==='comunicacao' && <Comunicacao {...props}/>} {visualActive==='ocorrencias' && <OccurrenceBook {...props}/>} {visualActive==='emergencia' && <Emergency {...props}/>} {visualActive==='suporte' && <SupportPage {...props}/>} {visualActive==='configuracoes' && <SettingsPage {...props}/>} {visualActive==='central' && <CentralPro {...props}/>} {visualActive==='updates' && <Updates {...props}/>} {visualActive==='perfil' && <Profile {...props}/>} 
-    </main><nav className="bottomNav"><button className={visualActive==='dashboard'?'active':''} onClick={()=>go('dashboard')}><Home/><span>Início</span></button><button className={visualActive==='reservas'?'active':''} onClick={()=>go('reservas','calendario')}><CalendarDays/><span>Reservas</span></button><button className={visualActive==='comunicacao'?'active':''} onClick={()=>go('comunicacao','notificacoes')}><Bell/><span>Comunicados</span></button><button className={visualActive==='perfil'?'active':''} onClick={()=>go('perfil')}><UserCheck/><span>Perfil</span></button></nav>{confirm && <ConfirmModal confirm={confirm} onCancel={()=>setConfirm(null)} onConfirm={confirmRun}/>}<Footer /></div>;
+    </main><nav className="bottomNav"><button className={visualActive==='dashboard'?'active':''} onClick={()=>go('dashboard')}><Home/><span>Início</span></button><button className={visualActive==='reservas'?'active':''} onClick={()=>go('reservas','calendario')}><CalendarDays/><span>Reservas</span></button><button className={visualActive==='comunicacao'?'active':''} onClick={()=>go('comunicacao','notificacoes')}><Bell/><span>Comunicados</span></button><button className={visualActive==='perfil'?'active':''} onClick={()=>go('perfil')}><UserCheck/><span>Perfil</span></button></nav>{cameraReader && <CameraCaptureModal type={cameraReader.type} onClose={()=>setCameraReader(null)} onCapture={async(file,type)=>{ setCameraReader(null); await readImage(file,type); }} notify={notify}/>} {confirm && <ConfirmModal confirm={confirm} onCancel={()=>setConfirm(null)} onConfirm={confirmRun}/>}<Footer /></div>;
 }
+
+function CameraCaptureModal({type='package',onClose,onCapture,notify}){
+  const videoRef=useRef(null);
+  const canvasRef=useRef(null);
+  const [status,setStatus]=useState('Abrindo câmera do celular...');
+  const [stream,setStream]=useState(null);
+  useEffect(()=>{
+    let active=true;
+    async function start(){
+      try{
+        const media=await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:'environment' }, width:{ ideal:1920 }, height:{ ideal:1080 } }, audio:false });
+        if(!active){ media.getTracks().forEach(t=>t.stop()); return; }
+        setStream(media);
+        if(videoRef.current){ videoRef.current.srcObject=media; await videoRef.current.play().catch(()=>null); }
+        setStatus('Posicione a etiqueta inteira, com boa luz, e toque em Capturar.');
+      }catch(e){
+        setStatus('Não consegui acessar a câmera. Verifique a permissão de câmera do navegador/APK e tente novamente.');
+        notify?.('Câmera bloqueada ou indisponível: '+(e?.message||'permissão negada'), true);
+      }
+    }
+    start();
+    return()=>{ active=false; stream?.getTracks?.().forEach(t=>t.stop()); };
+  },[]);
+  function stop(){ try{ stream?.getTracks?.().forEach(t=>t.stop()); }catch{} }
+  async function capture(){
+    const video=videoRef.current;
+    const canvas=canvasRef.current;
+    if(!video || !canvas || !video.videoWidth){ notify?.('A câmera ainda não iniciou. Aguarde um instante.', true); return; }
+    canvas.width=video.videoWidth;
+    canvas.height=video.videoHeight;
+    const ctx=canvas.getContext('2d');
+    ctx.drawImage(video,0,0,canvas.width,canvas.height);
+    canvas.toBlob(async(blob)=>{
+      if(!blob){ notify?.('Não foi possível capturar a imagem da etiqueta.', true); return; }
+      stop();
+      const file=new File([blob], `${type}-camera-${Date.now()}.jpg`, { type:'image/jpeg' });
+      await onCapture(file,type);
+    },'image/jpeg',0.92);
+  }
+  return <div className="cameraReaderOverlay"><div className="cameraReaderBox"><div className="cameraReaderHead"><div><b>{type==='package'?'Leitura automática da etiqueta':'Leitura automática'}</b><small>{status}</small></div><button type="button" onClick={()=>{stop(); onClose();}}><X/></button></div><div className="cameraReaderStage"><video ref={videoRef} playsInline muted autoPlay/><div className="cameraGuide"><span>Alinhe a etiqueta aqui</span></div></div><canvas ref={canvasRef} style={{display:'none'}}/><div className="cameraReaderActions"><button type="button" className="secondaryAction" onClick={()=>{stop(); onClose();}}>Cancelar</button><button type="button" className="confirmAction" onClick={capture}><Camera/> Capturar etiqueta</button></div><small className="cameraReaderTip">Se a câmera não abrir no APK, permita câmera em Configurações do Android / Apps / Vitória Régia Portaria / Permissões.</small></div></div>;
+}
+
 function LoginPage({ forms,setForm,mode,setMode,doLogin,err,setShowPass,showPass,action,settings }){
   const [registerStatus,setRegisterStatus] = useState(null);
   const [sendingRegister,setSendingRegister] = useState(false);
@@ -333,7 +383,7 @@ function Dashboard({data,setActive,settings,session}){ const m=data.dashboard?.m
 ]; const metricItems=[{icon:<Users/>,label:'Moradores',value:m.residents||0,tab:'cadastros',sub:'moradores'},{icon:<Package/>,label:'Encomendas',value:m.pendingPackages||0,tab:'portaria',sub:'encomendas'},{icon:<CalendarDays/>,label:'Reservas',value:m.reservationsPending||0,tab:'reservas'},{icon:<UserCheck/>,label:'Visitantes hoje',value:m.visitorsToday||0,tab:'portaria',sub:'visitantes'},{icon:<Bell/>,label:'Mensagens',value:m.messagesNew||0,tab:'comunicacao',sub:'notificacoes'},{icon:<UserPlus/>,label:'Cadastros pendentes',value:m.pendingRegistrations||0,tab:'cadastros',sub:'solicitacoes'},{icon:<BadgeDollarSign/>,label:'Boletos',value:m.boletosPending||0,tab:'financeiro',sub:'boletos'}]; return <div className="dashboardRedesign"><section className="dashboardHero"><div><span className="eyebrow">Residencial Vitória Régia</span><h2>Bem-vindo ao Condomínio Vitória Régia</h2><p>{session?.role==='morador'?'Você visualiza as informações da sua unidade.':'Bloco único, 11 andares e 33 unidades cadastráveis de 101 a 1103.'}</p></div><div className="weather"><CloudSun/><div><b>{data.weather?.temperature ?? '--'}°C</b><small>{data.weather?.city || settings.WEATHER_CITY || 'João Pessoa'} · umidade {data.weather?.humidity ?? '--'}%</small></div></div></section>{!['morador'].includes(session?.role) && <section className="approvalStrip"><button onClick={()=>setActive('cadastros','solicitacoes')}><UserPlus/><b>{m.pendingRegistrations||0}</b><span>Cadastros aguardando aprovação</span></button><button onClick={()=>setActive('reservas')}><CalendarDays/><b>{m.reservationsPending||0}</b><span>Reservas aguardando análise</span></button></section>}<div className="moduleGrid">{modules.map(({key,sub,label,desc,Icon,premium})=><button key={label} type="button" className={premium?'moduleCard premium':'moduleCard'} onClick={()=>setActive(key,sub)}><span><Icon/></span><b>{label}</b><small>{desc}</small><ChevronRight/></button>)}</div><section className="permissionsCard"><div><h3><ShieldCheck/> Gerenciar perfis e permissões</h3><p>Controle quem acessa o sistema e o que cada um pode fazer.</p><ul><li>Síndicos podem ser moradores ou usuários terceirizados</li><li>Permissões personalizadas por função</li><li>Reatribuição de síndico de forma simples e segura</li><li>Histórico completo de alterações</li></ul></div><div className="permissionVisual"><Users/><ShieldCheck/><button onClick={()=>setActive('cadastros','usuarios')}>Gerenciar agora</button></div></section><section className="appsShowcase"><div><h3>Baixar aplicativos</h3><p>Acesse o sistema de onde estiver com nossos aplicativos oficiais.</p></div><div className="quickAppCards"><button onClick={()=>setActive('central','apps')}><Smartphone/><b>App do Morador</b><small>Tudo na palma da mão.</small></button><button onClick={()=>setActive('central','apps')}><UserCheck/><b>App do Síndico</b><small>Gestão completa.</small></button><button onClick={()=>setActive('central','apps')}><ShieldCheck/><b>App da Portaria (APK)</b><small>Controle de acesso.</small></button></div></section><div className="metricStrip aligned dashboardMetrics">{metricItems.map(item=><Metric key={item.label} {...item} onClick={()=>setActive(item.tab,item.sub)} />)}</div></div>; }
 function Portaria(props){ return <Panel title="Portaria" subtitle="Encomendas, visitantes, reservas e atendimento rápido." icon={<Package/>}><SubTabs value={props.sub} setValue={props.setSub} tabs={[['encomendas','Encomendas'],['visitantes','Visitantes'],['escalas','Escalas'],['mensagens','Mensagens']]} />{props.sub==='encomendas'&&<Packages {...props}/>} {props.sub==='visitantes'&&<Visitors {...props}/>} {props.sub==='escalas'&&<Shifts {...props}/>} {props.sub==='mensagens'&&<Messages {...props}/>}</Panel>; }
 function UnitLookupBox({result,onRegister}){ if(!result) return null; const arr=result.residents || []; return <div className={arr.length?'noticeBox ok':'noticeBox warn'}>{arr.length ? <><b>Morador encontrado</b><small>{arr.map(r=>`${r.name} · ${r.email || r.whatsapp_phone || r.phone || 'sem contato'}`).join(' | ')}</small></> : <><b>Nenhum morador cadastrado nesta unidade.</b><small>Recomende o cadastro antes de confirmar, principalmente para notificação automática.</small>{onRegister && <button type="button" className="buttonlike secondary" onClick={onRegister}><UserPlus/> Abrir cadastro pré-preenchido</button>}</>}</div>; }
-function Packages({forms,setForm,action,openConfirm,lookup,lookupUnit,prefillResidentFromContext,readImage,reading,data,del,loadAll,session}){
+function Packages({forms,setForm,action,openConfirm,lookup,lookupUnit,prefillResidentFromContext,readImage,openCameraReader,reading,data,del,loadAll,session}){
   const f=forms.package;
   const isResident=session?.role==='morador';
   const summary={Código:f.tracking, Destinatário:f.recipient, Unidade:f.unit, 'Canais':Object.entries(f.notification_channels||{}).filter(([,v])=>v).map(([k])=>channelNames[k]||k).join(', ')};
@@ -345,7 +395,8 @@ function Packages({forms,setForm,action,openConfirm,lookup,lookupUnit,prefillRes
       <label>Destinatário *<input required value={f.recipient} onChange={e=>setForm('package',{recipient:e.target.value})}/></label>
       <label>Etiqueta/observação<input value={f.label} onChange={e=>setForm('package',{label:e.target.value})}/></label>
       <ChannelChooser settings={data.settings} value={f.notification_channels} onChange={v=>setForm('package',{notification_channels:v})}/>
-      <label className="fileButton"><ScanLine/> {reading==='package'?'Lendo etiqueta...':'Leitura automática da etiqueta'}<input type="file" accept="image/*" capture="environment" onChange={e=>readImage(e.target.files?.[0],'package')}/></label>
+      <button type="button" className="fileButton cameraOpenButton" onClick={()=>openCameraReader?.('package')}><Camera/> Abrir câmera do celular</button>
+      <label className="fileButton"><ScanLine/> {reading==='package'?'Lendo etiqueta...':'Escolher foto/usar câmera padrão'}<input type="file" accept="image/*" capture="environment" onChange={e=>readImage(e.target.files?.[0],'package')}/></label>
       <textarea placeholder="Texto lido automaticamente / observações" value={f.extracted_text} onChange={e=>setForm('package',{extracted_text:e.target.value})}/>
       <button><Plus/> Conferir e cadastrar</button>
     </form>

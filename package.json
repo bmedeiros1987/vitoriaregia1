@@ -1,8 +1,8 @@
 {
   "name": "vitoria-regia-pro",
-  "version": "12.6.6",
+  "version": "12.6.7",
   "private": true,
-  "description": "Sistema Vitória Régia Pro v12.6.6 com correção de migração de colunas de Emergência.",
+  "description": "Sistema Vitória Régia Pro v12.6.7 com correção de câmera do leitor automático de etiquetas.",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "npm --prefix client run dev",
