@@ -873,3 +873,85 @@ body{overscroll-behavior-y:contain;}
 .financePremiumShell{display:grid;gap:18px}.financeHeroPremium{display:grid;grid-template-columns:1fr auto;gap:18px;align-items:center;border:1px solid var(--line);border-radius:30px;padding:24px;background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 18%,var(--panel)),var(--panel));box-shadow:var(--shadow)}.financeHeroPremium h3{font-size:34px;line-height:1;margin:5px 0}.financeBalanceBadge{min-width:210px;text-align:right;background:var(--panel2);border:1px solid var(--line);border-radius:24px;padding:18px}.financeBalanceBadge b{font-size:28px;color:var(--accent)}.financeKpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.financeKpis.compact{grid-template-columns:repeat(3,minmax(0,1fr))}.financeKpis article{background:var(--panel);border:1px solid var(--line);border-radius:24px;padding:18px;box-shadow:0 12px 32px rgba(15,30,25,.06)}.financeKpis span{display:block;color:var(--muted);font-weight:900;text-transform:uppercase;font-size:12px;letter-spacing:.08em}.financeKpis b{display:block;font-size:26px;margin:6px 0;color:var(--text)}.financePremiumGrid{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}.financeCard{background:var(--panel);border:1px solid var(--line);border-radius:26px;padding:18px;box-shadow:0 14px 38px rgba(15,30,25,.07)}.financeCard h3{display:flex;gap:8px;align-items:center;margin:0 0 12px}.financeBar{display:grid;grid-template-columns:140px 1fr 120px;gap:10px;align-items:center;margin:10px 0}.financeBar>div{height:12px;border-radius:999px;background:var(--panel2);overflow:hidden;border:1px solid var(--line)}.financeBar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent),var(--accent2))}.financeBar b{text-align:right}.financeDocLink{display:flex;align-items:center;gap:10px;text-decoration:none;border:1px solid var(--line);border-radius:16px;padding:12px;margin-bottom:10px;background:var(--panel2)}.financeDocLink svg{color:var(--accent)}.financeStatements .tableWrap{margin-top:10px}
 @media(max-width:980px){.financeHeroPremium,.financePremiumGrid{grid-template-columns:1fr}.financeBalanceBadge{text-align:left}.financeKpis{grid-template-columns:repeat(2,minmax(0,1fr))}.financeBar{grid-template-columns:1fr}.financeBar b{text-align:left}}
 @media(max-width:620px){.financeKpis,.financeKpis.compact{grid-template-columns:1fr}.financeHeroPremium{padding:18px;border-radius:24px}.financeHeroPremium h3{font-size:26px}.reservationDocActions .buttonlike{width:100%;justify-content:center}}
+
+
+/* v12.7.8 — Correção global de rolagem premium
+   Restaura a rolagem da página em desktop, tablet, celular e WebView/APK.
+   Mantém overlays críticos/câmera funcionando sem travar o conteúdo principal. */
+html,
+body,
+#root{
+  min-height:100%!important;
+  height:auto!important;
+  max-width:100%!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  -webkit-overflow-scrolling:touch!important;
+  overscroll-behavior-y:auto!important;
+  touch-action:pan-y!important;
+}
+body{
+  position:relative!important;
+}
+.appShell,
+.appShell .content,
+.content,
+main.content{
+  min-height:100dvh!important;
+  height:auto!important;
+  max-height:none!important;
+  overflow:visible!important;
+  overflow-y:visible!important;
+  -webkit-overflow-scrolling:touch!important;
+}
+.content{
+  padding-bottom:calc(132px + env(safe-area-inset-bottom,0px))!important;
+}
+.panel,
+.dashboardRedesign,
+.financePremiumShell,
+.portariaTabs,
+.settingsGrid,
+.formGrid,
+.tableWrap{
+  max-height:none!important;
+}
+.tableWrap{
+  overflow-x:auto!important;
+  overflow-y:visible!important;
+  -webkit-overflow-scrolling:touch!important;
+}
+.appShell > aside,
+.appShell > aside nav{
+  overscroll-behavior:contain!important;
+  -webkit-overflow-scrolling:touch!important;
+}
+.cameraReaderOverlay,
+.criticalEmergencyOverlay,
+.modalOverlay{
+  overflow:auto!important;
+  -webkit-overflow-scrolling:touch!important;
+}
+@media(max-width:860px){
+  html,body,#root{overflow-y:auto!important;}
+  .content,
+  .menu-closed .content,
+  .menu-floating .content,
+  .menu-horizontal .content,
+  .menu-top .content{
+    min-height:100dvh!important;
+    height:auto!important;
+    overflow:visible!important;
+    padding-bottom:calc(118px + env(safe-area-inset-bottom,0px))!important;
+  }
+  .bottomNav{position:fixed!important;}
+  .appFooter{
+    position:relative!important;
+    z-index:1!important;
+    margin-bottom:calc(72px + env(safe-area-inset-bottom,0px))!important;
+  }
+}
+@media(max-width:480px){
+  .content{padding-bottom:calc(128px + env(safe-area-inset-bottom,0px))!important;}
+  .appFooter{font-size:11.5px!important;line-height:1.3!important;}
+}
