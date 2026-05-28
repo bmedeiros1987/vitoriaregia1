@@ -1,8 +1,8 @@
 {
   "name": "vitoria-regia-pro",
-  "version": "12.7.3",
+  "version": "12.7.7",
   "private": true,
-  "description": "Sistema Vitória Régia Pro v12.7.0 com Auditoria recriada e protegida contra tela branca.",
+  "description": "Sistema Vitória Régia Pro v12.7.7 com Documento de Reserva, Balancetes e Financeiro Contábil Premium.",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "npm --prefix client run dev",

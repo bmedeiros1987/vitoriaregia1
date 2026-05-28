@@ -17,7 +17,7 @@ import { randomBytes, createHash, verify as cryptoVerify } from 'node:crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v12.7.3';
+const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v12.7.7';
 const DEFAULT_TELEGRAM_CHAT_ID = '8188648317';
 const JWT_SECRET = process.env.JWT_SECRET || 'troque-este-segredo-em-producao';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/vitoriaregia';
@@ -133,6 +133,7 @@ async function ensureCriticalLegacySchema() {
     ['residents','telegram_username TEXT'],
     ['residents','telegram_link_token TEXT'],
     ['residents','telegram_linked_at TIMESTAMP'],
+    ['residents',"gender TEXT DEFAULT 'nao_informado'"],
     ['residents','active BOOLEAN DEFAULT true'],
     ['residents','pet_name TEXT'],
     ['residents','vehicle_model TEXT'],
@@ -174,6 +175,7 @@ CREATE TABLE IF NOT EXISTS residents(
   access_permissions JSONB DEFAULT '{}'::jsonb,
   telegram_chat_id TEXT,
   telegram_username TEXT,
+  gender TEXT DEFAULT 'nao_informado',
   resident_tags JSONB DEFAULT '{}'::jsonb,
   notification_preferences JSONB DEFAULT '{"app":true,"email":true,"telegram":true,"whatsapp":false,"browser":true}'::jsonb,
   created_at TIMESTAMP DEFAULT now()
@@ -194,6 +196,7 @@ CREATE TABLE IF NOT EXISTS users(
   whatsapp_phone TEXT,
   telegram_chat_id TEXT,
   telegram_username TEXT,
+  gender TEXT DEFAULT 'nao_informado',
   notification_preferences JSONB DEFAULT '{"app":true,"email":true,"telegram":true,"whatsapp":false,"browser":true}'::jsonb,
   active BOOLEAN DEFAULT true,
   force_password_change BOOLEAN DEFAULT false,
@@ -252,6 +255,14 @@ CREATE TABLE IF NOT EXISTS packages(
   status TEXT DEFAULT 'pendente',
   label TEXT,
   photo_url TEXT,
+  carrier TEXT,
+  barcode TEXT,
+  barcode_format TEXT,
+  order_number TEXT,
+  invoice_number TEXT,
+  validation_status TEXT DEFAULT 'pendente',
+  ocr_confidence INTEGER DEFAULT 0,
+  source_type TEXT DEFAULT 'manual',
   notes TEXT,
   extracted_text TEXT,
   pickup_code TEXT,
@@ -383,6 +394,16 @@ CREATE TABLE IF NOT EXISTS notices(
   target_criteria JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMP DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS building_news(
+  id SERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  priority TEXT DEFAULT 'normal',
+  photo_data TEXT,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMP DEFAULT now(),
+  updated_at TIMESTAMP DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS invoices(
   id SERIAL PRIMARY KEY,
   supplier TEXT,
@@ -481,6 +502,7 @@ CREATE TABLE IF NOT EXISTS registration_requests(
   telegram_username TEXT,
   telegram_link_token TEXT,
   telegram_linked_at TIMESTAMP,
+  gender TEXT DEFAULT 'nao_informado',
   preferred_channels JSONB DEFAULT '{"email":true,"whatsapp":false,"telegram":false}'::jsonb,
   unit TEXT,
   document TEXT,
@@ -630,7 +652,7 @@ CREATE TABLE IF NOT EXISTS telegram_callback_events(
     ['residents','name TEXT'], ['residents','unit TEXT'], ['residents','phone TEXT'], ['residents','whatsapp_phone TEXT'], ['residents','email TEXT'],
     ['residents','document TEXT'], ['residents','vehicle TEXT'], ['residents','vehicle_model TEXT'], ['residents','vehicle_plate TEXT'], ['residents','pet_name TEXT'], ['residents','notes TEXT'], ['residents','access_profile TEXT DEFAULT \'morador\''],
     ['residents','access_permissions JSONB DEFAULT \'{}\'::jsonb'], ['residents','telegram_chat_id TEXT'],
-    ['residents','telegram_username TEXT'], ['residents','telegram_link_token TEXT'], ['residents','telegram_linked_at TIMESTAMP'],
+    ['residents','telegram_username TEXT'], ['residents','telegram_link_token TEXT'], ['residents','telegram_linked_at TIMESTAMP'], ['residents',"gender TEXT DEFAULT 'nao_informado'"],
     ['residents',"resident_tags JSONB DEFAULT '{}'::jsonb"],
     ['residents','notification_preferences JSONB DEFAULT \'{"app":true,"email":true,"telegram":true,"whatsapp":false,"browser":true}\'::jsonb'], ['residents','created_at TIMESTAMP DEFAULT now()'], ['residents','active BOOLEAN DEFAULT true'], ['residents','deleted_at TIMESTAMP'],
 
@@ -650,7 +672,8 @@ CREATE TABLE IF NOT EXISTS telegram_callback_events(
     ['boletos','unit TEXT'], ['boletos','resident_id INTEGER'], ['boletos','title TEXT'], ['boletos','amount NUMERIC(12,2) DEFAULT 0'], ['boletos','due_date DATE'], ['boletos','status TEXT DEFAULT \'pendente\''], ['boletos','bank_name TEXT'], ['boletos','barcode TEXT'], ['boletos','digitable_line TEXT'], ['boletos','pdf_url TEXT'], ['boletos','payment_link TEXT'], ['boletos','provider TEXT DEFAULT \'manual\''], ['boletos','external_id TEXT'], ['boletos','source_type TEXT'], ['boletos','source_id INTEGER'], ['boletos','created_at TIMESTAMP DEFAULT now()'], ['boletos','paid_at TIMESTAMP'], ['boletos','deleted_at TIMESTAMP'],
     ['finance','title TEXT'], ['finance','amount NUMERIC(12,2)'], ['finance','type TEXT'], ['finance','status TEXT DEFAULT \'pendente\''], ['finance','due_date DATE'], ['finance','unit TEXT'], ['finance','resident_id INTEGER'], ['finance','category TEXT DEFAULT \'geral\''], ['finance','boleto_id INTEGER'], ['finance','created_at TIMESTAMP DEFAULT now()'], ['finance','deleted_at TIMESTAMP'],
 
-    // notices / invoices / notifications / incidents / emergency
+    // notices / news / invoices / notifications / incidents / emergency
+    ['building_news','title TEXT'], ['building_news','body TEXT'], ['building_news',"priority TEXT DEFAULT 'normal'"], ['building_news','photo_data TEXT'], ['building_news','created_by INTEGER'], ['building_news','created_at TIMESTAMP DEFAULT now()'], ['building_news','updated_at TIMESTAMP DEFAULT now()'],
     ['notices','title TEXT'], ['notices','body TEXT'], ['notices','channel TEXT DEFAULT \'app\''], ['notices','priority TEXT DEFAULT \'normal\''], ['notices','target_role TEXT DEFAULT \'todos\''], ['notices',"target_criteria JSONB DEFAULT '{}'::jsonb"], ['notices','created_at TIMESTAMP DEFAULT now()'],
     ['invoices','supplier TEXT'], ['invoices','document_number TEXT'], ['invoices','access_key TEXT'], ['invoices','amount NUMERIC(12,2) DEFAULT 0'], ['invoices','issue_date DATE'], ['invoices','due_date DATE'], ['invoices','unit TEXT'], ['invoices','resident_id INTEGER'], ['invoices','category TEXT DEFAULT \'nota fiscal\''], ['invoices','status TEXT DEFAULT \'registrada\''], ['invoices','extracted_text TEXT'], ['invoices','file_name TEXT'], ['invoices','created_at TIMESTAMP DEFAULT now()'],
     ['notifications','user_id INTEGER'], ['notifications','resident_id INTEGER'], ['notifications','title TEXT'], ['notifications','body TEXT'], ['notifications','channel TEXT DEFAULT \'app\''], ['notifications','channels JSONB DEFAULT \'{}\'::jsonb'], ['notifications','status TEXT DEFAULT \'nova\''], ['notifications','action_url TEXT'], ['notifications','payload JSONB DEFAULT \'{}\'::jsonb'], ['notifications','read_at TIMESTAMP'], ['notifications','created_at TIMESTAMP DEFAULT now()'],
@@ -661,7 +684,7 @@ CREATE TABLE IF NOT EXISTS telegram_callback_events(
     // settings / workflows / updates / audit
     ['settings','value TEXT'], ['settings','updated_at TIMESTAMP DEFAULT now()'],
     ['emergency_types','label TEXT'], ['emergency_types','phone TEXT'], ['emergency_types','supplier TEXT'], ['emergency_types','instructions TEXT'], ['emergency_types','notify_all BOOLEAN DEFAULT false'], ['emergency_types','active BOOLEAN DEFAULT true'], ['emergency_types','sort_order INTEGER DEFAULT 0'], ['emergency_types','updated_at TIMESTAMP DEFAULT now()'],
-    ['registration_requests','name TEXT'], ['registration_requests','email TEXT'], ['registration_requests','phone TEXT'], ['registration_requests','whatsapp_phone TEXT'], ['registration_requests','telegram_chat_id TEXT'], ['registration_requests','telegram_username TEXT'], ['registration_requests','telegram_link_token TEXT'], ['registration_requests','telegram_linked_at TIMESTAMP'], ['registration_requests','preferred_channels JSONB DEFAULT \'{"email":true,"whatsapp":false,"telegram":false}\'::jsonb'], ['registration_requests','unit TEXT'], ['registration_requests','document TEXT'], ['registration_requests','role TEXT DEFAULT \'morador\''], ['registration_requests','status TEXT DEFAULT \'pendente\''], ['registration_requests','notes TEXT'], ['registration_requests','created_at TIMESTAMP DEFAULT now()'], ['registration_requests','approved_by INTEGER'], ['registration_requests','approved_at TIMESTAMP'],
+    ['registration_requests','name TEXT'], ['registration_requests','email TEXT'], ['registration_requests','phone TEXT'], ['registration_requests','whatsapp_phone TEXT'], ['registration_requests','telegram_chat_id TEXT'], ['registration_requests','telegram_username TEXT'], ['registration_requests','telegram_link_token TEXT'], ['registration_requests','telegram_linked_at TIMESTAMP'], ['registration_requests',"gender TEXT DEFAULT 'nao_informado'"], ['registration_requests',"gender TEXT DEFAULT 'nao_informado'"], ['registration_requests','preferred_channels JSONB DEFAULT \'{"email":true,"whatsapp":false,"telegram":false}\'::jsonb'], ['registration_requests','unit TEXT'], ['registration_requests','document TEXT'], ['registration_requests','role TEXT DEFAULT \'morador\''], ['registration_requests','status TEXT DEFAULT \'pendente\''], ['registration_requests','notes TEXT'], ['registration_requests','created_at TIMESTAMP DEFAULT now()'], ['registration_requests','approved_by INTEGER'], ['registration_requests','approved_at TIMESTAMP'],
     ['password_resets','user_id INTEGER'], ['password_resets','token TEXT'], ['password_resets','temp_password TEXT'], ['password_resets','used BOOLEAN DEFAULT false'], ['password_resets','expires_at TIMESTAMP'], ['password_resets','created_at TIMESTAMP DEFAULT now()'],
     ['push_subscriptions','user_id INTEGER'], ['push_subscriptions','endpoint TEXT'], ['push_subscriptions','payload JSONB'], ['push_subscriptions','created_at TIMESTAMP DEFAULT now()'],
     ['system_updates','update_code TEXT'], ['system_updates','version TEXT'], ['system_updates','title TEXT'], ['system_updates','notes TEXT'], ['system_updates','from_version TEXT'], ['system_updates','to_version TEXT'], ['system_updates','status TEXT DEFAULT \'disponivel\''], ['system_updates','validation_token_hash TEXT'], ['system_updates','payload_sha256 TEXT'], ['system_updates','manifest JSONB DEFAULT \'{}\'::jsonb'], ['system_updates','package_data BYTEA'], ['system_updates','announced_at TIMESTAMP'], ['system_updates','validated_at TIMESTAMP'], ['system_updates','applied_at TIMESTAMP'], ['system_updates','created_by INTEGER'], ['system_updates','applied_by INTEGER'], ['system_updates','error TEXT'], ['system_updates','created_at TIMESTAMP DEFAULT now()'],
@@ -687,7 +710,7 @@ CREATE TABLE IF NOT EXISTS telegram_callback_events(
   await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_reservation_slot ON reservations(area, reserved_for, start_time, end_time) WHERE status <> 'cancelada'").catch(e => console.warn('Índice de reservas ignorado:', e.message));
 
   const defaultSettings = {
-    THEME_ACCENT: '#126b5f', THEME_TEXT_SIZE: 'comfort', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light', APP_VERSION:'Vitória Régia Pro v12.7.3',
+    THEME_ACCENT: '#126b5f', THEME_TEXT_SIZE: 'comfort', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light', APP_VERSION:'Vitória Régia Pro v12.7.7',
     CONDO_NAME: 'Condomínio Vitória Régia', DEVELOPED_BY: 'CrewCheck', CREWCHECK_SITE: 'https://www.crewcheck.online/', CREWCHECK_FOOTER: 'Desenvolvido por CrewCheck - todos os direitos reservados', CONDO_ADDRESS: '', WEATHER_CITY: 'João Pessoa', WEATHER_LAT: '-7.1195', WEATHER_LON: '-34.8450',
     ELEVATOR_OPERATOR_NAME: 'Operadora do elevador', ELEVATOR_EMERGENCY_PHONE: '', EMERGENCY_EMAILS: process.env.SENDGRID_TO_DEFAULT || '',
     EMERGENCY_APPROVAL_REQUIRED: 'true', FOOTER_MODE: 'minimal', EMAIL_PROVIDER: process.env.MAIL_PROVIDER || 'sendgrid',
@@ -773,7 +796,7 @@ CREATE TABLE IF NOT EXISTS telegram_callback_events(
 
 function sanitizeUser(row) {
   const role = row.role || 'morador';
-  return { id: row.id, name: row.name, email: row.email, role, user_type: row.user_type || role, is_outsourced: row.is_outsourced === true, unit: row.unit || '', phone: row.phone || '', whatsapp_phone: row.whatsapp_phone || row.phone || '', telegram_chat_id: row.telegram_chat_id || '', telegram_username: row.telegram_username || '', telegram_link_token: row.telegram_link_token || '', telegram_linked_at: row.telegram_linked_at || null, notification_preferences: parseJson(row.notification_preferences, {}), active: row.active !== false, resident_id: row.resident_id || null, employee_id: row.employee_id || null, permissions: normalizePermissions(row.permissions, role), force_password_change: row.force_password_change === true, last_login: row.last_login || null, created_at: row.created_at || null };
+  return { id: row.id, name: row.name, email: row.email, role, user_type: row.user_type || role, is_outsourced: row.is_outsourced === true, unit: row.unit || '', phone: row.phone || '', whatsapp_phone: row.whatsapp_phone || row.phone || '', telegram_chat_id: row.telegram_chat_id || '', telegram_username: row.telegram_username || '', telegram_link_token: row.telegram_link_token || '', telegram_linked_at: row.telegram_linked_at || null, gender: row.gender || row.sexo || 'nao_informado', notification_preferences: parseJson(row.notification_preferences, {}), active: row.active !== false, resident_id: row.resident_id || null, employee_id: row.employee_id || null, permissions: normalizePermissions(row.permissions, role), force_password_change: row.force_password_change === true, last_login: row.last_login || null, created_at: row.created_at || null };
 }
 function auth(req, res, next) { try { const token=(req.headers.authorization||'').replace(/^Bearer\s+/i,''); const payload=jwt.verify(token, JWT_SECRET); payload.permissions=normalizePermissions(payload.permissions, payload.role); req.user=payload; next(); } catch { res.status(401).json({ error: 'Não autorizado' }); } }
 function hasPermission(user, permission) { if (!permission) return true; if (user?.role === 'master' || user?.role === 'admin') return true; if (user?.role === 'sindico') return !['platform.manage','bank.manage','system.update'].includes(permission); return Boolean(user?.permissions?.[permission]); }
@@ -805,9 +828,9 @@ async function ensureTelegramLinkColumns() {
   // Garante as colunas usadas pelo vínculo automático do Telegram antes de qualquer SELECT/UPDATE.
   // Bancos vindos de versões antigas podem ter residents/users/registration_requests sem telegram_link_token.
   const cols = [
-    ['users','telegram_chat_id TEXT'], ['users','telegram_username TEXT'], ['users','telegram_link_token TEXT'], ['users','telegram_linked_at TIMESTAMP'],
-    ['residents','telegram_chat_id TEXT'], ['residents','telegram_username TEXT'], ['residents','telegram_link_token TEXT'], ['residents','telegram_linked_at TIMESTAMP'],
-    ['registration_requests','telegram_chat_id TEXT'], ['registration_requests','telegram_username TEXT'], ['registration_requests','telegram_link_token TEXT'], ['registration_requests','telegram_linked_at TIMESTAMP']
+    ['users','telegram_chat_id TEXT'], ['users','telegram_username TEXT'], ['users','telegram_link_token TEXT'], ['users','telegram_linked_at TIMESTAMP'], ['users',"gender TEXT DEFAULT 'nao_informado'"], ['users',"gender TEXT DEFAULT 'nao_informado'"],
+    ['residents','telegram_chat_id TEXT'], ['residents','telegram_username TEXT'], ['residents','telegram_link_token TEXT'], ['residents','telegram_linked_at TIMESTAMP'], ['residents',"gender TEXT DEFAULT 'nao_informado'"], ['residents',"gender TEXT DEFAULT 'nao_informado'"],
+    ['registration_requests','telegram_chat_id TEXT'], ['registration_requests','telegram_username TEXT'], ['registration_requests','telegram_link_token TEXT'], ['registration_requests','telegram_linked_at TIMESTAMP'], ['registration_requests',"gender TEXT DEFAULT 'nao_informado'"]
   ];
   for (const [table, col] of cols) await addColumn(table, col);
 }
@@ -1477,15 +1500,33 @@ async function notifyStaff({ title, body, action_url='', channels={}, payload={}
 }
 async function notifyAllResidents({ title, body, channels={}, action_url='', payload={} }) { const residents=(await q('SELECT * FROM residents WHERE email IS NOT NULL OR phone IS NOT NULL')).rows; for (const r of residents) await notifyResident(r, { title, body, channels:{ app:true, browser:true, ...channels }, action_url, payload }).catch(()=>null); }
 
+async function resolveTelegramChatForUser(user={}) {
+  const direct = String(user.telegram_chat_id || '').trim();
+  if (direct) return direct;
+  try {
+    if (user.resident_id) {
+      const r = await q("SELECT telegram_chat_id FROM residents WHERE id=$1 AND COALESCE(telegram_chat_id,'')<>'' LIMIT 1", [user.resident_id]);
+      if (r.rows[0]?.telegram_chat_id) return String(r.rows[0].telegram_chat_id).trim();
+    }
+    if (user.email) {
+      const r = await q("SELECT telegram_chat_id FROM residents WHERE lower(coalesce(email,''))=lower($1) AND COALESCE(telegram_chat_id,'')<>'' ORDER BY id DESC LIMIT 1", [user.email]);
+      if (r.rows[0]?.telegram_chat_id) return String(r.rows[0].telegram_chat_id).trim();
+    }
+  } catch(_) {}
+  return '';
+}
 async function sendTemporaryPasswordToUser(user, temp, title='Senha temporária - Vitória Régia') {
   const prefs = await filterChannelsByPlan({ app:true, browser:true, email:true, telegram:true, whatsapp:true });
   const body = `Sua senha temporária é: ${temp}\nAcesse o sistema e altere sua senha.`;
   await createNotification({ user_id:user.id, title:'Senha temporária gerada', body:'Uma senha temporária foi enviada pelos seus canais cadastrados.', channel:'app', channels:prefs, payload:{ __skip_auto_delivery:true } }).catch(()=>null);
   const jobs=[];
-  if (prefs.email && user.email) jobs.push(sendEmailSmart({ to:user.email, subject:title, text:body, actionUrl:'/#/perfil', actionLabel:'Abrir meu perfil' }).catch(e=>({ ok:false, error:e.message })));
-  if (prefs.telegram) jobs.push(sendTelegramMessage(user.telegram_chat_id || '', telegramPremiumMessage({ title, body, category:'cadastro', actionUrl:fullActionUrl('/#/perfil') })).catch(e=>({ ok:false, error:e.message }))); 
-  if (prefs.whatsapp && (user.whatsapp_phone || user.phone)) jobs.push(sendWhatsAppText(user.whatsapp_phone || user.phone, body).catch(e=>({ ok:false, error:e.message })));
-  return Promise.all(jobs);
+  if (prefs.email && user.email) jobs.push(['email', sendEmailSmart({ to:user.email, subject:title, text:body, actionUrl:'/#/perfil', actionLabel:'Abrir meu perfil' }).catch(e=>({ ok:false, error:e.message }))]);
+  const telegramChat = await resolveTelegramChatForUser(user);
+  if (prefs.telegram && telegramChat) jobs.push(['telegram', sendTelegramMessage(telegramChat, telegramPremiumMessage({ title, body, category:'cadastro', actionUrl:fullActionUrl('/#/perfil') }), { allowDefaultChat:false, dedupeKey:`temp-password:${user.id}:${Date.now()}` }).catch(e=>({ ok:false, error:e.message }))]);
+  else if (prefs.telegram) jobs.push(['telegram', Promise.resolve({ ok:false, skipped:true, reason:'Telegram não vinculado ao cadastro.' })]);
+  if (prefs.whatsapp && (user.whatsapp_phone || user.phone)) jobs.push(['whatsapp', sendWhatsAppText(user.whatsapp_phone || user.phone, body).catch(e=>({ ok:false, error:e.message }))]);
+  const entries = await Promise.all(jobs.map(async ([k,p]) => [k, await p]));
+  return Object.fromEntries(entries);
 }
 
 async function sendRegistrationAcknowledgement(request={}) {
@@ -1545,8 +1586,49 @@ function normalizeOcrUnit(raw='') {
   if ([101,102,103].includes(n) || (/^[2-9]0[1-3]$/.test(num)) || (/^10(?:01|02|03)$/.test(num)) || (/^11(?:01|02|03)$/.test(num))) return num;
   return num;
 }
-function parsePackageText(text='') {
+
+function normalizeScannedCodes(codes=[]) {
+  const arr = Array.isArray(codes) ? codes : [];
+  const out=[]; const seen=new Set();
+  for (const item of arr) {
+    const raw = String(typeof item === 'string' ? item : (item?.rawValue || item?.value || '')).trim().replace(/\s+/g,'').replace(/[–—]/g,'-');
+    if (!raw || seen.has(raw)) continue;
+    seen.add(raw);
+    out.push({ rawValue:raw, format:String(item?.format || item?.type || 'codigo') });
+  }
+  return out;
+}
+function trackingFromCodes(codes=[]) {
+  const values = normalizeScannedCodes(codes).map(c => c.rawValue);
+  const correios = values.find(v => /^[A-Z]{2}\d{9}[A-Z]{2}$/i.test(v));
+  if (correios) return correios.toUpperCase();
+  const jnt = values.find(v => /^[A-Z]{1,4}\d{8,16}$/i.test(v));
+  if (jnt) return jnt.toUpperCase();
+  const longNumber = values.find(v => /^\d{10,22}$/.test(v));
+  if (longNumber) return longNumber;
+  return values[0] || '';
+}
+function carrierFromTracking(code='', text='') {
+  const up = String(code || '').toUpperCase();
+  if (/^[A-Z]{2}\d{9}BR$/.test(up)) return 'Correios';
+  if (/^SPX|SHOPEE/i.test(up) || /SHOPEE|SPX/i.test(text)) return 'Shopee';
+  if (/MELI|MERCADO/i.test(up) || /MERCADO\s*LIVRE|MERCADO\s*ENVIOS/i.test(text)) return 'Mercado Livre';
+  return '';
+}
+function packageReadConfidence(parsed={}) {
+  let score = 0;
+  if (parsed.tracking) score += 30;
+  if (parsed.barcode) score += 15;
+  if (parsed.unit) score += 25;
+  if (parsed.recipient) score += 20;
+  if (parsed.carrier) score += 10;
+  return Math.min(score, 99);
+}
+function parsePackageText(text='', codes=[]) {
   const clean = normalizeOcrText(text);
+  const scannedCodes = normalizeScannedCodes(codes);
+  const codeTracking = trackingFromCodes(scannedCodes);
+  const firstCode = scannedCodes[0] || null;
   const upper = clean.toUpperCase();
   const lines = clean.split('\n').map(l => l.trim()).filter(Boolean);
   const carriers = [
@@ -1563,14 +1645,15 @@ function parsePackageText(text='') {
     ['FedEx', /\bFEDEX\b/i],
     ['UPS', /\bUPS\b/i]
   ];
-  const carrier = (carriers.find(([,re]) => re.test(clean)) || [''])[0] || '';
+  const carrier = carrierFromTracking(codeTracking, clean) || (carriers.find(([,re]) => re.test(clean)) || [''])[0] || '';
   const jntCode = firstMatch(upper, [ /\b([A-Z]{2}\s*\d{3}\s*[-–]?\s*\d{2}\s*\d{3})\b/, /\b([A-Z]{2}\s*\d{3}\s*[-–]?\s*\d{5,6})\b/ ]).replace(/\s+/g, ' ').trim();
   const postalCode = firstMatch(upper, [/\b([A-Z]{2}\d{9}[A-Z]{2})\b/]);
   const longBarcode = firstMatch(upper, [/\b(\d{12,18})\b/]);
-  const tracking = (jntCode || postalCode || longBarcode || firstMatch(upper, [/\b([A-Z]{1,4}\d{8,16})\b/])).replace(/\s/g,'').replace(/[-–]/g,'-');
+  const tracking = (codeTracking || jntCode || postalCode || longBarcode || firstMatch(upper, [/\b([A-Z]{1,4}\d{8,16})\b/])).replace(/\s/g,'').replace(/[-–]/g,'-');
   const order_number = firstMatch(clean, [/(?:Pedido|Order|Pedido nº|Pedido n[ºo])\s*[:\-]?\s*([A-Z0-9\-\.\/]+)/i]);
   const invoice_number = firstMatch(clean, [/(?:NFe|NF-e|NF\s*n[ºo]|Nota Fiscal)\s*(?:N[ºo]\.?\s*)?[:\-]?\s*(\d{3,12})/i]);
-  const barcode = longBarcode || '';
+  const barcode = firstCode?.rawValue || longBarcode || '';
+  const barcode_format = firstCode?.format || '';
   let recipient = firstMatch(clean, [ /DESTINAT[ÁA]RIO\s*\n\s*([^\n]+)/i, /(?:Destinat[áa]rio|Recebedor|Nome do destinat[áa]rio|Cliente|Nome)\s*[:\-]\s*([^\n]+)/i ]);
   if (!recipient) { const idx = lines.findIndex(l => /DESTINAT[ÁA]RIO/i.test(l)); if (idx >= 0) recipient = (lines[idx+1] || '').trim(); }
   if (!recipient) recipient = lines.find(l => /^[A-ZÀ-Ú][A-Za-zÀ-ÿ'´`\s]{6,}$/.test(l) && !/LTDA|EXPRESS|COMERCIAL|REMETENTE|DESTINAT/i.test(l)) || '';
@@ -1590,7 +1673,9 @@ function parsePackageText(text='') {
   if (barcode) notesParts.push(`Código de barras: ${barcode}`);
   if (sender) notesParts.push(`Remetente: ${sender}`);
   const notes = notesParts.join(' · ');
-  return { tracking: tracking || '', recipient: recipient || '', unit: unit || '', label: carrier || tracking || '', carrier, order_number, invoice_number, barcode, sender, address: addressBlock || '', notes, raw: clean.slice(0,5000) };
+  const parsed = { tracking: tracking || '', recipient: recipient || '', unit: unit || '', label: carrier || tracking || '', carrier, order_number, invoice_number, barcode, barcode_format, sender, address: addressBlock || '', notes, raw: clean.slice(0,5000), source_type: scannedCodes.length ? 'barcode_ocr' : 'ocr' };
+  const confidence = packageReadConfidence(parsed);
+  return { ...parsed, confidence, validation_status: confidence >= 80 ? 'validada' : 'revisao', scanned_codes: scannedCodes };
 }
 function parseInvoiceText(text='') {
   const clean = normalizeOcrText(text);
@@ -1844,7 +1929,7 @@ app.post('/api/register', async (req,res,next)=>{ try {
   const channels = await filterChannelsByPlan({ email:hasEmail, whatsapp:hasWhats, telegram:hasTelegram, app:true, browser:true });
   const telegramLinkToken = telegramEnabled ? newTelegramLinkToken('cadastro') : '';
   const cleanTelegramUsername = normalizeTelegramUsername(req.body.telegram_username || '');
-  const r=await q('INSERT INTO registration_requests(name,email,phone,whatsapp_phone,telegram_chat_id,telegram_username,telegram_link_token,preferred_channels,unit,document,role,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *', [req.body.name, req.body.email || '', req.body.phone || req.body.whatsapp_phone || '', req.body.whatsapp_phone || req.body.phone || '', req.body.telegram_chat_id || '', cleanTelegramUsername, telegramLinkToken, JSON.stringify(channels), requiresUnit ? (req.body.unit || '') : (req.body.unit || ''), req.body.document || '', requestedRole, req.body.notes || '']);
+  const r=await q('INSERT INTO registration_requests(name,email,phone,whatsapp_phone,telegram_chat_id,telegram_username,telegram_link_token,preferred_channels,unit,document,role,notes,gender) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *', [req.body.name, req.body.email || '', req.body.phone || req.body.whatsapp_phone || '', req.body.whatsapp_phone || req.body.phone || '', req.body.telegram_chat_id || '', cleanTelegramUsername, telegramLinkToken, JSON.stringify(channels), requiresUnit ? (req.body.unit || '') : (req.body.unit || ''), req.body.document || '', requestedRole, req.body.notes || '', req.body.gender || 'nao_informado']);
   const savedRequest = r.rows[0];
   const telegramLinkUrl = telegramLinkToken ? await telegramStartLink(telegramLinkToken).catch(()=> '') : '';
   const emailAck = hasEmail ? await sendRegistrationAcknowledgement(savedRequest).catch(e => ({ ok:false, error:e.message })) : { ok:false, skipped:true, reason:'E-mail não informado.' };
@@ -1867,7 +1952,7 @@ app.post('/api/residents/request-same-unit', auth, async (req,res,next)=>{ try {
   if (req.body.email) await requireNoDuplicate('Solicitação de cadastro', (await q("SELECT id,email,status FROM registration_requests WHERE lower(email)=lower($1) AND status='pendente' LIMIT 1",[req.body.email])).rows[0]);
   const channels = await filterChannelsByPlan({ app:true, browser:true, email:Boolean(req.body.email), whatsapp:Boolean(req.body.whatsapp_phone || req.body.phone), telegram:true });
   const telegramLinkToken = newTelegramLinkToken('cadastro');
-  const r=await q('INSERT INTO registration_requests(name,email,phone,whatsapp_phone,telegram_chat_id,telegram_username,telegram_link_token,preferred_channels,unit,document,role,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',[req.body.name,req.body.email||'',req.body.phone||req.body.whatsapp_phone||'',req.body.whatsapp_phone||req.body.phone||'',req.body.telegram_chat_id||'',normalizeTelegramUsername(req.body.telegram_username||''),telegramLinkToken,JSON.stringify(channels),unit,req.body.document||'','morador',`Solicitação interna feita por usuário da unidade ${unit}.`]);
+  const r=await q('INSERT INTO registration_requests(name,email,phone,whatsapp_phone,telegram_chat_id,telegram_username,telegram_link_token,preferred_channels,unit,document,role,notes,gender) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',[req.body.name,req.body.email||'',req.body.phone||req.body.whatsapp_phone||'',req.body.whatsapp_phone||req.body.phone||'',req.body.telegram_chat_id||'',normalizeTelegramUsername(req.body.telegram_username||''),telegramLinkToken,JSON.stringify(channels),unit,req.body.document||'','morador',`Solicitação interna feita por usuário da unidade ${unit}.`,req.body.gender||'nao_informado']);
   if (req.body.email) await sendRegistrationAcknowledgement(r.rows[0]).catch(()=>null);
   await audit(req.user.email,'solicitou morador adicional',`${req.body.name} - unidade ${unit}`);
   res.json({ ok:true, message:'Solicitação enviada ao síndico para aprovação. Se aprovada, o novo usuário receberá senha temporária nos canais cadastrados.', request:r.rows[0] });
@@ -1875,15 +1960,16 @@ app.post('/api/residents/request-same-unit', auth, async (req,res,next)=>{ try {
 
 app.post('/api/forgot-password', async (req,res,next)=>{ try {
   requireFields(req.body,['email']);
-  const r=await q('SELECT * FROM users WHERE lower(email)=lower($1)',[req.body.email]);
+  const email=String(req.body.email||'').trim();
+  const r=await q('SELECT * FROM users WHERE lower(email)=lower($1) AND COALESCE(active,true)=true',[email]);
   if (r.rowCount) {
     const user=r.rows[0];
     const temp=randomCode(8);
     await q('UPDATE users SET password_hash=$1, force_password_change=true WHERE id=$2',[await bcrypt.hash(temp,10), user.id]);
     await q("INSERT INTO password_resets(user_id,token,temp_password,expires_at) VALUES($1,$2,$3,now()+interval '24 hours')",[user.id, randomCode(24), temp]);
-    await sendTemporaryPasswordToUser(user, temp, 'Senha temporária - Vitória Régia').catch(()=>null);
+    await sendTemporaryPasswordToUser(user, temp, 'Senha temporária - Vitória Régia').catch(e=>({ ok:false, error:e.message }));
   }
-  res.json({ ok:true, message:'Se o e-mail existir, uma senha temporária será enviada pelos canais configurados.' });
+  res.json({ ok:true, message:'Solicitação recebida. Se o e-mail existir, enviaremos a senha temporária por e-mail e também pelo Telegram vinculado ao cadastro.' });
 } catch(e){ next(e); } });
 app.get('/api/me', auth, (req,res)=>res.json({ user:req.user, permissions:ALL_PERMISSIONS, version:APP_VERSION }));
 
@@ -1897,8 +1983,8 @@ app.put('/api/profile', auth, async (req,res,next)=>{ try {
   const user=(await q('SELECT * FROM users WHERE id=$1',[req.user.id])).rows[0];
   if (!user) return res.status(404).json({ error:'Usuário não encontrado.' });
   const prefs=await filterChannelsByPlan(body.notification_preferences || parseJson(user.notification_preferences, {}));
-  await q("UPDATE users SET name=$1,email=COALESCE(NULLIF($2,''),email),phone=$3,whatsapp_phone=$4,telegram_chat_id=$5,telegram_username=$6,notification_preferences=$7 WHERE id=$8",[body.name||user.name, body.email||user.email, body.phone||'', body.whatsapp_phone||body.phone||'', body.telegram_chat_id||'', body.telegram_username||'', JSON.stringify(prefs), user.id]);
-  if (user.resident_id) await q("UPDATE residents SET name=$1,email=COALESCE(NULLIF($2,''),email),phone=$3,whatsapp_phone=$4,telegram_chat_id=$5,telegram_username=$6,unit=COALESCE(NULLIF($7,''),unit),vehicle=$8,document=COALESCE(NULLIF($9,''),document),notification_preferences=$10 WHERE id=$11",[body.name||user.name, body.email||user.email, body.phone||'', body.whatsapp_phone||body.phone||'', body.telegram_chat_id||'', body.telegram_username||'', body.unit||'', body.vehicle||'', body.document||'', JSON.stringify(prefs), user.resident_id]);
+  await q("UPDATE users SET name=$1,email=COALESCE(NULLIF($2,''),email),phone=$3,whatsapp_phone=$4,telegram_chat_id=$5,telegram_username=$6,notification_preferences=$7,gender=$8 WHERE id=$9",[body.name||user.name, body.email||user.email, body.phone||'', body.whatsapp_phone||body.phone||'', body.telegram_chat_id||'', body.telegram_username||'', JSON.stringify(prefs), body.gender||user.gender||'nao_informado', user.id]);
+  if (user.resident_id) await q("UPDATE residents SET name=$1,email=COALESCE(NULLIF($2,''),email),phone=$3,whatsapp_phone=$4,telegram_chat_id=$5,telegram_username=$6,unit=COALESCE(NULLIF($7,''),unit),vehicle=$8,document=COALESCE(NULLIF($9,''),document),notification_preferences=$10,gender=$11 WHERE id=$12",[body.name||user.name, body.email||user.email, body.phone||'', body.whatsapp_phone||body.phone||'', body.telegram_chat_id||'', body.telegram_username||'', body.unit||'', body.vehicle||'', body.document||'', JSON.stringify(prefs), body.gender||user.gender||'nao_informado', user.resident_id]);
   await audit(req.user.email,'atualizou perfil','próprio');
   res.json({ ok:true });
 } catch(e){ next(e); } });
@@ -1926,7 +2012,7 @@ app.post('/api/residents', auth, can('residents.manage'), async (req,res,next)=>
   await requireNoDuplicate('Morador', await residentDuplicate(req.body));
   if (boolValue(await getSetting('ALLOW_MULTIPLE_RESIDENTS_PER_UNIT','false'), false)) { const max=Number(await getSetting('MAX_RESIDENTS_PER_UNIT','2') || 2); const c=(await q("SELECT COUNT(*)::int count FROM residents WHERE upper(replace(coalesce(unit,''),' ',''))=$1 AND COALESCE(active,true)=true",[normalizeUnit(req.body.unit)])).rows[0].count; if (c >= max) { const err=new Error(`Limite de ${max} morador(es) por unidade atingido.`); err.status=409; throw err; } }
   const prefs = await filterChannelsByPlan(req.body.notification_preferences || { app:true, browser:true, email:Boolean(req.body.email), telegram:true, whatsapp:Boolean(req.body.whatsapp_phone || req.body.phone) });
-  const r=await q('INSERT INTO residents(name,unit,phone,whatsapp_phone,email,document,vehicle,vehicle_model,vehicle_plate,pet_name,notes,access_profile,access_permissions,telegram_chat_id,telegram_username,notification_preferences,resident_tags) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *', [req.body.name, req.body.unit, req.body.phone||'', req.body.whatsapp_phone||req.body.phone||'', req.body.email||'', req.body.document||'', req.body.vehicle||req.body.vehicle_model||'', req.body.vehicle_model||req.body.vehicle||'', req.body.vehicle_plate||'', req.body.pet_name||'', req.body.notes||'', req.body.access_profile||'morador', JSON.stringify(req.body.access_permissions || rolePermissions('morador')), req.body.telegram_chat_id||'', req.body.telegram_username||'', JSON.stringify(prefs), JSON.stringify(req.body.resident_tags || {})]);
+  const r=await q('INSERT INTO residents(name,unit,phone,whatsapp_phone,email,document,vehicle,vehicle_model,vehicle_plate,pet_name,notes,access_profile,access_permissions,telegram_chat_id,telegram_username,notification_preferences,resident_tags,gender) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *', [req.body.name, req.body.unit, req.body.phone||'', req.body.whatsapp_phone||req.body.phone||'', req.body.email||'', req.body.document||'', req.body.vehicle||req.body.vehicle_model||'', req.body.vehicle_model||req.body.vehicle||'', req.body.vehicle_plate||'', req.body.pet_name||'', req.body.notes||'', req.body.access_profile||'morador', JSON.stringify(req.body.access_permissions || rolePermissions('morador')), req.body.telegram_chat_id||'', req.body.telegram_username||'', JSON.stringify(prefs), JSON.stringify(req.body.resident_tags || {}), req.body.gender || 'nao_informado']);
   await audit(req.user.email,'criou morador',req.body.name);
   res.json(r.rows[0]);
 } catch(e){ next(e); } });
@@ -1934,7 +2020,7 @@ app.put('/api/residents/:id', auth, can('residents.manage'), async (req,res,next
   requireFields(req.body,['name','unit']);
   await requireNoDuplicate('Morador', await residentDuplicate(req.body, req.params.id));
   const prefs = await filterChannelsByPlan(req.body.notification_preferences || { app:true, browser:true, email:Boolean(req.body.email), telegram:true, whatsapp:Boolean(req.body.whatsapp_phone || req.body.phone) });
-  const r=await q('UPDATE residents SET name=$1,unit=$2,phone=$3,whatsapp_phone=$4,email=$5,document=$6,vehicle=$7,vehicle_model=$8,vehicle_plate=$9,pet_name=$10,notes=$11,access_profile=$12,access_permissions=$13,telegram_chat_id=$14,telegram_username=$15,notification_preferences=$16,resident_tags=$17 WHERE id=$18 RETURNING *', [req.body.name, req.body.unit, req.body.phone||'', req.body.whatsapp_phone||req.body.phone||'', req.body.email||'', req.body.document||'', req.body.vehicle||req.body.vehicle_model||'', req.body.vehicle_model||req.body.vehicle||'', req.body.vehicle_plate||'', req.body.pet_name||'', req.body.notes||'', req.body.access_profile||'morador', JSON.stringify(req.body.access_permissions || {}), req.body.telegram_chat_id||'', req.body.telegram_username||'', JSON.stringify(prefs), JSON.stringify(req.body.resident_tags || {}), req.params.id]);
+  const r=await q('UPDATE residents SET name=$1,unit=$2,phone=$3,whatsapp_phone=$4,email=$5,document=$6,vehicle=$7,vehicle_model=$8,vehicle_plate=$9,pet_name=$10,notes=$11,access_profile=$12,access_permissions=$13,telegram_chat_id=$14,telegram_username=$15,notification_preferences=$16,resident_tags=$17,gender=$18 WHERE id=$19 RETURNING *', [req.body.name, req.body.unit, req.body.phone||'', req.body.whatsapp_phone||req.body.phone||'', req.body.email||'', req.body.document||'', req.body.vehicle||req.body.vehicle_model||'', req.body.vehicle_model||req.body.vehicle||'', req.body.vehicle_plate||'', req.body.pet_name||'', req.body.notes||'', req.body.access_profile||'morador', JSON.stringify(req.body.access_permissions || {}), req.body.telegram_chat_id||'', req.body.telegram_username||'', JSON.stringify(prefs), JSON.stringify(req.body.resident_tags || {}), req.body.gender || 'nao_informado', req.params.id]);
   res.json(r.rows[0]||{});
 } catch(e){ next(e); } });
 app.delete('/api/residents/:id', auth, can('residents.manage'), async (req,res,next)=>{ try { await q('UPDATE residents SET active=false,deleted_at=now() WHERE id=$1',[req.params.id]); await audit(req.user.email,'removeu morador',req.params.id); res.json({ ok:true }); } catch(e){ next(e); } });
@@ -1951,14 +2037,14 @@ app.post('/api/users', auth, can('users.manage'), async (req,res,next)=>{ try {
   const email = loginEmailFromChannels(req.body);
   await requireNoDuplicate('Usuário', await userDuplicate({ ...req.body, email }));
   const prefs = await filterChannelsByPlan(req.body.notification_preferences || { app:true,browser:true,email:Boolean(req.body.email),telegram:true,whatsapp:Boolean(req.body.whatsapp_phone || req.body.phone) });
-  const r=await q('INSERT INTO users(name,email,password_hash,role,user_type,is_outsourced,unit,permissions,resident_id,employee_id,phone,whatsapp_phone,telegram_chat_id,telegram_username,notification_preferences,active,force_password_change) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *', [req.body.name, email, await bcrypt.hash(password,10), role, userType, req.body.is_outsourced===true, unit, JSON.stringify(perms), resident_id, req.body.employee_id || null, req.body.phone||req.body.whatsapp_phone||'', req.body.whatsapp_phone||req.body.phone||'', req.body.telegram_chat_id||'', req.body.telegram_username||'', JSON.stringify(prefs), req.body.active !== false, Boolean(!req.body.password)]);
+  const r=await q('INSERT INTO users(name,email,password_hash,role,user_type,is_outsourced,unit,permissions,resident_id,employee_id,phone,whatsapp_phone,telegram_chat_id,telegram_username,notification_preferences,active,force_password_change,gender) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *', [req.body.name, email, await bcrypt.hash(password,10), role, userType, req.body.is_outsourced===true, unit, JSON.stringify(perms), resident_id, req.body.employee_id || null, req.body.phone||req.body.whatsapp_phone||'', req.body.whatsapp_phone||req.body.phone||'', req.body.telegram_chat_id||'', req.body.telegram_username||'', JSON.stringify(prefs), req.body.active !== false, Boolean(!req.body.password), req.body.gender || 'nao_informado']);
   await audit(req.user.email,'criou usuário com aprovação automática',email);
   if (!req.body.password) {
     await sendTemporaryPasswordToUser({ ...r.rows[0], email:req.body.email || r.rows[0].email, telegram_chat_id:req.body.telegram_chat_id || r.rows[0].telegram_chat_id, telegram_username:req.body.telegram_username || r.rows[0].telegram_username, whatsapp_phone:req.body.whatsapp_phone || req.body.phone || r.rows[0].whatsapp_phone, phone:req.body.phone || r.rows[0].phone, notification_preferences:prefs }, password, 'Cadastro aprovado - Vitória Régia').catch(()=>null);
   }
   res.json({ user:sanitizeUser(r.rows[0]), temp_password_sent: !req.body.password, message: !req.body.password ? 'Usuário cadastrado e aprovado automaticamente. A senha temporária foi enviada pelos canais disponíveis.' : 'Usuário cadastrado.' });
 } catch(e){ next(e); } });
-app.put('/api/users/:id', auth, can('users.manage'), async (req,res,next)=>{ try { const role=req.body.role||'morador'; if (role === 'master' && !isMaster(req.user)) return res.status(403).json({ error:'Ação restrita à área técnica.' }); const perms=normalizePermissions(req.body.permissions||{},role); const resident_id=['funcionario','portaria','financeiro'].includes(role) ? null : (req.body.resident_id || null); const unit=(role==='sindico' && req.body.is_outsourced) || ['funcionario','portaria','financeiro'].includes(role) ? '' : (req.body.unit || ''); await requireNoDuplicate('Usuário', await userDuplicate(req.body, req.params.id)); const prefs=await filterChannelsByPlan(req.body.notification_preferences || {}); let sql='UPDATE users SET name=$1,email=$2,role=$3,user_type=$4,is_outsourced=$5,unit=$6,permissions=$7,resident_id=$8,employee_id=$9,phone=$10,whatsapp_phone=$11,telegram_chat_id=$12,telegram_username=$13,notification_preferences=$14,active=$15'; const params=[req.body.name,loginEmailFromChannels(req.body),role,req.body.user_type||role,req.body.is_outsourced===true,unit,JSON.stringify(perms),resident_id,req.body.employee_id||null,req.body.phone||req.body.whatsapp_phone||'',req.body.whatsapp_phone||req.body.phone||'',req.body.telegram_chat_id||'',req.body.telegram_username||'',JSON.stringify(prefs),req.body.active!==false]; if (req.body.password) { params.push(await bcrypt.hash(req.body.password,10)); sql += `,password_hash=$${params.length},force_password_change=false`; } params.push(req.params.id); sql += ` WHERE id=$${params.length} RETURNING *`; const r=await q(sql,params); await audit(req.user.email,'alterou usuário',req.body.email||req.body.phone||req.params.id); res.json(sanitizeUser(r.rows[0])); } catch(e){ next(e); } });
+app.put('/api/users/:id', auth, can('users.manage'), async (req,res,next)=>{ try { const role=req.body.role||'morador'; if (role === 'master' && !isMaster(req.user)) return res.status(403).json({ error:'Ação restrita à área técnica.' }); const perms=normalizePermissions(req.body.permissions||{},role); const resident_id=['funcionario','portaria','financeiro'].includes(role) ? null : (req.body.resident_id || null); const unit=(role==='sindico' && req.body.is_outsourced) || ['funcionario','portaria','financeiro'].includes(role) ? '' : (req.body.unit || ''); await requireNoDuplicate('Usuário', await userDuplicate(req.body, req.params.id)); const prefs=await filterChannelsByPlan(req.body.notification_preferences || {}); let sql='UPDATE users SET name=$1,email=$2,role=$3,user_type=$4,is_outsourced=$5,unit=$6,permissions=$7,resident_id=$8,employee_id=$9,phone=$10,whatsapp_phone=$11,telegram_chat_id=$12,telegram_username=$13,notification_preferences=$14,active=$15,gender=$16'; const params=[req.body.name,loginEmailFromChannels(req.body),role,req.body.user_type||role,req.body.is_outsourced===true,unit,JSON.stringify(perms),resident_id,req.body.employee_id||null,req.body.phone||req.body.whatsapp_phone||'',req.body.whatsapp_phone||req.body.phone||'',req.body.telegram_chat_id||'',req.body.telegram_username||'',JSON.stringify(prefs),req.body.active!==false,req.body.gender||'nao_informado']; if (req.body.password) { params.push(await bcrypt.hash(req.body.password,10)); sql += `,password_hash=$${params.length},force_password_change=false`; } params.push(req.params.id); sql += ` WHERE id=$${params.length} RETURNING *`; const r=await q(sql,params); await audit(req.user.email,'alterou usuário',req.body.email||req.body.phone||req.params.id); res.json(sanitizeUser(r.rows[0])); } catch(e){ next(e); } });
 
 app.delete('/api/users/:id', auth, can('users.manage'), async (req,res,next)=>{ try {
   const existing=(await q('SELECT * FROM users WHERE id=$1',[req.params.id])).rows[0];
@@ -1991,11 +2077,11 @@ app.post('/api/registration-requests/:id/approve', auth, can('users.manage'), as
   let resident=null;
   if (needsResident) {
     resident=await findResident({ unit: rr.unit, recipient: rr.name });
-    if (!resident) resident=(await q('INSERT INTO residents(name,unit,phone,whatsapp_phone,email,document,telegram_chat_id,telegram_username,telegram_link_token,notification_preferences) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',[rr.name,rr.unit,rr.phone||rr.whatsapp_phone||'',rr.whatsapp_phone||rr.phone||'',rr.email||'',rr.document,rr.telegram_chat_id||'',rr.telegram_username||'',rr.telegram_link_token||newTelegramLinkToken('morador'),JSON.stringify(prefs)])).rows[0];
+    if (!resident) resident=(await q('INSERT INTO residents(name,unit,phone,whatsapp_phone,email,document,telegram_chat_id,telegram_username,telegram_link_token,notification_preferences,gender) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',[rr.name,rr.unit,rr.phone||rr.whatsapp_phone||'',rr.whatsapp_phone||rr.phone||'',rr.email||'',rr.document,rr.telegram_chat_id||'',rr.telegram_username||'',rr.telegram_link_token||newTelegramLinkToken('morador'),JSON.stringify(prefs), rr.gender || 'nao_informado'])).rows[0];
   }
   const temp=randomCode(8);
   const email=loginEmailFromChannels(rr);
-  const user=(await q('INSERT INTO users(name,email,password_hash,role,user_type,unit,resident_id,phone,whatsapp_phone,telegram_chat_id,telegram_username,telegram_link_token,notification_preferences,permissions,active,force_password_change) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,true,true) ON CONFLICT(email) DO UPDATE SET active=true,resident_id=EXCLUDED.resident_id, unit=EXCLUDED.unit, phone=EXCLUDED.phone, whatsapp_phone=EXCLUDED.whatsapp_phone, telegram_chat_id=EXCLUDED.telegram_chat_id, telegram_username=EXCLUDED.telegram_username, telegram_link_token=COALESCE(users.telegram_link_token,EXCLUDED.telegram_link_token) RETURNING *',[rr.name,email,await bcrypt.hash(temp,10),role,role,rr.unit || '',resident?.id || null,rr.phone||rr.whatsapp_phone||'',rr.whatsapp_phone||rr.phone||'',rr.telegram_chat_id||'',rr.telegram_username||'',rr.telegram_link_token||newTelegramLinkToken('usuario'),JSON.stringify(prefs),JSON.stringify(rolePermissions(role))])).rows[0];
+  const user=(await q('INSERT INTO users(name,email,password_hash,role,user_type,unit,resident_id,phone,whatsapp_phone,telegram_chat_id,telegram_username,telegram_link_token,notification_preferences,permissions,active,force_password_change,gender) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,true,true,$15) ON CONFLICT(email) DO UPDATE SET active=true,resident_id=EXCLUDED.resident_id, unit=EXCLUDED.unit, phone=EXCLUDED.phone, whatsapp_phone=EXCLUDED.whatsapp_phone, telegram_chat_id=EXCLUDED.telegram_chat_id, telegram_username=EXCLUDED.telegram_username, telegram_link_token=COALESCE(users.telegram_link_token,EXCLUDED.telegram_link_token) RETURNING *',[rr.name,email,await bcrypt.hash(temp,10),role,role,rr.unit || '',resident?.id || null,rr.phone||rr.whatsapp_phone||'',rr.whatsapp_phone||rr.phone||'',rr.telegram_chat_id||'',rr.telegram_username||'',rr.telegram_link_token||newTelegramLinkToken('usuario'),JSON.stringify(prefs),JSON.stringify(rolePermissions(role)),rr.gender||'nao_informado'])).rows[0];
   await q("UPDATE registration_requests SET status='aprovada',approved_by=$1,approved_at=now() WHERE id=$2",[req.user.id,rr.id]);
   await sendTemporaryPasswordToUser({ ...user, email: rr.email || user.email, telegram_chat_id: rr.telegram_chat_id || user.telegram_chat_id, telegram_username: rr.telegram_username || user.telegram_username, whatsapp_phone: rr.whatsapp_phone || rr.phone || user.whatsapp_phone, phone: rr.phone || user.phone, notification_preferences: prefs }, temp, 'Cadastro aprovado - Vitória Régia').catch(()=>null);
   await audit(req.user.email,'aprovou cadastro',email);
@@ -2026,7 +2112,7 @@ app.post('/api/messages/:id/respond', auth, can('messages.manage'), async (req,r
 } catch(e){ next(e); } });
 
 app.get('/api/packages', auth, can('packages.view'), async (req,res,next)=>{ try { if (isResident(req.user) && req.user.resident_id) return res.json((await q('SELECT * FROM packages WHERE resident_id=$1 AND deleted_at IS NULL ORDER BY id DESC',[req.user.resident_id])).rows); res.json((await q('SELECT p.*, r.name resident_name, r.email resident_email, r.whatsapp_phone FROM packages p LEFT JOIN residents r ON r.id=p.resident_id WHERE p.deleted_at IS NULL ORDER BY p.id DESC')).rows); } catch(e){ next(e); } });
-app.post('/api/packages', auth, can('packages.manage'), async (req,res,next)=>{ try { requireFields(req.body,['tracking','recipient','unit']); await requireNoDuplicate('Encomenda', await packageDuplicate(req.body)); const resident=await findResident(req.body); const pickup=randomCode(6); const channels={ app:true, browser:true, ...parseJson(await getSetting('DELIVERY_DEFAULT_CHANNELS','{}'),{}), ...(req.body.notification_channels || {}), telegram:true }; const r=await q('INSERT INTO packages(tracking,recipient,unit,resident_id,label,notes,extracted_text,pickup_code,notification_channels,notification_status,photo_url) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',[req.body.tracking,req.body.recipient,req.body.unit,resident?.id||null,req.body.label||req.body.tracking,req.body.notes||'',req.body.extracted_text||'',pickup,JSON.stringify(channels),resident?'enviando':'sem_vinculo',req.body.photo_url||'']); const pack=r.rows[0]; const action_url=`/#/encomendas?package=${pack.id}`; const body=`Sua encomenda ${pack.tracking} chegou na portaria. Código de retirada: ${pickup}. Escolha pelo Telegram: autorizar envio pelo elevador, retirar agora, retirar mais tarde, pedir contato por interfone ou informar que não reconhece.`; if (resident) await notifyResident(resident,{ title:'Encomenda chegou', body, channels, action_url, payload:{ package_id:pack.id, pickup_code:pickup, telegram_reply_markup:packageDecisionKeyboard(pack.id) } }).catch(()=>null); await sendPortariaTelegram({ title:'Encomenda cadastrada', body:`${pack.tracking} · Unidade ${pack.unit || '-'} · ${pack.recipient || resident?.name || ''}. Aguardando decisão do morador.`, category:'encomenda', action_url:'/#/portaria/encomendas', details:{ Código:pack.tracking, Unidade:pack.unit || '-', Retirada:pickup }, dedupeKey:`package-created-portaria:${pack.id}` }).catch(()=>null); await audit(req.user.email,'registrou encomenda',`${pack.tracking} ${resident?'vinculada':'sem vínculo'}`); await q("UPDATE packages SET notification_status='enviada' WHERE id=$1",[pack.id]).catch(()=>null); res.json({ ...pack, resident, linked:Boolean(resident) }); } catch(e){ next(e); } });
+app.post('/api/packages', auth, can('packages.manage'), async (req,res,next)=>{ try { requireFields(req.body,['tracking','recipient','unit']); await requireNoDuplicate('Encomenda', await packageDuplicate(req.body)); const resident=await findResident(req.body); const pickup=randomCode(6); const channels={ app:true, browser:true, ...parseJson(await getSetting('DELIVERY_DEFAULT_CHANNELS','{}'),{}), ...(req.body.notification_channels || {}), telegram:true }; const r=await q('INSERT INTO packages(tracking,recipient,unit,resident_id,label,carrier,barcode,barcode_format,order_number,invoice_number,validation_status,ocr_confidence,source_type,notes,extracted_text,pickup_code,notification_channels,notification_status,photo_url) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *',[req.body.tracking,req.body.recipient,req.body.unit,resident?.id||null,req.body.label||req.body.carrier||req.body.tracking,req.body.carrier||'',req.body.barcode||'',req.body.barcode_format||'',req.body.order_number||'',req.body.invoice_number||'',req.body.validation_status||'pendente',Number(req.body.ocr_confidence||req.body.confidence||0),req.body.source_type||'manual',req.body.notes||'',req.body.extracted_text||'',pickup,JSON.stringify(channels),resident?'enviando':'sem_vinculo',req.body.photo_url||'']); const pack=r.rows[0]; const action_url=`/#/encomendas?package=${pack.id}`; const body=`Sua encomenda ${pack.tracking} chegou na portaria. Código de retirada: ${pickup}. Escolha pelo Telegram: autorizar envio pelo elevador, retirar agora, retirar mais tarde, pedir contato por interfone ou informar que não reconhece.`; if (resident) await notifyResident(resident,{ title:'Encomenda chegou', body, channels, action_url, payload:{ package_id:pack.id, pickup_code:pickup, telegram_reply_markup:packageDecisionKeyboard(pack.id) } }).catch(()=>null); await sendPortariaTelegram({ title:'Encomenda cadastrada', body:`${pack.tracking} · Unidade ${pack.unit || '-'} · ${pack.recipient || resident?.name || ''}. Aguardando decisão do morador.`, category:'encomenda', action_url:'/#/portaria/encomendas', details:{ Código:pack.tracking, Unidade:pack.unit || '-', Retirada:pickup }, dedupeKey:`package-created-portaria:${pack.id}` }).catch(()=>null); await audit(req.user.email,'registrou encomenda',`${pack.tracking} ${resident?'vinculada':'sem vínculo'}`); await q("UPDATE packages SET notification_status='enviada' WHERE id=$1",[pack.id]).catch(()=>null); res.json({ ...pack, resident, linked:Boolean(resident) }); } catch(e){ next(e); } });
 app.post('/api/packages/:id/preference', auth, async (req,res,next)=>{ try { if (!isResident(req.user)) return res.status(403).json({ error:'Somente o morador pode escolher o método de entrega.' }); const preference=req.body.delivery_preference || req.body.preference || 'retirar_portaria'; const r=await q('UPDATE packages SET delivery_preference=$1,resident_response_at=now() WHERE id=$2 AND (resident_id=$3 OR $4=true) RETURNING *',[preference,req.params.id,req.user.resident_id,isMaster(req.user)]); if(!r.rowCount) return res.status(404).json({ error:'Encomenda não encontrada para este morador.' }); await notifyStaff({ title:'Preferência de entrega informada', body:`Encomenda ${r.rows[0]?.tracking || req.params.id}: ${formatDeliveryPreference(preference)}`, action_url:`/#/encomendas` }).catch(()=>null); res.json(r.rows[0]||{}); } catch(e){ next(e); } });
 app.post('/api/packages/:id/intercom-fallback', auth, can('packages.manage'), async (req,res,next)=>{ try {
   if (!boolValue(await getSetting('TELEGRAM_INTERCOM_FALLBACK_ENABLED','true'), true)) return res.status(400).json({ error:'Fallback Telegram por interfone está desativado.' });
@@ -2044,7 +2130,7 @@ app.post('/api/packages/:id/staff-confirm-delivery', auth, can('packages.manage'
 app.post('/api/packages/:id/resident-confirm-delivery', auth, async (req,res,next)=>{ try { const r=await q("UPDATE packages SET resident_delivered_at=now(), delivered_by_resident=$1, status=CASE WHEN staff_delivered_at IS NOT NULL THEN 'entregue' ELSE 'aguardando_confirmacao_portaria' END WHERE id=$2 AND (resident_id=$3 OR $4=true) RETURNING *",[req.user.id,req.params.id,req.user.resident_id,isMaster(req.user)]); if(!r.rowCount) return res.status(404).json({ error:'Encomenda não encontrada para este morador.' }); const p=await updatePackageDeliveryStatus(req.params.id); await notifyStaff({ title:'Morador confirmou recebimento', body:`Encomenda ${p?.tracking || req.params.id} confirmada pelo morador.`, action_url:'/#/encomendas' }).catch(()=>null); res.json(p||{}); } catch(e){ next(e); } });
 app.post('/api/packages/:id/deliver', auth, can('packages.manage'), async (req,res,next)=>{ try { await q("UPDATE packages SET staff_delivered_at=now(), delivered_by_staff=$1, status=CASE WHEN resident_delivered_at IS NOT NULL THEN 'entregue' ELSE 'aguardando_confirmacao_morador' END WHERE id=$2 RETURNING *",[req.user.id,req.params.id]); const p=await updatePackageDeliveryStatus(req.params.id); await audit(req.user.email,'confirmou entrega pela portaria',req.params.id); res.json(p||{}); } catch(e){ next(e); } });
 app.get('/api/visitors', auth, can('visitors.view'), async (req,res,next)=>{ try { const unit=req.query.unit || ''; const params=[]; let where='WHERE deleted_at IS NULL'; if (unit) { params.push(unit); where+=' AND lower(unit)=lower($1)'; } res.json((await q(`SELECT * FROM visitors ${where} ORDER BY id DESC LIMIT 300`, params)).rows); } catch(e){ next(e); } });
-app.post('/api/visitors', auth, can('visitors.manage'), async (req,res,next)=>{ try { requireFields(req.body,['name','unit']); const r=await q('INSERT INTO visitors(name,document,unit,authorized_by,status,plate,phone,recurring,weekdays,valid_from,valid_until,announce_required,announcement_channel,notification_channels,photo_data,reservation_id,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *',[req.body.name,req.body.document||'',req.body.unit,req.body.authorized_by||'',req.body.status||'autorizado',req.body.plate||'',req.body.phone||'',req.body.recurring===true,JSON.stringify(req.body.weekdays||[]),req.body.valid_from||null,req.body.valid_until||null,req.body.announce_required!==false,req.body.announcement_channel||'interfone',JSON.stringify(req.body.notification_channels||{}),req.body.photo_data||'',req.body.reservation_id||null,req.body.notes||'']); await audit(req.user.email,'autorizou visitante',req.body.name); res.json(r.rows[0]); } catch(e){ next(e); } });
+app.post('/api/visitors', auth, can('visitors.manage'), async (req,res,next)=>{ try { requireFields(req.body,['name','unit']); const r=await q('INSERT INTO visitors(name,document,unit,authorized_by,status,plate,phone,recurring,weekdays,valid_from,valid_until,announce_required,announcement_channel,notification_channels,photo_data,reservation_id,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *',[req.body.name,req.body.document||'',req.body.unit,req.body.authorized_by||'',req.body.status||'autorizado',req.body.plate||'',req.body.phone||'',req.body.recurring===true,JSON.stringify(req.body.weekdays||[]),req.body.valid_from||null,req.body.valid_until||null,req.body.announce_required!==false,req.body.announcement_channel||'interfone',JSON.stringify(req.body.notification_channels||{}),req.body.photo_data||'',req.body.reservation_id||null,req.body.notes||'']); await audit(req.user.email,'autorizou visitante',req.body.name); res.json(r.rows[0]); } catch(e){ next(e); } });
 app.post('/api/visitors/:id/intercom-fallback', auth, can('visitors.manage'), async (req,res,next)=>{ try {
   if (!boolValue(await getSetting('TELEGRAM_INTERCOM_FALLBACK_ENABLED','true'), true)) return res.status(400).json({ error:'Fallback Telegram por interfone está desativado.' });
   const v=(await q('SELECT * FROM visitors WHERE id=$1',[req.params.id])).rows[0];
@@ -2091,7 +2177,7 @@ app.post('/api/reservations', auth, can('reservations.manage'), async (req,res,n
   let status = req.body.status || 'pre_agendada';
   if (!termsAccepted) status='pendente_aceite_regras';
   else if (fee > 0) status='pendente_pagamento';
-  const r=await q('INSERT INTO reservations(area,area_id,unit,resident,resident_id,reserved_for,start_time,end_time,shift,reservation_mode,period_label,all_day,status,fee_amount,document_text,terms_accepted,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *',[req.body.area,area?.id||null,req.body.unit,req.body.resident||resident?.name||req.user.name,resident?.id||req.user.resident_id||null,req.body.reserved_for,start,end,req.body.shift||req.body.reservation_mode||'horario',req.body.reservation_mode||req.body.shift||'horario',req.body.period_label||'',isAllDay,status,fee,req.body.document_text || area?.rules_document || await getSetting('RESERVATION_DEFAULT_RULES'),termsAccepted,req.user.id]);
+  const r=await q('INSERT INTO reservations(area,area_id,unit,resident,resident_id,reserved_for,start_time,end_time,shift,reservation_mode,period_label,all_day,status,fee_amount,document_text,terms_accepted,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *',[req.body.area,area?.id||null,req.body.unit,req.body.resident||resident?.name||req.user.name,resident?.id||req.user.resident_id||null,req.body.reserved_for,start,end,req.body.shift||req.body.reservation_mode||'horario',req.body.reservation_mode||req.body.shift||'horario',req.body.period_label||'',isAllDay,status,fee,req.body.document_text || area?.rules_document || await getSetting('RESERVATION_DEFAULT_RULES'),termsAccepted,req.user.id]);
   let reserva=r.rows[0];
   if (fee > 0) {
     const boleto=await createBoleto({ unit:reserva.unit, resident_id:reserva.resident_id, title:`Taxa de reserva - ${reserva.area}`, amount:fee, due_date:req.body.due_date || reserva.reserved_for, source_type:'reservation', source_id:reserva.id });
@@ -2125,7 +2211,8 @@ app.post('/api/reservations/:id/approve', auth, can('reservations.manage'), asyn
   const reserva=r.rows[0]; if (reserva) await notifyReservationUpdate(reserva,'confirmada').catch(()=>null);
   res.json(reserva || {});
 } catch(e){ next(e); } });
-app.post('/api/ocr/parse-package', auth, can('packages.manage'), async (req,res,next)=>{ try { res.json(parsePackageText(req.body?.text || '')); } catch(e){ next(e); } });
+app.post('/api/ocr/parse-package', auth, can('packages.manage'), async (req,res,next)=>{ try { const parsed=parsePackageText(req.body?.text || '', req.body?.codes || req.body?.barcodes || []); const dup = parsed.tracking && parsed.unit ? await packageDuplicate({ tracking:parsed.tracking, unit:parsed.unit }) : null; res.json({ ...parsed, duplicate:Boolean(dup), duplicate_id:dup?.id || null, validation_status: dup ? 'duplicada' : parsed.validation_status }); } catch(e){ next(e); } });
+app.post('/api/packages/validate-label', auth, can('packages.manage'), async (req,res,next)=>{ try { const parsed=parsePackageText(req.body?.text || '', req.body?.codes || req.body?.barcodes || []); const resident=await findResident({ unit:parsed.unit, recipient:parsed.recipient }); const dup = parsed.tracking && parsed.unit ? await packageDuplicate({ tracking:parsed.tracking, unit:parsed.unit }) : null; res.json({ ...parsed, resident:resident ? { id:resident.id, name:resident.name, unit:resident.unit } : null, duplicate:Boolean(dup), duplicate_id:dup?.id || null, validation_status: dup ? 'duplicada' : parsed.validation_status }); } catch(e){ next(e); } });
 app.post('/api/ocr/parse-invoice', auth, can('invoices.manage'), async (req,res,next)=>{ try { res.json(parseInvoiceText(req.body?.text || '')); } catch(e){ next(e); } });
 
 app.get('/api/reservations/:id/google', auth, can('reservations.view'), async (req,res,next)=>{ try { const r=(await q('SELECT * FROM reservations WHERE id=$1',[req.params.id])).rows[0]; if (!r) return res.status(404).json({ error:'Reserva não encontrada.' }); res.json({ url: googleCalendarUrl(r) }); } catch(e){ next(e); } });
@@ -2182,8 +2269,28 @@ app.post('/api/finance/import-document', auth, can('finance.manage'), async (req
 app.post('/api/finance', auth, can('finance.manage'), async (req,res,next)=>{ try { requireFields(req.body,['title','amount','type']); const resident=await findResident(req.body); let boleto_id=req.body.boleto_id||null; if (req.body.generate_boleto) { const boleto=await createBoleto({ unit:req.body.unit, resident_id:resident?.id||null, title:req.body.title, amount:req.body.amount, due_date:req.body.due_date, bank_name:req.body.bank_name||'', digitable_line:req.body.digitable_line||'', pdf_url:req.body.pdf_url||'', payment_link:req.body.payment_link||'', source_type:'finance' }); boleto_id=boleto.id; } const r=await q('INSERT INTO finance(title,amount,type,status,due_date,unit,resident_id,category,boleto_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',[req.body.title,req.body.amount,req.body.type,req.body.status||'pendente',req.body.due_date||null,req.body.unit||'',resident?.id||null,req.body.category||'geral',boleto_id]); await audit(req.user.email,'lançou financeiro',req.body.title); res.json(r.rows[0]); } catch(e){ next(e); } });
 app.post('/api/finance/:id/pay', auth, can('finance.manage'), async (req,res,next)=>{ try { const r=await q("UPDATE finance SET status='pago' WHERE id=$1 RETURNING *",[req.params.id]); if (r.rows[0]?.boleto_id) await q("UPDATE boletos SET status='pago',paid_at=now() WHERE id=$1",[r.rows[0].boleto_id]); res.json(r.rows[0]||{}); } catch(e){ next(e); } });
 app.get('/api/boletos', auth, can('finance.view'), async (req,res,next)=>{ try { if (isResident(req.user) && req.user.resident_id) return res.json((await q('SELECT * FROM boletos WHERE deleted_at IS NULL AND (resident_id=$1 OR unit=(SELECT unit FROM residents WHERE id=$1)) ORDER BY id DESC',[req.user.resident_id])).rows); res.json((await q('SELECT * FROM boletos WHERE deleted_at IS NULL ORDER BY id DESC LIMIT 300')).rows); } catch(e){ next(e); } });
+
+app.post('/api/boletos/:id/pay', auth, can('finance.manage'), async (req,res,next)=>{ try { const r=await q("UPDATE boletos SET status='pago',paid_at=now() WHERE id=$1 RETURNING *",[req.params.id]); await q("UPDATE finance SET status='pago' WHERE boleto_id=$1",[req.params.id]).catch(()=>null); await audit(req.user.email,'marcou boleto como pago',req.params.id); res.json(r.rows[0]||{}); } catch(e){ next(e); } });
 app.post('/api/boletos', auth, can('boletos.manage'), async (req,res,next)=>{ try { requireFields(req.body,['title','amount']); const resident=await findResident(req.body); const boleto=await createBoleto({ unit:req.body.unit, resident_id:resident?.id||null, title:req.body.title, amount:req.body.amount, due_date:req.body.due_date, bank_name:req.body.bank_name||'', digitable_line:req.body.digitable_line||'', barcode:req.body.barcode||'', pdf_url:req.body.pdf_url||'', payment_link:req.body.payment_link||'', provider:req.body.provider||'manual', source_type:req.body.source_type||'manual' }); res.json(boleto); } catch(e){ next(e); } });
 
+
+app.get('/api/building-news', auth, can('notices.view'), async (req,res,next)=>{ try {
+  const rows=(await q('SELECT n.*, u.name created_by_name FROM building_news n LEFT JOIN users u ON u.id=n.created_by ORDER BY n.id DESC LIMIT 100')).rows;
+  res.json(rows);
+} catch(e){ next(e); } });
+app.post('/api/building-news', auth, can('notices.manage'), async (req,res,next)=>{ try {
+  requireFields(req.body,['title','body']);
+  if(!['master','admin','sindico','subsindico'].includes(req.user.role)) return res.status(403).json({ error:'Somente síndico, subsíndico ou administração podem publicar notícias do prédio.' });
+  const r=await q('INSERT INTO building_news(title,body,priority,photo_data,created_by) VALUES($1,$2,$3,$4,$5) RETURNING *',[req.body.title,req.body.body,req.body.priority||'normal',req.body.photo_data||'',req.user.id]);
+  await audit(req.user.email,'publicou notícia do prédio',req.body.title);
+  res.json(r.rows[0]);
+} catch(e){ next(e); } });
+app.delete('/api/building-news/:id', auth, can('notices.manage'), async (req,res,next)=>{ try {
+  if(!['master','admin','sindico','subsindico'].includes(req.user.role)) return res.status(403).json({ error:'Somente síndico, subsíndico ou administração podem remover notícias.' });
+  await q('DELETE FROM building_news WHERE id=$1',[req.params.id]);
+  await audit(req.user.email,'removeu notícia do prédio',String(req.params.id));
+  res.json({ ok:true });
+} catch(e){ next(e); } });
 app.get('/api/notices', auth, can('notices.view'), async (req,res,next)=>{ try { res.json((await q("SELECT * FROM notices WHERE target_role IN ('todos',$1) OR $1 IN ('sindico','admin') ORDER BY id DESC",[req.user.role])).rows); } catch(e){ next(e); } });
 app.post('/api/notices', auth, can('notices.manage'), async (req,res,next)=>{ try { requireFields(req.body,['title','body']); const criteria=req.body.target_criteria || {}; const r=await q('INSERT INTO notices(title,body,channel,priority,target_role,target_criteria) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',[req.body.title,req.body.body,req.body.channel||'app',req.body.priority||'normal',req.body.target_role||'todos',JSON.stringify(criteria)]); await audit(req.user.email,'criou comunicado',req.body.title); const selectedKeys=Object.keys(criteria).filter(k => criteria[k]); if ((req.body.target_role || 'todos') === 'morador' || (req.body.target_role || 'todos') === 'todos') { let residents=(await q('SELECT * FROM residents WHERE COALESCE(active,true)=true ORDER BY id DESC')).rows; if (selectedKeys.length) residents=residents.filter(r => selectedKeys.every(k => parseJson(r.resident_tags, {})[k] === true)); for (const resident of residents) await notifyResident(resident,{ title:req.body.title, body:req.body.body, channels:{ app:true,browser:true,email:req.body.priority==='critica',telegram:true }, action_url:'/#/comunicacao', payload:{ notice_id:r.rows[0].id, criteria:selectedKeys } }).catch(()=>null); } res.json(r.rows[0]); } catch(e){ next(e); } });
 app.get('/api/invoices', auth, can('invoices.view'), async (_req,res,next)=>{ try { res.json((await q('SELECT i.*, r.name resident_name FROM invoices i LEFT JOIN residents r ON r.id=i.resident_id ORDER BY i.id DESC')).rows); } catch(e){ next(e); } });
@@ -2626,7 +2733,7 @@ app.post('/api/notify/email', auth, can('notices.manage'), async (req,res,next)=
 app.post('/api/notify/telegram', auth, can('notices.manage'), async (req,res,next)=>{ try { requireFields(req.body,['message']); res.json(await sendTelegramMessage(req.body.chat_id || '', telegramPremiumMessage({ title:req.body.title || 'Notificação Vitória Régia', body:req.body.message, category:req.body.category || 'comunicado', actionUrl:fullActionUrl(req.body.action_url || '/#/comunicacao') }))); } catch(e){ next(e); } });
 app.post('/api/notify/whatsapp', auth, can('notices.manage'), async (req,res,next)=>{ try { requireFields(req.body,['phone','message']); res.json(await sendWhatsAppText(req.body.phone, req.body.message)); } catch(e){ next(e); } });
 app.get('/api/audit', auth, can('audit.view'), async (_req,res,next)=>{ try { res.json((await q('SELECT * FROM audit ORDER BY id DESC LIMIT 150')).rows); } catch(e){ next(e); } });
-app.get('/api/export', auth, can('audit.view'), async (_req,res,next)=>{ try { const tables=['residents','users','employees','shifts','messages','packages','visitors','common_areas','reservations','reservation_visitors','finance','boletos','notices','invoices','incidents','emergency_requests','maintenance','settings','emergency_types','system_updates','manuals','documents','occurrence_book','support_tickets','faqs']; const out={}; for (const t of tables) out[t]=(await q(`SELECT * FROM ${t} ORDER BY 1 DESC LIMIT 1000`)).rows; res.json(out); } catch(e){ next(e); } });
+app.get('/api/export', auth, can('audit.view'), async (_req,res,next)=>{ try { const tables=['residents','users','employees','shifts','messages','packages','visitors','common_areas','reservations','reservation_visitors','finance','boletos','notices','building_news','invoices','incidents','emergency_requests','maintenance','settings','emergency_types','system_updates','manuals','documents','occurrence_book','support_tickets','faqs']; const out={}; for (const t of tables) out[t]=(await q(`SELECT * FROM ${t} ORDER BY 1 DESC LIMIT 1000`)).rows; res.json(out); } catch(e){ next(e); } });
 app.post('/api/seed-demo', auth, can('settings.manage'), async (req,res,next)=>{ try { await q("INSERT INTO residents(name,unit,phone,whatsapp_phone,email,document,vehicle,notes) VALUES('Maria Oliveira','101','83999990000','5583999990000','morador@example.com','000.000.000-00','ABC1D23','Cadastro demo') ON CONFLICT DO NOTHING"); await q("INSERT INTO employees(name,role,phone,email) VALUES('Carlos Portaria','portaria','83988880000','portaria@example.com') ON CONFLICT DO NOTHING"); await q("INSERT INTO notices(title,body,priority,target_role) VALUES('Assembleia geral','Reunião no salão às 19h.','alta','todos')"); await audit(req.user.email,'carregou demonstração','seed-demo'); res.json({ ok:true }); } catch(e){ next(e); } });
 
 const staticDir = path.join(__dirname, '../public');

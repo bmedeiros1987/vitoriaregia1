@@ -770,3 +770,106 @@ body[data-appearance="dark"] .appShell>aside{background:linear-gradient(180deg,#
 
 /* v12.7.1 - Telegram vínculo automático e senha temporária */
 .telegramLinkBox,.telegramLinkMini{grid-column:1/-1;border:1px solid var(--line);background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 7%,var(--panel)),var(--panel2));border-radius:18px;padding:13px;display:grid;gap:8px;min-width:0}.telegramLinkMini{padding:0;border:0;background:transparent;display:inline-flex;align-items:center;gap:7px}.telegramLinkActions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.telegramLinkUrl{word-break:break-all;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px}.registerStatus .telegramLinkActions{margin-top:10px}.confirmAction{background:var(--accent)!important;color:#fff!important;border-color:var(--accent)!important}
+
+
+/* v12.7.4 - Leitor híbrido premium de etiquetas */
+.scannerDetectedBox{margin:10px 0 0;border:1px solid var(--line);background:color-mix(in srgb,var(--accent) 8%,var(--panel));border-radius:16px;padding:10px 12px}.scannerDetectedBox b{display:block;margin-bottom:4px}.scannerDetectedBox small{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text);overflow-wrap:anywhere}.packageScannerPremium .scannerHero{display:flex;justify-content:space-between;gap:16px;align-items:center;background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 18%,var(--panel)),var(--panel));border:1px solid var(--line);border-radius:26px;padding:20px;box-shadow:var(--shadow)}.packageScannerPremium .scannerHero h3{margin:4px 0;font-size:28px;letter-spacing:-.8px}.packageScannerPremium .scannerHero svg{width:54px;height:54px;color:var(--accent)}.scannerActionsGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.packageScanSummary{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:12px 0}.packageScanSummary article{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:14px;box-shadow:0 10px 28px rgba(15,30,25,.05)}.packageScanSummary b{display:block;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}.packageScanSummary span{display:block;font-size:18px;font-weight:950;margin-top:5px;overflow-wrap:anywhere}.packageExtraFields{grid-column:1/-1;margin:0!important}.packageExtraFields label{min-width:0}.confirmAction:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(.4)}
+@media(max-width:720px){.packageScannerPremium .scannerHero{align-items:flex-start}.packageScannerPremium .scannerHero svg{display:none}.scannerActionsGrid{grid-template-columns:1fr}.packageScanSummary{grid-template-columns:1fr}}
+
+/* v12.7.5 — Senha temporária premium + responsividade celular/tablet */
+html,body,#root{max-width:100%;overflow-x:hidden;}
+body{overscroll-behavior-y:contain;}
+.forgotPasswordForm .registerStatus{margin:12px 0!important;}
+.forgotPasswordForm .confirmAction:disabled{opacity:.72;cursor:progress;}
+.mobileViewportHint{display:none;position:fixed;left:12px;right:12px;bottom:82px;z-index:22;align-items:center;gap:10px;padding:10px 12px;border-radius:18px;background:linear-gradient(135deg,rgba(0,52,93,.94),rgba(15,118,110,.94));color:#fff;border:1px solid rgba(255,255,255,.22);box-shadow:0 18px 48px rgba(0,31,55,.24);font-weight:850;font-size:12.5px;line-height:1.35;}
+.mobileViewportHint svg{flex:0 0 auto;width:20px;height:20px;color:#fff;}
+.appFooter{display:flex!important;align-items:center!important;justify-content:center!important;gap:10px!important;flex-wrap:wrap!important;width:100%!important;max-width:100%!important;padding:14px 12px 18px!important;margin:16px auto 0!important;text-align:center!important;color:var(--muted)!important;font-size:12.5px!important;line-height:1.35!important;}
+.appFooter span{display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:4px!important;max-width:100%!important;overflow-wrap:anywhere!important;}
+.appFooter span:first-child{border:1px solid var(--line)!important;background:var(--panel)!important;border-radius:999px!important;padding:7px 11px!important;color:var(--accent)!important;font-weight:950!important;}
+.content{max-width:100vw;}
+.panel,.subpanel,.settingsCard,.tableWrap,.hero,.metric,.moduleCard,.updateDrop,.noticeBox{max-width:100%;}
+.formGrid{grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr))!important;}
+.topbar,.panelHead,.hero,.scannerHero{min-width:0;}
+.topbar h1,.panelHead h2,.hero h2{overflow-wrap:anywhere;}
+
+@media(max-width:1180px){
+  .metricStrip.aligned{grid-template-columns:repeat(3,minmax(0,1fr))!important;}
+  .dashboardRedesign .moduleGrid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+  .split,.supportGrid{grid-template-columns:1fr!important;}
+  .hero{grid-template-columns:1fr!important;}
+  .weather{min-width:0;width:100%;}
+}
+
+@media(max-width:920px){
+  .content,.menu-closed .content,.menu-floating .content,.menu-horizontal .content,.menu-top .content{padding:82px 12px 104px!important;}
+  .panel{border-radius:24px!important;padding:17px!important;margin-bottom:14px!important;}
+  .panelHead{align-items:flex-start!important;gap:10px!important;}
+  .panelHead>div{min-width:0!important;}
+  .topbar{padding-left:58px!important;align-items:flex-start!important;gap:10px!important;}
+  .topActions{gap:8px!important;}
+  .bottomNav{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;left:8px!important;right:8px!important;bottom:8px!important;border-radius:22px!important;padding:7px!important;box-shadow:0 18px 48px rgba(0,31,55,.18)!important;}
+  .bottomNav button{min-width:0!important;padding:9px 4px!important;border-radius:16px!important;font-size:11px!important;}
+  .bottomNav svg{width:18px;height:18px;}
+  .floatingEmergency{right:12px!important;bottom:92px!important;z-index:24!important;}
+  .toast{left:12px!important;right:12px!important;bottom:158px!important;max-width:none!important;}
+  .appFooter{padding-bottom:86px!important;}
+}
+
+@media(max-width:760px){
+  .loginPage{display:flex!important;min-height:100dvh!important;padding:14px!important;align-items:center!important;justify-content:center!important;}
+  .loginPhoto{display:none!important;}
+  .loginCard,.premiumLoginCard{width:100%!important;max-width:520px!important;border-radius:28px!important;padding:20px!important;}
+  .loginBrandBlock .loginLogo{width:min(190px,66vw)!important;max-height:132px!important;}
+  .roleChoiceGrid{grid-template-columns:1fr!important;}
+  .registerGrid{grid-template-columns:1fr!important;}
+  .mobileViewportHint{display:flex;}
+  @media (orientation:landscape){.mobileViewportHint{display:none;}}
+  .dashboardRedesign .moduleGrid,.metricStrip,.metricStrip.aligned,.packageScanSummary{grid-template-columns:1fr!important;}
+  .metric{min-height:auto!important;padding:14px!important;}
+  .metric b{font-size:24px!important;}
+  .subTabs{position:sticky!important;top:72px!important;z-index:8!important;display:flex!important;overflow-x:auto!important;flex-wrap:nowrap!important;scroll-snap-type:x proximity!important;-webkit-overflow-scrolling:touch!important;}
+  .subTabs button{flex:0 0 auto!important;white-space:nowrap!important;scroll-snap-align:start!important;}
+  .tableWrap{border:0!important;background:transparent!important;overflow:visible!important;}
+  .tableWrap table,.tableWrap tbody,.tableWrap tr,.tableWrap td{display:block!important;width:100%!important;}
+  .tableWrap tr{border:1px solid var(--line)!important;border-radius:20px!important;margin-bottom:10px!important;background:var(--panel)!important;box-shadow:0 10px 28px rgba(15,30,25,.06)!important;overflow:hidden!important;}
+  .tableWrap td{min-width:0!important;border:0!important;border-radius:0!important;padding:11px 13px!important;}
+  .tableWrap td.actions{display:flex!important;flex-wrap:wrap!important;gap:8px!important;}
+  .actions button,.packageActions button{flex:1 1 145px!important;justify-content:center!important;}
+  .vrReservaMonthGrid button{min-height:72px!important;}
+  .vrReservaEvent{display:none!important;}
+  .cameraReaderBox{border-radius:0!important;}
+}
+
+@media(max-width:480px){
+  body{font-size:14px;}
+  .content,.menu-closed .content,.menu-floating .content,.menu-horizontal .content,.menu-top .content{padding-left:10px!important;padding-right:10px!important;}
+  .panel{padding:14px!important;border-radius:21px!important;}
+  .topbar h1{font-size:23px!important;}
+  .panel h2{font-size:21px!important;}
+  .topActions{display:flex!important;flex-wrap:wrap!important;justify-content:flex-end!important;}
+  .topActions button{padding:9px!important;}
+  .formGrid input,.formGrid select,.formGrid textarea,.loginCard input,.settingsCard input,.settingsCard select,.settingsCard textarea{border-radius:14px!important;padding:12px!important;}
+  .appFooter{display:grid!important;grid-template-columns:1fr!important;gap:7px!important;font-size:11.5px!important;padding-left:8px!important;padding-right:8px!important;}
+  .appFooter span:first-child{justify-self:center!important;}
+  .mobileViewportHint{font-size:11.5px!important;bottom:80px!important;padding:9px 10px!important;}
+}
+
+@media(min-width:761px) and (max-width:1180px) and (orientation:landscape){
+  .content{padding-right:16px!important;}
+  .panel{padding:20px!important;}
+  .moduleGrid{grid-template-columns:repeat(3,minmax(0,1fr))!important;}
+  .appFooter{padding-bottom:20px!important;}
+}
+
+/* v12.7.6 — Saudação personalizada e feed premium de notícias/comunicados */
+.buildingFeedPremium{background:linear-gradient(135deg,rgba(18,107,95,.10),rgba(11,42,74,.06));border:1px solid var(--line);border-radius:28px;padding:18px;margin:0 0 18px;box-shadow:0 18px 55px rgba(15,30,25,.06)}
+.feedHead{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px}.feedHead h3{margin:4px 0;font-size:24px}.feedHead button,.newsComposer button{display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:#fff;border-radius:15px;padding:12px 14px;font-weight:900}.newsComposer{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:12px;background:rgba(255,255,255,.68);border:1px solid var(--line);border-radius:22px;padding:14px;margin:12px 0}.newsComposer label{display:grid;gap:7px;font-weight:850}.newsComposer input,.newsComposer select,.newsComposer textarea{width:100%;border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:15px;padding:12px 13px}.newsComposer textarea{min-height:86px}.newsComposer .full{grid-column:1/-1}.newsPreview{width:130px;height:90px;object-fit:cover;border-radius:16px;border:1px solid var(--line)}.feedGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}.feedCard{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:14px;min-height:150px;box-shadow:0 10px 28px rgba(15,30,25,.05);overflow:hidden}.feedCard img{width:100%;height:150px;object-fit:cover;border-radius:18px;margin-bottom:10px}.feedCard span{display:inline-flex;border-radius:999px;background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent);font-weight:950;font-size:12px;padding:6px 9px}.feedCard h4{margin:10px 0 6px;font-size:18px}.feedCard p{margin:0 0 10px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}.feedCard.notice{background:linear-gradient(180deg,var(--panel),color-mix(in srgb,var(--accent) 4%,var(--panel)))}
+@media(max-width:860px){.feedHead{display:grid}.newsComposer{grid-template-columns:1fr}.feedGrid{grid-template-columns:1fr}.buildingFeedPremium{border-radius:22px;padding:14px}.feedCard img{height:130px}.dashboardHero h2{font-size:clamp(28px,8vw,40px)}}
+@media(min-width:861px) and (max-width:1180px){.newsComposer{grid-template-columns:1fr 1fr}.feedGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* v12.7.7 — Reserva com documento e Financeiro contábil premium */
+.reservationRulesPremium{border-radius:24px;padding:18px;background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 10%,var(--panel)),var(--panel2));}
+.reservationRulesPremium>b{display:flex;align-items:center;gap:8px;margin-bottom:6px}.reservationDocActions{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}.rulesTextBox{width:100%;border:1px solid var(--line);border-radius:18px;padding:13px;background:var(--panel)}.rulesTextBox small{white-space:pre-wrap;color:var(--text)}
+.financePremiumShell{display:grid;gap:18px}.financeHeroPremium{display:grid;grid-template-columns:1fr auto;gap:18px;align-items:center;border:1px solid var(--line);border-radius:30px;padding:24px;background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 18%,var(--panel)),var(--panel));box-shadow:var(--shadow)}.financeHeroPremium h3{font-size:34px;line-height:1;margin:5px 0}.financeBalanceBadge{min-width:210px;text-align:right;background:var(--panel2);border:1px solid var(--line);border-radius:24px;padding:18px}.financeBalanceBadge b{font-size:28px;color:var(--accent)}.financeKpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.financeKpis.compact{grid-template-columns:repeat(3,minmax(0,1fr))}.financeKpis article{background:var(--panel);border:1px solid var(--line);border-radius:24px;padding:18px;box-shadow:0 12px 32px rgba(15,30,25,.06)}.financeKpis span{display:block;color:var(--muted);font-weight:900;text-transform:uppercase;font-size:12px;letter-spacing:.08em}.financeKpis b{display:block;font-size:26px;margin:6px 0;color:var(--text)}.financePremiumGrid{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}.financeCard{background:var(--panel);border:1px solid var(--line);border-radius:26px;padding:18px;box-shadow:0 14px 38px rgba(15,30,25,.07)}.financeCard h3{display:flex;gap:8px;align-items:center;margin:0 0 12px}.financeBar{display:grid;grid-template-columns:140px 1fr 120px;gap:10px;align-items:center;margin:10px 0}.financeBar>div{height:12px;border-radius:999px;background:var(--panel2);overflow:hidden;border:1px solid var(--line)}.financeBar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent),var(--accent2))}.financeBar b{text-align:right}.financeDocLink{display:flex;align-items:center;gap:10px;text-decoration:none;border:1px solid var(--line);border-radius:16px;padding:12px;margin-bottom:10px;background:var(--panel2)}.financeDocLink svg{color:var(--accent)}.financeStatements .tableWrap{margin-top:10px}
+@media(max-width:980px){.financeHeroPremium,.financePremiumGrid{grid-template-columns:1fr}.financeBalanceBadge{text-align:left}.financeKpis{grid-template-columns:repeat(2,minmax(0,1fr))}.financeBar{grid-template-columns:1fr}.financeBar b{text-align:left}}
+@media(max-width:620px){.financeKpis,.financeKpis.compact{grid-template-columns:1fr}.financeHeroPremium{padding:18px;border-radius:24px}.financeHeroPremium h3{font-size:26px}.reservationDocActions .buttonlike{width:100%;justify-content:center}}

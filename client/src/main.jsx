@@ -11,13 +11,30 @@ import {
 import './styles.css';
 
 const API = import.meta.env.VITE_API_URL || '';
-const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v12.7.3';
+const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v12.7.7';
 const DEFAULT_TELEGRAM_CHAT_ID = '8188648317';
 const money = (v) => Number(v || 0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
 const date = (v) => v ? new Date(String(v)).toLocaleDateString('pt-BR', { timeZone:'UTC' }) : '-';
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const bool = (v, fallback=false) => v === undefined || v === null || v === '' ? fallback : ['1','true','sim','yes','on','ativo','liberado'].includes(String(v).trim().toLowerCase());
 const roleLabel = (role) => role === 'master' || role === 'admin' ? 'Administrador' : ({ sindico:'Síndico', subsindico:'Subsíndico', portaria:'Portaria', morador:'Morador', funcionario:'Funcionário', financeiro:'Financeiro' }[role] || role || 'Usuário');
+function firstName(value=''){ return String(value || '').trim().split(/\s+/).filter(Boolean)[0] || ''; }
+function inferGenderFromName(name=''){
+  const n = firstName(name).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const feminine = new Set(['ana','maria','mariana','juliana','julia','luiza','luisa','luciana','patricia','fernanda','carla','cristina','beatriz','bruna','camila','leticia','larissa','amanda','vanessa','renata','rafaela','isabela','isabella','gabriela','claudia','monica','simone','thais','tais','debora','daniela','aline','andrea','paula','priscila','sandra','suely','fatima','rosana','roberta','valeria','viviane']);
+  const masculine = new Set(['bruno','joao','jose','carlos','paulo','pedro','lucas','marcos','marco','antonio','andre','leandro','rafael','gabriel','daniel','felipe','fernando','ricardo','roberto','marcelo','eduardo','luiz','luis','gustavo','henrique','thiago','tiago','vinicius','vitor','victor','claudio','sergio','fabio','flavio','alexandre','francisco','miguel']);
+  if(feminine.has(n) || n.endsWith('a')) return 'feminino';
+  if(masculine.has(n) || n.endsWith('o')) return 'masculino';
+  return 'nao_informado';
+}
+function greetingForUser(user={}){
+  const name = firstName(user?.name);
+  const gender = String(user?.gender || user?.sexo || '').toLowerCase();
+  if(gender === 'nao_informado' || gender === 'nao informado') return name ? `Olá, ${name}` : 'Olá';
+  const word = gender === 'feminino' ? 'bem-vinda' : 'bem-vindo';
+  return name ? `Olá, ${name}, ${word}` : `Olá, ${word}`;
+}
+const genderOptions = [['masculino','Masculino'],['feminino','Feminino'],['nao_informado','Não informado']];
 const channelNames = { app:'Sistema', browser:'Navegador', email:'E-mail', telegram:'Telegram', whatsapp:'WhatsApp' };
 const deliveryPreferenceLabel = (v) => ({ receber_elevador:'Autorizou envio pelo elevador', retirar_portaria:'Vai retirar na portaria', buscar_portaria:'Vai retirar na portaria', retirar_mais_tarde:'Vai retirar mais tarde', retirar_agora:'Está indo retirar agora', chamar_interfone:'Pediu contato/interfone antes', nao_reconhece:'Não reconhece esta encomenda', portaria:'Vai retirar na portaria', elevador:'Autorizou envio pelo elevador', nao_informado:'Aguardando escolha do morador' }[String(v||'').toLowerCase()] || 'Aguardando escolha do morador');
 function appUrl(path=''){ const clean=String(path||'').replace(/^\/+/, ''); return window.location.origin + '/' + clean; }
@@ -26,25 +43,62 @@ function maskValue(v){ if(!v) return 'não configurado'; const s=String(v); if(s
 function clean(obj){ return Object.fromEntries(Object.entries(obj||{}).filter(([,v]) => v !== undefined && v !== null)); }
 function nonEmpty(obj){ return Object.fromEntries(Object.entries(obj||{}).filter(([,v]) => v !== undefined && v !== null && String(v).trim() !== '')); }
 function parseJson(value, fallback){ try { return typeof value === 'string' ? JSON.parse(value) : (value || fallback); } catch { return fallback; } }
+
+function normalizeBarcodeValue(value=''){
+  return String(value || '').trim().replace(/\s+/g,'').replace(/[–—]/g,'-');
+}
+async function detectCodesFromBitmapSource(source){
+  if (!('BarcodeDetector' in window)) return [];
+  try{
+    const formats = ['qr_code','code_128','code_39','code_93','ean_13','ean_8','itf','codabar','upc_a','upc_e','data_matrix','pdf417','aztec'];
+    const detector = new BarcodeDetector({ formats });
+    const found = await detector.detect(source);
+    return (found || []).map(x => ({ rawValue:normalizeBarcodeValue(x.rawValue || ''), format:x.format || 'codigo' })).filter(x => x.rawValue);
+  }catch{ return []; }
+}
+async function detectCodesFromFile(file){
+  if (!file || !('BarcodeDetector' in window) || !window.createImageBitmap) return [];
+  try{
+    const bmp = await createImageBitmap(file);
+    const codes = await detectCodesFromBitmapSource(bmp);
+    try{ bmp.close?.(); }catch{}
+    return codes;
+  }catch{ return []; }
+}
+function uniqueCodes(list=[]){
+  const map = new Map();
+  for(const c of list || []){
+    const raw = normalizeBarcodeValue(typeof c === 'string' ? c : c?.rawValue);
+    if(raw && !map.has(raw)) map.set(raw, { rawValue:raw, format:(c?.format || 'codigo') });
+  }
+  return [...map.values()];
+}
+function packageConfidenceLabel(v){
+  const n = Number(v || 0);
+  if(n >= 90) return 'Alta';
+  if(n >= 70) return 'Média';
+  if(n > 0) return 'Baixa';
+  return 'Pendente';
+}
 function defaultCriteria(settings={}){ return parseJson(settings.RESIDENT_CRITERIA, [{key:'possui_pet',label:'Possui pet'},{key:'imovel_alugado',label:'Imóvel alugado'},{key:'possui_carro',label:'Possui carro'},{key:'idoso_ou_pcd',label:'Idoso ou pessoa com deficiência'}]); }
 function enabledChannels(settings={}){ return { app:true, browser:bool(settings.ENABLE_BROWSER_PUSH,true), email:bool(settings.ENABLE_EMAIL,true), telegram:bool(settings.ENABLE_TELEGRAM,true), whatsapp:bool(settings.ENABLE_WHATSAPP,false) }; }
 function initialForms(){ return {
-  login:{ email:'admin@vitoriaregia.local', password:'123456' }, register:{ name:'', email:'', phone:'', whatsapp_phone:'', telegram_username:'', telegram_chat_id:'', unit:'', document:'', role:'morador' }, forgot:{ email:'' },
-  profile:{ name:'', email:'', phone:'', whatsapp_phone:'', telegram_username:'', telegram_chat_id:'', unit:'', document:'', vehicle:'', notification_preferences:{ app:true, browser:true, email:true, telegram:true, whatsapp:false }, password:'' }, householdMember:{ name:'', email:'', phone:'', whatsapp_phone:'', telegram_username:'', telegram_chat_id:'', document:'' },
-  resident:{ id:'', name:'', unit:'', phone:'', whatsapp_phone:'', email:'', telegram_username:'', telegram_chat_id:'', document:'', vehicle:'', vehicle_model:'', vehicle_plate:'', pet_name:'', notes:'', resident_tags:{}, notification_preferences:{ app:true, browser:true, email:true, telegram:true, whatsapp:false } },
-  user:{ id:'', name:'', email:'', password:'', role:'morador', user_type:'morador', unit:'', phone:'', whatsapp_phone:'', telegram_username:'', telegram_chat_id:'', resident_id:'', active:true, notification_preferences:{ app:true, browser:true, email:true, telegram:true, whatsapp:false } },
+  login:{ email:'admin@vitoriaregia.local', password:'123456' }, register:{ name:'', gender:'nao_informado', email:'', phone:'', whatsapp_phone:'', telegram_username:'', telegram_chat_id:'', unit:'', document:'', role:'morador' }, forgot:{ email:'' },
+  profile:{ name:'', gender:'nao_informado', email:'', phone:'', whatsapp_phone:'', telegram_username:'', telegram_chat_id:'', unit:'', document:'', vehicle:'', notification_preferences:{ app:true, browser:true, email:true, telegram:true, whatsapp:false }, password:'' }, householdMember:{ name:'', gender:'nao_informado', email:'', phone:'', whatsapp_phone:'', telegram_username:'', telegram_chat_id:'', document:'' },
+  resident:{ id:'', name:'', gender:'nao_informado', unit:'', phone:'', whatsapp_phone:'', email:'', telegram_username:'', telegram_chat_id:'', document:'', vehicle:'', vehicle_model:'', vehicle_plate:'', pet_name:'', notes:'', resident_tags:{}, notification_preferences:{ app:true, browser:true, email:true, telegram:true, whatsapp:false } },
+  user:{ id:'', name:'', gender:'nao_informado', email:'', password:'', role:'morador', user_type:'morador', unit:'', phone:'', whatsapp_phone:'', telegram_username:'', telegram_chat_id:'', resident_id:'', active:true, notification_preferences:{ app:true, browser:true, email:true, telegram:true, whatsapp:false } },
   employee:{ name:'', role:'portaria', phone:'', email:'', active:true, notes:'' }, shift:{ employee_id:'', role:'portaria', date:todayISO(), recurrence_type:'single', weekdays:[], month_days:[], shift_type:'manha', starts_at:'', ends_at:'', start_time:'', end_time:'', use_custom_time:false, temporary_for_employee_id:'', substitution_reason:'dia', allow_employee_edit:false, notes:'' },
-  package:{ tracking:'', recipient:'', unit:'', label:'', notes:'', extracted_text:'', photo_url:'', notification_channels:{ app:true, browser:true, email:true, telegram:true, whatsapp:false } },
+  package:{ tracking:'', recipient:'', unit:'', label:'', notes:'', extracted_text:'', photo_url:'', carrier:'', barcode:'', barcode_format:'', order_number:'', invoice_number:'', validation_status:'pendente', ocr_confidence:'', source_type:'manual', auto_register:false, notification_channels:{ app:true, browser:true, email:true, telegram:true, whatsapp:false } },
   visitor:{ name:'', document:'', phone:'', unit:'', authorized_by:'', plate:'', recurring:false, weekdays:[], valid_from:'', valid_until:'', announce_required:true, announcement_channel:'interfone', photo_data:'', notes:'' },
   reservation:{ area:'Salão de festas', unit:'', resident:'', resident_id:'', reserved_for:todayISO(), reservation_mode:'periodo', period_label:'Noite', start_time:'19:00', end_time:'23:00', shift:'noite', all_day:false, terms_accepted:false, document_text:'', fee_amount:'' },
   reservationGuest:{ reservation_id:'', name:'', document:'', phone:'', plate:'', visitor_type:'convidado', age_group:'adulto', counts_as_guest:true, notes:'', photo_data:'' }, reservationVisitors:{ reservation_id:'', bulk:'' },
   commonArea:{ id:'', name:'', fee_amount:'', rules_document:'', active:true, requires_approval:true, max_guests:'30', count_children:true, count_infants:false, reservation_periods:'dia_todo,manha,tarde,noite,horario' },
   finance:{ title:'', amount:'', type:'receita', due_date:'', unit:'', category:'geral', generate_boleto:false, digitable_line:'', payment_link:'', bank_name:'' }, boleto:{ title:'', amount:'', due_date:'', unit:'', bank_name:'', digitable_line:'', barcode:'', pdf_url:'', payment_link:'' },
   invoice:{ supplier:'', document_number:'', access_key:'', amount:'', issue_date:'', due_date:'', unit:'', category:'nota fiscal', extracted_text:'', file_name:'' },
-  notice:{ title:'', body:'', priority:'normal', target_role:'todos', target_criteria:{} }, notifyTest:{ channel:'email', to:'', phone:'', chat_id:'', telegram_username:'', target_type:'padrao', resident_id:'', user_id:'', subject:'Teste Vitória Régia', message:'Mensagem de teste do Sistema Vitória Régia.' },
+  notice:{ title:'', body:'', priority:'normal', target_role:'todos', target_criteria:{} }, buildingNews:{ title:'', body:'', priority:'normal', photo_data:'' }, notifyTest:{ channel:'email', to:'', phone:'', chat_id:'', telegram_username:'', target_type:'padrao', resident_id:'', user_id:'', subject:'Teste Vitória Régia', message:'Mensagem de teste do Sistema Vitória Régia.' },
   message:{ subject:'', body:'', unit:'' }, emergency:{ type:'elevador', unit:'', location_type:'Minha unidade', occurrence_location:'Minha unidade', neighbor_unit:'', floor:'', message:'' }, settings:{ TELEGRAM_CHAT_ID:DEFAULT_TELEGRAM_CHAT_ID, TELEGRAM_TEST_CHAT_ID:DEFAULT_TELEGRAM_CHAT_ID, ELEVATOR_MAINTENANCE_WHATSAPP:'', EMERGENCY_ALLOW_GENERAL_ALERT:'true' }, systemUpdate:{ validation_code:'', mode:'github' }, document:{ title:'', description:'', audience:'publico', is_public:true }, occurrence:{ title:'', description:'', category:'queixa', priority:'normal', unit:'' }, support:{ subject:'', body:'', priority:'normal' }, financeImport:{ text:'', unit:'', previewRows:[] }
 };}
-function emptyData(){ return { settings:{}, dashboard:null, residents:[], users:[], employees:[], shifts:[], messages:[], packages:[], visitors:[], invoices:[], notices:[], reservations:[], finance:[], boletos:[], commonAreas:[], incidents:[], maintenance:[], emergencyTypes:[], emergencyRequests:[], registrationRequests:[], notifications:[], audit:[], weather:null, systemUpdates:[], manuals:[], documents:[], faqs:[], supportTickets:[], occurrenceBook:[], notifyConfig:null }; }
+function emptyData(){ return { settings:{}, dashboard:null, residents:[], users:[], employees:[], shifts:[], messages:[], packages:[], visitors:[], invoices:[], notices:[], reservations:[], finance:[], boletos:[], commonAreas:[], incidents:[], maintenance:[], emergencyTypes:[], emergencyRequests:[], registrationRequests:[], notifications:[], audit:[], weather:null, systemUpdates:[], manuals:[], documents:[], faqs:[], supportTickets:[], occurrenceBook:[], notifyConfig:null, buildingNews:[] }; }
 async function request(path, opts={}){
   const token = localStorage.getItem('vr_token');
   const headers = opts.raw ? (opts.headers || {}) : { 'Content-Type':'application/json', ...(opts.headers || {}) };
@@ -193,10 +247,10 @@ function App(){
   }
   async function safe(path, fallback){ try { return await request(path); } catch { return fallback; } }
   async function loadAll(){
-    const [settingsRes,dashboard,residents,users,employees,shifts,messages,packagesRes,visitors,invoices,notices,reservations,finance,boletos,commonAreas,incidents,maintenance,emergencyTypes,emergencyRequests,registrationRequests,notifications,audit,weather,systemUpdates,manuals,documents,faqs,supportTickets,occurrenceBook,notifyConfig] = await Promise.all([
-      safe('/api/settings',{}), safe('/api/dashboard',null), safe('/api/residents',[]), safe('/api/users',[]), safe('/api/employees',[]), safe('/api/shifts',[]), safe('/api/messages',[]), safe('/api/packages',[]), safe('/api/visitors',[]), safe('/api/invoices',[]), safe('/api/notices',[]), safe('/api/reservations',[]), safe('/api/finance',[]), safe('/api/boletos',[]), safe('/api/common-areas',[]), safe('/api/incidents',[]), safe('/api/maintenance',[]), safe('/api/emergency-types',[]), safe('/api/emergency-requests',[]), safe('/api/registration-requests',[]), safe('/api/notifications',[]), safe('/api/audit',[]), safe('/api/weather',null), safe('/api/system-updates',[]), safe('/api/manuals',[]), safe('/api/documents',[]), safe('/api/faqs',[]), safe('/api/support-tickets',[]), safe('/api/occurrence-book',[]), safe('/api/notify/config',null)
+    const [settingsRes,dashboard,residents,users,employees,shifts,messages,packagesRes,visitors,invoices,notices,buildingNews,reservations,finance,boletos,commonAreas,incidents,maintenance,emergencyTypes,emergencyRequests,registrationRequests,notifications,audit,weather,systemUpdates,manuals,documents,faqs,supportTickets,occurrenceBook,notifyConfig] = await Promise.all([
+      safe('/api/settings',{}), safe('/api/dashboard',null), safe('/api/residents',[]), safe('/api/users',[]), safe('/api/employees',[]), safe('/api/shifts',[]), safe('/api/messages',[]), safe('/api/packages',[]), safe('/api/visitors',[]), safe('/api/invoices',[]), safe('/api/notices',[]), safe('/api/building-news',[]), safe('/api/reservations',[]), safe('/api/finance',[]), safe('/api/boletos',[]), safe('/api/common-areas',[]), safe('/api/incidents',[]), safe('/api/maintenance',[]), safe('/api/emergency-types',[]), safe('/api/emergency-requests',[]), safe('/api/registration-requests',[]), safe('/api/notifications',[]), safe('/api/audit',[]), safe('/api/weather',null), safe('/api/system-updates',[]), safe('/api/manuals',[]), safe('/api/documents',[]), safe('/api/faqs',[]), safe('/api/support-tickets',[]), safe('/api/occurrence-book',[]), safe('/api/notify/config',null)
     ]);
-    setData({ settings:settingsRes, dashboard, residents, users, employees, shifts, messages, packages:packagesRes, visitors, invoices, notices, reservations, finance, boletos, commonAreas, incidents, maintenance, emergencyTypes, emergencyRequests, registrationRequests, notifications, audit, weather, systemUpdates, manuals, documents, faqs, supportTickets, occurrenceBook, notifyConfig });
+    setData({ settings:settingsRes, dashboard, residents, users, employees, shifts, messages, packages:packagesRes, visitors, invoices, notices, buildingNews, reservations, finance, boletos, commonAreas, incidents, maintenance, emergencyTypes, emergencyRequests, registrationRequests, notifications, audit, weather, systemUpdates, manuals, documents, faqs, supportTickets, occurrenceBook, notifyConfig });
     setForms(f => ({ ...f, settings:settingsRes }));
   }
   async function doLogin(e){ e.preventDefault(); setErr(''); try { const r=await post('/api/login', forms.login); localStorage.setItem('vr_token', r.token); localStorage.setItem('vr_user', JSON.stringify(r.user)); setSession(r.user); if(r.user?.force_password_change){ setActive('perfil'); notify('Senha temporária detectada. Altere sua senha no Meu Perfil para continuar com segurança.'); } else { notify('Login realizado com segurança'); } } catch(e){ setErr(e.message); } }
@@ -229,17 +283,19 @@ function App(){
     } catch(e){ setLookup(l=>({ ...l, [group]:{ residents:[], message:e.message } })); return null; }
   }
   function prefillResidentFromContext(group){ const p = forms[group] || {}; setForm('resident', { ...forms.resident, name:p.recipient || p.resident || '', unit:p.unit || '', notes:p.extracted_text ? 'Criado a partir da leitura automática de encomenda.\n'+p.extracted_text.slice(0,500) : '' }); go('cadastros','moradores'); notify('Cadastro de morador pré-preenchido. Confira e salve.'); }
-  async function readImage(file, type){
+  async function readImage(file, type, scanner={}){
     if(!file) return;
     setReading(type);
     try {
       notify(type==='package' ? 'Lendo etiqueta. Segure a câmera reta e com boa luz.' : 'Lendo nota fiscal. Confira os dados ao final.');
+      const detectedCodes = uniqueCodes([...(scanner.codes || []), ...(await detectCodesFromFile(file))]);
+      if(detectedCodes.length) setToast(`Código lido: ${detectedCodes[0].rawValue}`);
       const result = await Tesseract.recognize(file, 'por+eng', { logger: m => { if(m?.status==='recognizing text' && m.progress) setToast(`Leitura automática ${Math.round(m.progress*100)}%`); } });
       const text = result?.data?.text || '';
       if(!text.trim()) throw new Error('não foi possível identificar texto na imagem. Tente aproximar e tirar outra foto.');
-      const parsed = await post(type==='package' ? '/api/ocr/parse-package' : '/api/ocr/parse-invoice', { text });
+      const parsed = await post(type==='package' ? '/api/ocr/parse-package' : '/api/ocr/parse-invoice', type==='package' ? { text, codes:detectedCodes } : { text });
       if(type==='package'){
-        const patch = nonEmpty({ tracking:parsed.tracking, recipient:parsed.recipient, unit:parsed.unit, label:parsed.label, notes:parsed.notes, extracted_text:text });
+        const patch = nonEmpty({ tracking:parsed.tracking, recipient:parsed.recipient, unit:parsed.unit, label:parsed.label, notes:parsed.notes, extracted_text:text, carrier:parsed.carrier, barcode:parsed.barcode, barcode_format:parsed.barcode_format, order_number:parsed.order_number, invoice_number:parsed.invoice_number, validation_status:parsed.validation_status, ocr_confidence:parsed.confidence, source_type:parsed.source_type });
         setForm('package', { ...forms.package, ...patch });
         if(parsed.unit) await lookupUnit('package', parsed.unit, parsed.recipient);
       } else {
@@ -273,7 +329,7 @@ function App(){
     {can('emergency.use') && <button className="floatingEmergency" onClick={()=>go('emergencia')}><Siren/><span>Emergência</span></button>}
     <main className="content"><Topbar session={session} settings={settings} data={data} setActive={go}/>{toast && <div className="toast">{toast}</div>}
       {visualActive==='dashboard' && <Dashboard {...props}/>} {visualActive==='portaria' && <Portaria {...props}/>} {reservasRouteLocked && <Reservations {...props}/>} {visualActive==='financeiro' && <Financeiro {...props}/>} {visualActive==='cadastros' && <Cadastros {...props}/>} {visualActive==='comunicacao' && <Comunicacao {...props}/>} {visualActive==='ocorrencias' && <OccurrenceBook {...props}/>} {visualActive==='emergencia' && <Emergency {...props}/>} {visualActive==='suporte' && <SupportPage {...props}/>} {visualActive==='configuracoes' && <SettingsPage {...props}/>} {visualActive==='central' && <CentralPro {...props}/>} {visualActive==='updates' && <Updates {...props}/>} {visualActive==='perfil' && <Profile {...props}/>} 
-    </main><nav className="bottomNav"><button className={visualActive==='dashboard'?'active':''} onClick={()=>go('dashboard')}><Home/><span>Início</span></button><button className={visualActive==='reservas'?'active':''} onClick={()=>go('reservas','calendario')}><CalendarDays/><span>Reservas</span></button><button className={visualActive==='comunicacao'?'active':''} onClick={()=>go('comunicacao','notificacoes')}><Bell/><span>Comunicados</span></button><button className={visualActive==='perfil'?'active':''} onClick={()=>go('perfil')}><UserCheck/><span>Perfil</span></button></nav>{criticalAlert && <CriticalEmergencyOverlay alert={criticalAlert} onOpen={()=>acknowledgeCriticalAlert(true)} onDismiss={()=>acknowledgeCriticalAlert(false)} />} {cameraReader && <CameraCaptureModal type={cameraReader.type} onClose={()=>setCameraReader(null)} onCapture={async(file,type)=>{ setCameraReader(null); await readImage(file,type); }} notify={notify}/>} {confirm && <ConfirmModal confirm={confirm} onCancel={()=>setConfirm(null)} onConfirm={confirmRun}/>}<Footer /></div>;
+    </main><nav className="bottomNav"><button className={visualActive==='dashboard'?'active':''} onClick={()=>go('dashboard')}><Home/><span>Início</span></button><button className={visualActive==='reservas'?'active':''} onClick={()=>go('reservas','calendario')}><CalendarDays/><span>Reservas</span></button><button className={visualActive==='comunicacao'?'active':''} onClick={()=>go('comunicacao','notificacoes')}><Bell/><span>Comunicados</span></button><button className={visualActive==='perfil'?'active':''} onClick={()=>go('perfil')}><UserCheck/><span>Perfil</span></button></nav>{criticalAlert && <CriticalEmergencyOverlay alert={criticalAlert} onOpen={()=>acknowledgeCriticalAlert(true)} onDismiss={()=>acknowledgeCriticalAlert(false)} />} {cameraReader && <CameraCaptureModal type={cameraReader.type} onClose={()=>setCameraReader(null)} onCapture={async(file,type,meta)=>{ setCameraReader(null); await readImage(file,type,meta || {}); }} notify={notify}/>} {confirm && <ConfirmModal confirm={confirm} onCancel={()=>setConfirm(null)} onConfirm={confirmRun}/>}<MobileViewportHint/><Footer /></div>;
 }
 
 function CameraCaptureModal({type='package',onClose,onCapture,notify}){
@@ -281,6 +337,23 @@ function CameraCaptureModal({type='package',onClose,onCapture,notify}){
   const canvasRef=useRef(null);
   const [status,setStatus]=useState('Abrindo câmera do celular...');
   const [stream,setStream]=useState(null);
+  const [detectedCodes,setDetectedCodes]=useState([]);
+
+  useEffect(()=>{
+    if(!stream || !('BarcodeDetector' in window)) return;
+    let cancelled=false;
+    const video=videoRef.current;
+    async function tick(){
+      if(cancelled || !video || !video.videoWidth) return;
+      try{
+        const found = await detectCodesFromBitmapSource(video);
+        if(found.length) setDetectedCodes(prev => uniqueCodes([...prev, ...found]).slice(0,8));
+      }catch{}
+    }
+    const id=setInterval(tick, 900);
+    setTimeout(tick, 600);
+    return()=>{ cancelled=true; clearInterval(id); };
+  }, [stream]);
   useEffect(()=>{
     let active=true;
     async function start(){
@@ -311,10 +384,10 @@ function CameraCaptureModal({type='package',onClose,onCapture,notify}){
       if(!blob){ notify?.('Não foi possível capturar a imagem da etiqueta.', true); return; }
       stop();
       const file=new File([blob], `${type}-camera-${Date.now()}.jpg`, { type:'image/jpeg' });
-      await onCapture(file,type);
+      await onCapture(file,type,{ codes:detectedCodes });
     },'image/jpeg',0.92);
   }
-  return <div className="cameraReaderOverlay"><div className="cameraReaderBox"><div className="cameraReaderHead"><div><b>{type==='package'?'Leitura automática da etiqueta':'Leitura automática'}</b><small>{status}</small></div><button type="button" onClick={()=>{stop(); onClose();}}><X/></button></div><div className="cameraReaderStage"><video ref={videoRef} playsInline muted autoPlay/><div className="cameraGuide"><span>Alinhe a etiqueta aqui</span></div></div><canvas ref={canvasRef} style={{display:'none'}}/><div className="cameraReaderActions"><button type="button" className="secondaryAction" onClick={()=>{stop(); onClose();}}>Cancelar</button><button type="button" className="confirmAction" onClick={capture}><Camera/> Capturar etiqueta</button></div><small className="cameraReaderTip">Se a câmera não abrir no APK, permita câmera em Configurações do Android / Apps / Vitória Régia Portaria / Permissões.</small></div></div>;
+  return <div className="cameraReaderOverlay"><div className="cameraReaderBox"><div className="cameraReaderHead"><div><b>{type==='package'?'Leitura automática da etiqueta':'Leitura automática'}</b><small>{status}</small></div><button type="button" onClick={()=>{stop(); onClose();}}><X/></button></div><div className="cameraReaderStage"><video ref={videoRef} playsInline muted autoPlay/><div className="cameraGuide"><span>Alinhe a etiqueta aqui</span></div></div><canvas ref={canvasRef} style={{display:'none'}}/><div className="cameraReaderActions"><button type="button" className="secondaryAction" onClick={()=>{stop(); onClose();}}>Cancelar</button><button type="button" className="confirmAction" onClick={capture}><Camera/> Capturar etiqueta</button></div><small className="cameraReaderTip">Se a câmera não abrir no APK, permita câmera em Configurações do Android / Apps / Vitória Régia Portaria / Permissões.</small>{detectedCodes.length>0&&<div className="scannerDetectedBox"><b>QR/código detectado</b>{detectedCodes.map(c=><small key={c.rawValue}>{c.format}: {c.rawValue}</small>)}</div>}</div></div>;
 }
 
 
@@ -343,6 +416,9 @@ function TelegramLinkBox({ entity='me', id='', initialUrl='', compact=false }){
 function LoginPage({ forms,setForm,mode,setMode,doLogin,err,setShowPass,showPass,action,settings }){
   const [registerStatus,setRegisterStatus] = useState(null);
   const [sendingRegister,setSendingRegister] = useState(false);
+  const [forgotStatus,setForgotStatus] = useState(null);
+  const [sendingForgot,setSendingForgot] = useState(false);
+  const [loginNotice,setLoginNotice] = useState(null);
   const channels=enabledChannels(settings);
   const roleOptions = [
     ['morador','Morador'],
@@ -370,6 +446,27 @@ function LoginPage({ forms,setForm,mode,setMode,doLogin,err,setShowPass,showPass
       setSendingRegister(false);
     }
   };
+  const submitForgot = async (e) => {
+    e.preventDefault();
+    const email = String(forms.forgot.email || forms.login.email || '').trim();
+    setForgotStatus(null);
+    setLoginNotice(null);
+    if(!email){ setForgotStatus({ ok:false, text:'Informe seu e-mail para receber a senha temporária.' }); return; }
+    setSendingForgot(true);
+    try {
+      const r = await post('/api/forgot-password', { email });
+      setForgotStatus({ ok:true, text:r?.message || 'Solicitação recebida. Enviaremos a senha temporária pelos canais cadastrados.' });
+      setForm('login', { email, password:'' });
+      window.setTimeout(() => {
+        setMode('login');
+        setLoginNotice({ ok:true, text:'Senha temporária solicitada. Confira seu e-mail e Telegram vinculado. Depois entre com a senha recebida.' });
+      }, 1200);
+    } catch(ex) {
+      setForgotStatus({ ok:false, text:ex.message || 'Não foi possível solicitar senha temporária. Tente novamente.' });
+    } finally {
+      setSendingForgot(false);
+    }
+  };
   return <div className="loginPage buildingLogin redesignedLogin cleanAccess">
     <section className="loginPhoto">
       <div className="secureNote"><ShieldCheck/><div><b>Acesso seguro e inteligente.</b><small>Seu perfil é identificado automaticamente após aprovação.</small></div></div>
@@ -380,10 +477,11 @@ function LoginPage({ forms,setForm,mode,setMode,doLogin,err,setShowPass,showPass
         <h2>Bem-vindo de volta!</h2>
         <p>Entre com seu usuário para acessar o painel do condomínio.</p>
         {err && <p className="error">{err}</p>}
+        {loginNotice && <div className={loginNotice.ok?'registerStatus success':'registerStatus error'}><b>{loginNotice.ok?'Solicitação enviada':'Atenção'}</b><small>{loginNotice.text}</small></div>}
         <label>Usuário ou e-mail<div className="loginInputIcon"><UserCheck/><input required placeholder="Ex.: morador@email.com" value={forms.login.email} onChange={e=>setForm('login',{email:e.target.value})}/></div></label>
         <label>Senha<div className="password loginInputIcon"><KeyRound/><input type={showPass?'text':'password'} placeholder="Digite sua senha" required value={forms.login.password} onChange={e=>setForm('login',{password:e.target.value})}/><button type="button" onClick={()=>setShowPass(v=>!v)} aria-label="Mostrar ou ocultar senha">{showPass?<EyeOff/>:<Eye/>}</button></div></label>
         <button type="submit"><KeyRound/> Entrar</button>
-        <div className="loginHelpGrid"><button type="button" className="textLink" onClick={()=>setMode('register')}>Solicitar cadastro</button><button type="button" className="textLink subtle" onClick={()=>{ setForm('forgot',{email:forms.login.email||forms.forgot.email||''}); setMode('forgot'); }}>Esqueci minha senha</button></div>
+        <div className="loginHelpGrid"><button type="button" className="textLink" onClick={()=>setMode('register')}>Solicitar cadastro</button><button type="button" className="textLink subtle" onClick={()=>{ setLoginNotice(null); setForgotStatus(null); setForm('forgot',{email:forms.login.email||forms.forgot.email||''}); setMode('forgot'); }}>Esqueci minha senha</button></div>
       </form>}
       {mode==='register' && <form className="registerForm" onSubmit={submitRegister}>
         <h2>Solicitar cadastro</h2>
@@ -392,7 +490,7 @@ function LoginPage({ forms,setForm,mode,setMode,doLogin,err,setShowPass,showPass
         <div className="roleChoiceGrid">{roleOptions.map(([v,l])=><button key={v} type="button" className={selectedRole===v?'roleChoice active':'roleChoice'} onClick={()=>setForm('register',{role:v, unit:v==='morador'?forms.register.unit:''})}>{v==='morador'?<Building2/>:<Briefcase/>}<span><b>{l}</b><small>{v==='morador'?'Informe sua unidade para receber avisos e reservas.':'Informe setor ou função para análise da administração.'}</small></span></button>)}</div>
         <div className="registerStep"><span>2</span><div><b>Dados principais</b><small>Campos com * são obrigatórios.</small></div></div>
         <div className="formGrid registerGrid">
-          <label>Nome completo *<input required placeholder="Nome e sobrenome" value={forms.register.name} onChange={e=>setForm('register',{name:e.target.value})}/></label>
+          <label>Nome completo *<input required placeholder="Nome e sobrenome" value={forms.register.name} onChange={e=>setForm('register',{name:e.target.value, gender: forms.register.gender && forms.register.gender !== 'nao_informado' ? forms.register.gender : inferGenderFromName(e.target.value)})}/></label><label>Sexo para saudação<select value={forms.register.gender||'nao_informado'} onChange={e=>setForm('register',{gender:e.target.value})}>{genderOptions.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select><small>Usado apenas para saudação. Pode ser deixado como não informado.</small></label>
           {needsUnit && <label>Unidade / apartamento *<input required placeholder="Ex.: 101, 502, 1103" value={forms.register.unit} onChange={e=>setForm('register',{unit:e.target.value})}/></label>}
           {!needsUnit && <label>Setor ou função<input placeholder="Ex.: Portaria, limpeza, manutenção" value={forms.register.unit} onChange={e=>setForm('register',{unit:e.target.value})}/></label>}
           <label>Documento<input placeholder="CPF, RG ou documento funcional" value={forms.register.document} onChange={e=>setForm('register',{document:e.target.value})}/></label>
@@ -414,12 +512,13 @@ function LoginPage({ forms,setForm,mode,setMode,doLogin,err,setShowPass,showPass
         <button type="submit" disabled={!contactEnabled || sendingRegister}><UserPlus/> {sendingRegister?'Enviando solicitação...':'Enviar para aprovação'}</button>
         <button type="button" className="textLink" onClick={()=>setMode('login')}>Voltar ao login</button>
       </form>}
-      {mode==='forgot' && <form onSubmit={e=>{e.preventDefault(); action('/api/forgot-password', forms.forgot, 'Se o usuário existir, a senha temporária será enviada');}}>
+      {mode==='forgot' && <form className="forgotPasswordForm" onSubmit={submitForgot}>
         <h2>Recuperar senha</h2>
         <p>Informe seu e-mail. Se você digitou o e-mail na tela inicial, ele já virá preenchido aqui.</p>
-        <label>E-mail<input required type="email" placeholder="seuemail@exemplo.com" value={forms.forgot.email} onChange={e=>setForm('forgot',{email:e.target.value})}/></label>
-        <button type="submit" className="confirmAction"><Send/> Enviar senha temporária</button>
-        <button type="button" className="textLink" onClick={()=>setMode('login')}>Voltar ao login</button>
+        {forgotStatus && <div className={forgotStatus.ok?'registerStatus success':'registerStatus error'}><b>{forgotStatus.ok?'Senha temporária solicitada':'Não foi possível enviar'}</b><small>{forgotStatus.text}</small></div>}
+        <label>E-mail<input required type="email" placeholder="seuemail@exemplo.com" value={forms.forgot.email || forms.login.email || ''} onChange={e=>setForm('forgot',{email:e.target.value})}/></label>
+        <button type="submit" className="confirmAction" disabled={sendingForgot}><Send/> {sendingForgot?'Enviando...':'Enviar senha temporária'}</button>
+        <button type="button" className="textLink" onClick={()=>{ setForgotStatus(null); setMode('login'); }}>Voltar ao login</button>
       </form>}
     </section>
   </div>;
@@ -429,15 +528,46 @@ function LoginPage({ forms,setForm,mode,setMode,doLogin,err,setShowPass,showPass
 function Topbar({session,settings,data,setActive}){
   const unread = data?.notifications?.filter?.(n=>!n.read_at)?.length || 0;
   return <header className="topbar mobileAlignedTopbar">
-    <div><small>{settings.CONDO_NAME || 'Condomínio Vitória Régia'}</small><h1>Olá, {roleLabel(session?.role)}! 👋</h1></div>
+    <div><small>{settings.CONDO_NAME || 'Condomínio Vitória Régia'}</small><h1>{greetingForUser(session)}! 👋</h1></div>
     <div className="topActions">
       <button className="notificationBell topBell" title="Abrir notificações" onClick={()=>setActive('comunicacao','notificacoes')}><Bell/>{unread>0 && <em>{unread}</em>}</button>
-      <button className="profileBadge" onClick={()=>setActive('perfil')}><UserCheck/><span>{roleLabel(session?.role)}<small>Perfil ativo</small></span></button>
+      <button className="profileBadge" onClick={()=>setActive('perfil')}><UserCheck/><span>{firstName(session?.name) || roleLabel(session?.role)}<small>Perfil ativo</small></span></button>
     </div>
   </header>;
 }
 
-function Dashboard({data,setActive,settings,session}){ const m=data.dashboard?.metrics || {}; const modules=[
+function BuildingFeed({data,setActive,session,forms,setForm,action,fileToData,loadAll}){
+  const canManage = ['master','admin','sindico','subsindico'].includes(session?.role);
+  const news = Array.isArray(data.buildingNews) ? data.buildingNews : [];
+  const notices = Array.isArray(data.notices) ? data.notices : [];
+  const feed = [
+    ...news.map(n => ({...n, kind:'news', date:n.created_at || n.updated_at, badge:'Notícia do prédio'})),
+    ...notices.map(n => ({...n, kind:'notice', date:n.created_at, badge:'Comunicado'}))
+  ].sort((a,b)=>new Date(b.date||0)-new Date(a.date||0)).slice(0,6);
+  const f=forms.buildingNews || {};
+  async function submit(e){
+    e.preventDefault();
+    const ok = await action('/api/building-news', f, 'Notícia do prédio publicada');
+    if(ok){ setForm('buildingNews',{ title:'', body:'', priority:'normal', photo_data:'' }); loadAll?.(); }
+  }
+  return <section className="buildingFeedPremium">
+    <div className="feedHead"><div><span className="eyebrow">Comunicação do prédio</span><h3>Notícias e comunicados</h3><p>Informações importantes do condomínio em um só lugar.</p></div><button type="button" onClick={()=>setActive('comunicacao','comunicados')}><Bell/> Ver comunicados</button></div>
+    {canManage && <form className="newsComposer" onSubmit={submit}>
+      <div><b>Nova notícia do prédio</b><small>Somente síndico/subsíndico/admin podem publicar com foto.</small></div>
+      <label>Título<input required value={f.title||''} onChange={e=>setForm('buildingNews',{title:e.target.value})}/></label>
+      <label>Prioridade<select value={f.priority||'normal'} onChange={e=>setForm('buildingNews',{priority:e.target.value})}><option value="normal">Normal</option><option value="alta">Alta</option><option value="critica">Crítica</option></select></label>
+      <label className="full">Texto<textarea required value={f.body||''} onChange={e=>setForm('buildingNews',{body:e.target.value})}/></label>
+      <label className="fileButton"><Camera/> Upload de foto<input type="file" accept="image/*" onChange={e=>fileToData?.(e.target.files?.[0], photo_data=>setForm('buildingNews',{photo_data}))}/></label>
+      {f.photo_data && <img src={f.photo_data} className="newsPreview"/>}
+      <button><Send/> Publicar notícia</button>
+    </form>}
+    <div className="feedGrid">{feed.map(item=><article className={item.kind==='news'?'feedCard news':'feedCard notice'} key={`${item.kind}-${item.id}`}>
+      {item.photo_data && <img src={item.photo_data}/>}<span>{item.badge}</span><h4>{item.title}</h4><p>{item.body}</p><small>{item.date ? new Date(item.date).toLocaleString('pt-BR') : ''}</small>
+    </article>)}{!feed.length && <div className="noticeBox ok"><b>Nenhuma notícia publicada ainda</b><small>Os comunicados e notícias do prédio aparecerão aqui.</small></div>}</div>
+  </section>;
+}
+
+function Dashboard({data,setActive,settings,session,forms,setForm,action,fileToData,loadAll}){ const m=data.dashboard?.metrics || {}; const modules=[
   {key:'financeiro',sub:'movimentos',label:'Financeiro',desc:'Contas, taxas e relatórios',Icon:WalletCards},
   {key:'reservas',label:'Reservas',desc:'Áreas comuns e agendamentos',Icon:CalendarDays},
   {key:'portaria',sub:'visitantes',label:'Visitantes',desc:'Autorizações e histórico',Icon:Users},
@@ -448,9 +578,54 @@ function Dashboard({data,setActive,settings,session}){ const m=data.dashboard?.m
   {key:'central',sub:'manuais',label:'Ajuda',desc:'Manuais e atendimento',Icon:Info},
   {key:'configuracoes',label:'Configurações',desc:'Sistema e preferências',Icon:Settings},
   {key:'central',label:'Central Premium',desc:'Serviços exclusivos para seu condomínio',Icon:BadgeDollarSign,premium:true}
-]; const metricItems=[{icon:<Users/>,label:'Moradores',value:m.residents||0,tab:'cadastros',sub:'moradores'},{icon:<Package/>,label:'Encomendas',value:m.pendingPackages||0,tab:'portaria',sub:'encomendas'},{icon:<CalendarDays/>,label:'Reservas',value:m.reservationsPending||0,tab:'reservas'},{icon:<UserCheck/>,label:'Visitantes hoje',value:m.visitorsToday||0,tab:'portaria',sub:'visitantes'},{icon:<Bell/>,label:'Mensagens',value:m.messagesNew||0,tab:'comunicacao',sub:'notificacoes'},{icon:<UserPlus/>,label:'Cadastros pendentes',value:m.pendingRegistrations||0,tab:'cadastros',sub:'solicitacoes'},{icon:<BadgeDollarSign/>,label:'Boletos',value:m.boletosPending||0,tab:'financeiro',sub:'boletos'}]; return <div className="dashboardRedesign"><section className="dashboardHero"><div><span className="eyebrow">Residencial Vitória Régia</span><h2>Bem-vindo ao Condomínio Vitória Régia</h2><p>{session?.role==='morador'?'Você visualiza as informações da sua unidade.':'Bloco único, 11 andares e 33 unidades cadastráveis de 101 a 1103.'}</p></div><div className="weather"><CloudSun/><div><b>{data.weather?.temperature ?? '--'}°C</b><small>{data.weather?.city || settings.WEATHER_CITY || 'João Pessoa'} · umidade {data.weather?.humidity ?? '--'}%</small></div></div></section>{!['morador'].includes(session?.role) && <section className="approvalStrip"><button onClick={()=>setActive('cadastros','solicitacoes')}><UserPlus/><b>{m.pendingRegistrations||0}</b><span>Cadastros aguardando aprovação</span></button><button onClick={()=>setActive('reservas')}><CalendarDays/><b>{m.reservationsPending||0}</b><span>Reservas aguardando análise</span></button></section>}<div className="moduleGrid">{modules.map(({key,sub,label,desc,Icon,premium})=><button key={label} type="button" className={premium?'moduleCard premium':'moduleCard'} onClick={()=>setActive(key,sub)}><span><Icon/></span><b>{label}</b><small>{desc}</small><ChevronRight/></button>)}</div><section className="permissionsCard"><div><h3><ShieldCheck/> Gerenciar perfis e permissões</h3><p>Controle quem acessa o sistema e o que cada um pode fazer.</p><ul><li>Síndicos podem ser moradores ou usuários terceirizados</li><li>Permissões personalizadas por função</li><li>Reatribuição de síndico de forma simples e segura</li><li>Histórico completo de alterações</li></ul></div><div className="permissionVisual"><Users/><ShieldCheck/><button onClick={()=>setActive('cadastros','usuarios')}>Gerenciar agora</button></div></section><section className="appsShowcase"><div><h3>Baixar aplicativos</h3><p>Acesse o sistema de onde estiver com nossos aplicativos oficiais.</p></div><div className="quickAppCards"><button onClick={()=>setActive('central','apps')}><Smartphone/><b>App do Morador</b><small>Tudo na palma da mão.</small></button><button onClick={()=>setActive('central','apps')}><UserCheck/><b>App do Síndico</b><small>Gestão completa.</small></button><button onClick={()=>setActive('central','apps')}><ShieldCheck/><b>App da Portaria (APK)</b><small>Controle de acesso.</small></button></div></section><div className="metricStrip aligned dashboardMetrics">{metricItems.map(item=><Metric key={item.label} {...item} onClick={()=>setActive(item.tab,item.sub)} />)}</div></div>; }
-function Portaria(props){ return <Panel title="Portaria" subtitle="Encomendas, visitantes, reservas e atendimento rápido." icon={<Package/>}><SubTabs value={props.sub} setValue={props.setSub} tabs={[['encomendas','Encomendas'],['visitantes','Visitantes'],['escalas','Escalas'],['mensagens','Mensagens']]} />{props.sub==='encomendas'&&<Packages {...props}/>} {props.sub==='visitantes'&&<Visitors {...props}/>} {props.sub==='escalas'&&<Shifts {...props}/>} {props.sub==='mensagens'&&<Messages {...props}/>}</Panel>; }
+]; const metricItems=[{icon:<Users/>,label:'Moradores',value:m.residents||0,tab:'cadastros',sub:'moradores'},{icon:<Package/>,label:'Encomendas',value:m.pendingPackages||0,tab:'portaria',sub:'encomendas'},{icon:<CalendarDays/>,label:'Reservas',value:m.reservationsPending||0,tab:'reservas'},{icon:<UserCheck/>,label:'Visitantes hoje',value:m.visitorsToday||0,tab:'portaria',sub:'visitantes'},{icon:<Bell/>,label:'Mensagens',value:m.messagesNew||0,tab:'comunicacao',sub:'notificacoes'},{icon:<UserPlus/>,label:'Cadastros pendentes',value:m.pendingRegistrations||0,tab:'cadastros',sub:'solicitacoes'},{icon:<BadgeDollarSign/>,label:'Boletos',value:m.boletosPending||0,tab:'financeiro',sub:'boletos'}]; return <div className="dashboardRedesign"><section className="dashboardHero"><div><span className="eyebrow">Residencial Vitória Régia</span><h2>{greetingForUser(session)}</h2><p>{session?.role==='morador'?'Aqui estão seus avisos, notícias, encomendas e serviços da sua unidade.':'Gestão premium do condomínio com comunicados, notícias, serviços e alertas centralizados.'}</p></div><div className="weather"><CloudSun/><div><b>{data.weather?.temperature ?? '--'}°C</b><small>{data.weather?.city || settings.WEATHER_CITY || 'João Pessoa'} · umidade {data.weather?.humidity ?? '--'}%</small></div></div></section><BuildingFeed data={data} setActive={setActive} session={session} forms={forms} setForm={setForm} action={action} fileToData={fileToData} loadAll={loadAll}/>{!['morador'].includes(session?.role) && <section className="approvalStrip"><button onClick={()=>setActive('cadastros','solicitacoes')}><UserPlus/><b>{m.pendingRegistrations||0}</b><span>Cadastros aguardando aprovação</span></button><button onClick={()=>setActive('reservas')}><CalendarDays/><b>{m.reservationsPending||0}</b><span>Reservas aguardando análise</span></button></section>}<div className="moduleGrid">{modules.map(({key,sub,label,desc,Icon,premium})=><button key={label} type="button" className={premium?'moduleCard premium':'moduleCard'} onClick={()=>setActive(key,sub)}><span><Icon/></span><b>{label}</b><small>{desc}</small><ChevronRight/></button>)}</div><section className="permissionsCard"><div><h3><ShieldCheck/> Gerenciar perfis e permissões</h3><p>Controle quem acessa o sistema e o que cada um pode fazer.</p><ul><li>Síndicos podem ser moradores ou usuários terceirizados</li><li>Permissões personalizadas por função</li><li>Reatribuição de síndico de forma simples e segura</li><li>Histórico completo de alterações</li></ul></div><div className="permissionVisual"><Users/><ShieldCheck/><button onClick={()=>setActive('cadastros','usuarios')}>Gerenciar agora</button></div></section><section className="appsShowcase"><div><h3>Baixar aplicativos</h3><p>Acesse o sistema de onde estiver com nossos aplicativos oficiais.</p></div><div className="quickAppCards"><button onClick={()=>setActive('central','apps')}><Smartphone/><b>App do Morador</b><small>Tudo na palma da mão.</small></button><button onClick={()=>setActive('central','apps')}><UserCheck/><b>App do Síndico</b><small>Gestão completa.</small></button><button onClick={()=>setActive('central','apps')}><ShieldCheck/><b>App da Portaria (APK)</b><small>Controle de acesso.</small></button></div></section><div className="metricStrip aligned dashboardMetrics">{metricItems.map(item=><Metric key={item.label} {...item} onClick={()=>setActive(item.tab,item.sub)} />)}</div></div>; }
+function Portaria(props){ return <Panel title="Portaria" subtitle="Encomendas, visitantes, reservas e atendimento rápido." icon={<Package/>}><SubTabs value={props.sub} setValue={props.setSub} tabs={[['encomendas','Encomendas'],['leitor','Leitor Premium'],['visitantes','Visitantes'],['escalas','Escalas'],['mensagens','Mensagens']]} />{props.sub==='encomendas'&&<Packages {...props}/>} {props.sub==='leitor'&&<PackageScannerPremium {...props}/>} {props.sub==='visitantes'&&<Visitors {...props}/>} {props.sub==='escalas'&&<Shifts {...props}/>} {props.sub==='mensagens'&&<Messages {...props}/>}</Panel>; }
 function UnitLookupBox({result,onRegister}){ if(!result) return null; const arr=result.residents || []; return <div className={arr.length?'noticeBox ok':'noticeBox warn'}>{arr.length ? <><b>Morador encontrado</b><small>{arr.map(r=>`${r.name} · ${r.email || r.whatsapp_phone || r.phone || 'sem contato'}`).join(' | ')}</small></> : <><b>Nenhum morador cadastrado nesta unidade.</b><small>Recomende o cadastro antes de confirmar, principalmente para notificação automática.</small>{onRegister && <button type="button" className="buttonlike secondary" onClick={onRegister}><UserPlus/> Abrir cadastro pré-preenchido</button>}</>}</div>; }
+
+function PackageScanSummary({f={},lookup}){
+  const confidence = Number(f.ocr_confidence || 0);
+  const status = f.validation_status || 'pendente';
+  return <div className="packageScanSummary">
+    <article><b>Rastreio</b><span>{f.tracking || f.barcode || '-'}</span><small>{f.barcode_format ? `Formato: ${f.barcode_format}` : 'QR / código de barras / OCR'}</small></article>
+    <article><b>Morador/unidade</b><span>{f.recipient || '-'}</span><small>Unidade {f.unit || '-'} {lookup?.primary ? '· morador localizado' : ''}</small></article>
+    <article><b>Transportadora</b><span>{f.carrier || f.label || '-'}</span><small>{f.order_number ? `Pedido ${f.order_number}` : f.invoice_number ? `NF-e ${f.invoice_number}` : 'Dados complementares'}</small></article>
+    <article><b>Confiança</b><span>{packageConfidenceLabel(confidence)} {confidence ? `${confidence}%` : ''}</span><small>{status === 'validada' ? 'Pronto para cadastro automático' : status === 'revisao' ? 'Revisar antes de salvar' : 'Aguardando leitura'}</small></article>
+  </div>;
+}
+function PackageScannerPremium(props){
+  const {forms,setForm,readImage,openCameraReader,reading,action,openConfirm,lookup,lookupUnit,prefillResidentFromContext,data}=props;
+  const f=forms.package;
+  const canAuto = Boolean(f.tracking && f.unit && f.recipient && Number(f.ocr_confidence || 0) >= 80);
+  function save(auto=false){
+    const title = auto ? 'Cadastrar automaticamente encomenda lida' : 'Conferir e cadastrar encomenda lida';
+    openConfirm(title, { Código:f.tracking, Unidade:f.unit, Destinatário:f.recipient, Confiança:f.ocr_confidence ? `${f.ocr_confidence}%` : 'pendente' }, () => action('/api/packages', {...f, source_type:f.source_type || 'leitor_premium'}, auto ? 'Encomenda cadastrada automaticamente' : 'Encomenda cadastrada'));
+  }
+  return <div className="stack packageScannerPremium">
+    <div className="scannerHero"><div><span className="eyebrow">Leitor automático premium</span><h3>QR Code + código de barras + OCR da etiqueta</h3><p>Use a câmera do celular da portaria para identificar rastreio, unidade, destinatário, transportadora e evitar duplicidades.</p></div><ScanLine/></div>
+    <div className="scannerActionsGrid">
+      <button type="button" className="confirmAction" onClick={()=>openCameraReader?.('package')}><Camera/> Abrir câmera e ler etiqueta</button>
+      <label className="fileButton"><ScanLine/> {reading==='package'?'Lendo etiqueta...':'Escolher foto / câmera padrão'}<input type="file" accept="image/*" capture="environment" onChange={e=>readImage(e.target.files?.[0],'package')}/></label>
+      <button type="button" className="secondaryAction" onClick={()=>lookupUnit('package', f.unit, f.recipient)}><Search/> Validar unidade/morador</button>
+    </div>
+    <PackageScanSummary f={f} lookup={lookup.package}/>
+    <form className="formGrid premiumForm" onSubmit={e=>{e.preventDefault(); save(false);}}>
+      <label>Código/rastreio<input required value={f.tracking} onChange={e=>setForm('package',{tracking:e.target.value})}/></label>
+      <label>Unidade<input required value={f.unit} onChange={e=>setForm('package',{unit:e.target.value})} onBlur={()=>lookupUnit('package', f.unit, f.recipient)}/></label>
+      <label>Destinatário<input required value={f.recipient} onChange={e=>setForm('package',{recipient:e.target.value})}/></label>
+      <label>Transportadora<input value={f.carrier || ''} onChange={e=>setForm('package',{carrier:e.target.value,label:e.target.value})}/></label>
+      <label>Código de barras/QR<input value={f.barcode || ''} onChange={e=>setForm('package',{barcode:e.target.value})}/></label>
+      <label>Pedido<input value={f.order_number || ''} onChange={e=>setForm('package',{order_number:e.target.value})}/></label>
+      <label>NF-e<input value={f.invoice_number || ''} onChange={e=>setForm('package',{invoice_number:e.target.value})}/></label>
+      <label>Status<select value={f.validation_status || 'pendente'} onChange={e=>setForm('package',{validation_status:e.target.value})}><option value="pendente">Pendente</option><option value="validada">Validada</option><option value="revisao">Revisão</option><option value="duplicada">Possível duplicada</option></select></label>
+      <textarea placeholder="Texto lido automaticamente / auditoria da etiqueta" value={f.extracted_text} onChange={e=>setForm('package',{extracted_text:e.target.value})}/>
+      <button><Plus/> Conferir e cadastrar</button>
+      <button type="button" className="confirmAction" disabled={!canAuto} onClick={()=>save(true)}><CheckCircle2/> Cadastrar automático seguro</button>
+    </form>
+    <UnitLookupBox result={lookup.package} onRegister={()=>prefillResidentFromContext('package')}/>
+    <div className="noticeBox ok"><b>Regra de segurança</b><small>Cadastro automático só é liberado quando rastreio, unidade, destinatário e confiança mínima forem identificados. Caso contrário, a etiqueta fica para revisão manual.</small></div>
+  </div>;
+}
+
 function Packages({forms,setForm,action,openConfirm,lookup,lookupUnit,prefillResidentFromContext,readImage,openCameraReader,reading,data,del,loadAll,session}){
   const f=forms.package;
   const isResident=session?.role==='morador';
@@ -462,10 +637,10 @@ function Packages({forms,setForm,action,openConfirm,lookup,lookupUnit,prefillRes
       <label>Unidade *<div className="inline"><input required value={f.unit} onChange={e=>setForm('package',{unit:e.target.value})} onBlur={()=>lookupUnit('package', f.unit, f.recipient)}/><button type="button" onClick={()=>lookupUnit('package', f.unit, f.recipient)}><Search/></button></div></label>
       <label>Destinatário *<input required value={f.recipient} onChange={e=>setForm('package',{recipient:e.target.value})}/></label>
       <label>Etiqueta/observação<input value={f.label} onChange={e=>setForm('package',{label:e.target.value})}/></label>
-      <ChannelChooser settings={data.settings} value={f.notification_channels} onChange={v=>setForm('package',{notification_channels:v})}/>
+      <ChannelChooser settings={data.settings} value={f.notification_channels} onChange={v=>setForm('package',{notification_channels:v})}/><PackageScanSummary f={f} lookup={lookup.package}/>
       <button type="button" className="fileButton cameraOpenButton" onClick={()=>openCameraReader?.('package')}><Camera/> Abrir câmera do celular</button>
       <label className="fileButton"><ScanLine/> {reading==='package'?'Lendo etiqueta...':'Escolher foto/usar câmera padrão'}<input type="file" accept="image/*" capture="environment" onChange={e=>readImage(e.target.files?.[0],'package')}/></label>
-      <textarea placeholder="Texto lido automaticamente / observações" value={f.extracted_text} onChange={e=>setForm('package',{extracted_text:e.target.value})}/>
+      <div className="formGrid full packageExtraFields"><label>Transportadora<input value={f.carrier || ''} onChange={e=>setForm('package',{carrier:e.target.value,label:e.target.value})}/></label><label>Código de barras/QR<input value={f.barcode || ''} onChange={e=>setForm('package',{barcode:e.target.value})}/></label><label>Confiança OCR<input value={f.ocr_confidence || ''} onChange={e=>setForm('package',{ocr_confidence:e.target.value})}/></label><label>Status da leitura<select value={f.validation_status || 'pendente'} onChange={e=>setForm('package',{validation_status:e.target.value})}><option value="pendente">Pendente</option><option value="validada">Validada</option><option value="revisao">Revisão</option><option value="duplicada">Possível duplicada</option></select></label></div><textarea placeholder="Texto lido automaticamente / observações" value={f.extracted_text} onChange={e=>setForm('package',{extracted_text:e.target.value})}/>
       <button><Plus/> Conferir e cadastrar</button>
     </form>
     <UnitLookupBox result={lookup.package} onRegister={()=>prefillResidentFromContext('package')}/>
@@ -617,27 +792,57 @@ function NotifyTests({forms,setForm,action,data}){
   </SettingCard>;
 }
 
+
+function financeNumber(v){ const n=Number(v||0); return Number.isFinite(n) ? n : 0; }
+function financeTotals(rows=[]){
+  const valid=(Array.isArray(rows)?rows:[]).filter(r=>String(r.status||'').toLowerCase()!=='removido');
+  const receitas=valid.filter(r=>String(r.type||'receita')==='receita').reduce((a,r)=>a+financeNumber(r.amount),0);
+  const despesas=valid.filter(r=>String(r.type||'')==='despesa').reduce((a,r)=>a+financeNumber(r.amount),0);
+  const pagos=valid.filter(r=>String(r.status||'').toLowerCase()==='pago').reduce((a,r)=>a+financeNumber(r.amount),0);
+  const pendentes=valid.filter(r=>String(r.status||'pendente').toLowerCase()!=='pago').reduce((a,r)=>a+financeNumber(r.amount),0);
+  return { receitas, despesas, saldo:receitas-despesas, pagos, pendentes, count:valid.length };
+}
 function Financeiro(props){
-  const current = props.sub || 'movimentos';
+  const current = props.sub || 'visao';
   const setFinanceSub = (value) => typeof props.setSub === 'function' ? props.setSub(value) : null;
-  return <Panel title="Financeiro" subtitle="Boletos, cobranças, notas e acompanhamento por unidade." icon={<WalletCards/>}>
-    <SubTabs value={current} setValue={setFinanceSub} tabs={[["movimentos","Movimentos"],["boletos","Boletos"],["notas","Notas fiscais"],["importar","Importar documento"]]} />
-    {current==='boletos'?<Boletos {...props}/>:current==='notas'?<Invoices {...props}/>:current==='importar'?<FinanceImport {...props}/>:<Finance {...props}/>} 
+  const docs=findFinancialDocs(props.data?.documents||[]);
+  return <Panel title="Financeiro" subtitle="Padrão contábil premium: visão gerencial, balancetes, boletos, notas e lançamentos." icon={<WalletCards/>}>
+    <SubTabs value={current} setValue={setFinanceSub} tabs={[["visao","Visão contábil"],["movimentos","Lançamentos"],["boletos","Boletos"],["balancetes","Balancetes"],["notas","Notas fiscais"],["importar","Importar documento"]]} />
+    {current==='boletos'?<Boletos {...props}/>:current==='notas'?<Invoices {...props}/>:current==='importar'?<FinanceImport {...props}/>:current==='balancetes'?<BalancetesFinanceiros {...props} docs={docs}/>:current==='movimentos'?<Finance {...props}/>:<FinanceDashboardPremium {...props} docs={docs}/>} 
   </Panel>;
+}
+function FinanceDashboardPremium({data,setSub,docs=[]}){
+  const rows=Array.isArray(data.finance)?data.finance:[];
+  const boletos=Array.isArray(data.boletos)?data.boletos:[];
+  const notas=Array.isArray(data.invoices)?data.invoices:[];
+  const t=financeTotals(rows);
+  const boletoPendente=boletos.filter(b=>String(b.status||'pendente')!=='pago').reduce((a,b)=>a+financeNumber(b.amount),0);
+  const notasTotal=notas.reduce((a,n)=>a+financeNumber(n.amount),0);
+  const categories=rows.reduce((acc,r)=>{ const key=r.category||'geral'; acc[key]=(acc[key]||0)+financeNumber(r.amount)*(String(r.type)==='despesa'?-1:1); return acc; },{});
+  const max=Math.max(...Object.values(categories).map(v=>Math.abs(v)),1);
+  return <div className="financePremiumShell">
+    <div className="financeHeroPremium"><div><span className="eyebrow">Contabilidade do condomínio</span><h3>Visão financeira premium</h3><p>Receitas, despesas, boletos, notas fiscais e documentos financeiros em uma visão única para prestação de contas.</p></div><div className="financeBalanceBadge"><small>Saldo previsto</small><b>{money(t.saldo)}</b></div></div>
+    <div className="financeKpis"><article><span>Receitas</span><b>{money(t.receitas)}</b><small>{t.count} lançamentos no livro financeiro</small></article><article><span>Despesas</span><b>{money(t.despesas)}</b><small>Saídas classificadas por categoria</small></article><article><span>Boletos pendentes</span><b>{money(boletoPendente)}</b><small>Cobranças em aberto</small></article><article><span>Notas fiscais</span><b>{money(notasTotal)}</b><small>{notas.length} documentos fiscais</small></article></div>
+    <div className="financePremiumGrid"><section className="financeCard"><h3><BadgeDollarSign/> Plano de contas resumido</h3>{Object.entries(categories).length?Object.entries(categories).map(([k,v])=><div className="financeBar" key={k}><span>{k}</span><div><i style={{width:Math.max(8,Math.abs(v)/max*100)+'%'}} /></div><b>{money(v)}</b></div>):<div className="noticeBox ok"><b>Sem lançamentos</b><small>Os lançamentos aparecerão aqui após o cadastro/importação.</small></div>}</section><section className="financeCard"><h3><FileText/> Balancetes e documentos</h3>{docs.length?docs.slice(0,4).map(d=><a className="financeDocLink" href={documentUrl(d)} target="_blank" rel="noreferrer" key={d.id}><FileText/><span><b>{d.title||d.file_name}</b><small>{d.description||d.file_name}</small></span></a>):<div className="noticeBox warn"><b>Nenhum balancete encontrado</b><small>Se o balancete foi enviado, ele deve aparecer em Documentos. Caso não apareça, reenvie em Configurações → Documentos com título contendo “Balancete”.</small></div>}<button className="secondaryAction" type="button" onClick={()=>setSub?.('balancetes')}><Search/> Ver balancetes</button></section></div>
+  </div>;
+}
+function BalancetesFinanceiros({docs=[]}){
+  return <div className="stack financeStatements"><div className="noticeBox ok"><b><FileText/> Balancetes e prestação de contas</b><small>O sistema procura automaticamente documentos com título/descrição como balancete, demonstrativo, prestação de contas, financeiro ou contábil.</small></div><Table rows={docs} render={d=><><td><b>{d.title||d.file_name}</b><small>{d.description||d.file_name}</small></td><td><Status ok={d.is_public}>{d.is_public?'Público':'Restrito'}</Status><small>{date(d.created_at)}</small></td><td><a className="buttonlike" href={documentUrl(d)} target="_blank" rel="noreferrer"><Download/> Abrir</a></td></>}/>{!docs.length&&<div className="noticeBox warn"><b>Nenhum balancete localizado nos documentos carregados</b><small>Não consigo verificar o banco de produção daqui. Esta tela vai exibir automaticamente o balancete quando ele estiver na tabela de documentos com título/descrição correspondente.</small></div>}</div>;
 }
 function Finance({data,forms,setForm,action,openConfirm}){
   const f=forms.finance || {};
   const rows=Array.isArray(data.finance)?data.finance:[];
-  return <div className="stack financePage"><form className="formGrid premiumForm" onSubmit={e=>{e.preventDefault(); openConfirm('Confirmar lançamento financeiro',{Título:f.title,Unidade:f.unit||'-',Valor:money(f.amount),Vencimento:f.due_date||'-'},()=>action('/api/finance',f,'Lançamento financeiro salvo'));}}>
+  const t=financeTotals(rows);
+  return <div className="stack financePage"><div className="financeKpis compact"><article><span>Receitas</span><b>{money(t.receitas)}</b></article><article><span>Despesas</span><b>{money(t.despesas)}</b></article><article><span>Saldo</span><b>{money(t.saldo)}</b></article></div><form className="formGrid premiumForm" onSubmit={e=>{e.preventDefault(); openConfirm('Confirmar lançamento financeiro',{Título:f.title,Unidade:f.unit||'-',Valor:money(f.amount),Vencimento:f.due_date||'-'},()=>action('/api/finance',f,'Lançamento financeiro salvo'));}}>
     <label>Título *<input required value={f.title||''} onChange={e=>setForm('finance',{title:e.target.value})}/></label>
     <label>Valor *<input required type="number" step="0.01" value={f.amount||''} onChange={e=>setForm('finance',{amount:e.target.value})}/></label>
-    <label>Tipo<select value={f.type||'receita'} onChange={e=>setForm('finance',{type:e.target.value})}><option value="receita">Receita</option><option value="despesa">Despesa</option></select></label>
-    <label>Categoria<input value={f.category||'geral'} onChange={e=>setForm('finance',{category:e.target.value})}/></label>
+    <label>Natureza<select value={f.type||'receita'} onChange={e=>setForm('finance',{type:e.target.value})}><option value="receita">Receita / Crédito</option><option value="despesa">Despesa / Débito</option></select></label>
+    <label>Categoria / Plano de contas<input value={f.category||'geral'} onChange={e=>setForm('finance',{category:e.target.value})}/></label>
     <label>Unidade<input value={f.unit||''} onChange={e=>setForm('finance',{unit:e.target.value})}/></label>
-    <label>Vencimento<input type="date" value={f.due_date||''} onChange={e=>setForm('finance',{due_date:e.target.value})}/></label>
+    <label>Competência/Vencimento<input type="date" value={f.due_date||''} onChange={e=>setForm('finance',{due_date:e.target.value})}/></label>
     <label className="check"><input type="checkbox" checked={f.generate_boleto===true} onChange={e=>setForm('finance',{generate_boleto:e.target.checked})}/>Gerar boleto vinculado</label>
     <button><Plus/> Conferir e lançar</button>
-  </form><Table rows={rows} render={item=><><td><b>{item.title||'Lançamento'}</b><small>{item.category||'geral'} · Unidade {item.unit || '-'}</small></td><td>{money(item.amount)}<small>{date(item.due_date)}</small></td><td><Status ok={item.status==='pago'}>{item.status||'pendente'}</Status><small>{item.type||''}</small></td></>}/></div>;
+  </form><Table rows={rows} render={item=><><td><b>{item.title||'Lançamento'}</b><small>{item.category||'geral'} · Unidade {item.unit || '-'}</small></td><td>{money(item.amount)}<small>{date(item.due_date)}</small></td><td><Status ok={item.status==='pago'}>{item.status||'pendente'}</Status><small>{item.type||''}</small></td><td className="actions"><button className="confirmAction" onClick={()=>action(`/api/finance/${item.id}/pay`,{},'Lançamento marcado como pago')}>Pago</button><button className="dangerAction" onClick={()=>action(`/api/finance/${item.id}`,{},'Lançamento removido','DELETE')}>Remover</button></td></>}/></div>;
 }
 function Boletos({data,forms,setForm,action,settings,openConfirm}){
   const f=forms.boleto || {};
@@ -651,7 +856,7 @@ function Boletos({data,forms,setForm,action,settings,openConfirm}){
     <label>Linha digitável<input value={f.digitable_line||''} onChange={e=>setForm('boleto',{digitable_line:e.target.value})}/></label>
     <label>Link/PDF<input value={f.payment_link||''} onChange={e=>setForm('boleto',{payment_link:e.target.value})}/></label>
     <button><Banknote/> Conferir e salvar boleto</button>
-  </form><Table rows={data.boletos||[]} render={b=><><td><b>{b.title||'Boleto'}</b><small>Unidade {b.unit||'-'} · {b.bank_name || b.provider || 'manual'}</small></td><td>{money(b.amount)}<small>{date(b.due_date)}</small></td><td><Status ok={b.status==='pago'}>{b.status||'pendente'}</Status></td><td><Code>{b.digitable_line || b.payment_link || '-'}</Code></td></>}/></div>;
+  </form><Table rows={data.boletos||[]} render={b=><><td><b>{b.title||'Boleto'}</b><small>Unidade {b.unit||'-'} · {b.bank_name || b.provider || 'manual'}</small></td><td>{money(b.amount)}<small>{date(b.due_date)}</small></td><td><Status ok={b.status==='pago'}>{b.status||'pendente'}</Status></td><td><Code>{b.digitable_line || b.payment_link || '-'}</Code></td><td className="actions"><button className="confirmAction" onClick={()=>action(`/api/boletos/${b.id}/pay`,{},'Boleto marcado como pago')}>Pago</button><button className="dangerAction" onClick={()=>action(`/api/boletos/${b.id}`,{},'Boleto removido','DELETE')}>Remover</button></td></>}/></div>;
 }
 function Invoices({data,forms,setForm,action,openConfirm,readImage,reading}){
   const f=forms.invoice||{};
@@ -675,7 +880,8 @@ function Moradores({data,forms,setForm,action,openConfirm,settings,del,loadAll})
   const criteria=defaultCriteria(settings);
   const summary={Nome:f.name,Unidade:f.unit,'E-mail':f.email,WhatsApp:f.whatsapp_phone};
   return <div className="stack residentsPage"><form className="formGrid premiumForm" onSubmit={e=>{e.preventDefault(); openConfirm(f.id?'Confirmar alteração de morador':'Confirmar cadastro de morador', summary, ()=>action(f.id?`/api/residents/${f.id}`:'/api/residents', f, f.id?'Morador atualizado':'Morador cadastrado', f.id?'PUT':'POST'));}}>
-    <label>Nome *<input required value={f.name||''} onChange={e=>setForm('resident',{name:e.target.value})}/></label>
+    <label>Nome *<input required value={f.name||''} onChange={e=>setForm('resident',{name:e.target.value, gender:f.gender&&f.gender!=='nao_informado'?f.gender:inferGenderFromName(e.target.value)})}/></label>
+    <label>Sexo para saudação<select value={f.gender||'nao_informado'} onChange={e=>setForm('resident',{gender:e.target.value})}>{genderOptions.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
     <label>Unidade *<input required value={f.unit||''} onChange={e=>setForm('resident',{unit:e.target.value})}/></label>
     <label>E-mail<input value={f.email||''} onChange={e=>setForm('resident',{email:e.target.value})}/></label>
     <label>WhatsApp<input value={f.whatsapp_phone||''} onChange={e=>setForm('resident',{whatsapp_phone:e.target.value})}/></label>
@@ -694,7 +900,8 @@ function Moradores({data,forms,setForm,action,openConfirm,settings,del,loadAll})
 function Usuarios({data,forms,setForm,action,openConfirm,del,loadAll,session}){
   const f=forms.user || {};
   return <div className="stack usersPage"><form className="formGrid premiumForm" onSubmit={e=>{e.preventDefault(); openConfirm(f.id?'Confirmar alteração de usuário':'Confirmar cadastro de usuário',{Nome:f.name,'E-mail':f.email,Perfil:roleLabel(f.role),Unidade:f.unit},()=>action(f.id?`/api/users/${f.id}`:'/api/users', f, f.id?'Usuário atualizado':'Usuário cadastrado', f.id?'PUT':'POST'));}}>
-    <label>Nome *<input required value={f.name||''} onChange={e=>setForm('user',{name:e.target.value})}/></label>
+    <label>Nome *<input required value={f.name||''} onChange={e=>setForm('user',{name:e.target.value, gender:f.gender&&f.gender!=='nao_informado'?f.gender:inferGenderFromName(e.target.value)})}/></label>
+    <label>Sexo para saudação<select value={f.gender||'nao_informado'} onChange={e=>setForm('user',{gender:e.target.value})}>{genderOptions.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
     <label>E-mail/usuário<input value={f.email||''} onChange={e=>setForm('user',{email:e.target.value})}/></label>
     <label>Perfil<select value={f.role||'morador'} onChange={e=>setForm('user',{role:e.target.value,user_type:e.target.value})}><option value="morador">Morador</option><option value="portaria">Portaria</option><option value="funcionario">Funcionário</option><option value="financeiro">Financeiro</option><option value="sindico">Síndico</option></select></label>
     {!['portaria','funcionario','financeiro'].includes(f.role) && <label>Unidade<input value={f.unit||''} onChange={e=>setForm('user',{unit:e.target.value})}/></label>}
@@ -741,6 +948,41 @@ function reservationStatusClass(s){
   return 'preconfirmada';
 }
 function reservationAreaName(r={}){ return r.area || r.common_area || r.common_area_name || r.area_name || r.space || 'Espaço comum'; }
+
+function normalizeTextForSearch(value=''){
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+}
+function documentUrl(d={}){ return `${API}/api/documents/${d.id}/download`; }
+function findReservationRuleDocs(documents=[], areaName=''){
+  const area = normalizeTextForSearch(areaName);
+  return (Array.isArray(documents) ? documents : []).filter(d => {
+    const hay = normalizeTextForSearch([d.title,d.description,d.file_name,d.audience].join(' '));
+    const isReservation = /reserva|salao|sal[aã]o|festas|termo|regra|uso|area comum|área comum/.test(hay);
+    const areaMatches = area ? hay.includes(area) || /salao|sal[aã]o|festas/.test(hay) : true;
+    return isReservation && areaMatches;
+  }).slice(0,4);
+}
+function findFinancialDocs(documents=[]){
+  return (Array.isArray(documents) ? documents : []).filter(d => {
+    const hay = normalizeTextForSearch([d.title,d.description,d.file_name,d.audience].join(' '));
+    return /balancete|balanco|balan[cç]o|demonstrativo|prestacao|presta[cç][aã]o|financeiro|contabil|contábil|receita|despesa|extrato/.test(hay);
+  }).slice(0,8);
+}
+function ReservationRulesPanel({area={}, documents=[]}){
+  const ruleText = String(area?.rules_document || '').trim();
+  const docs = findReservationRuleDocs(documents, area?.name || '');
+  const looksUrl = /^https?:\/\//i.test(ruleText) || /^\/api\//i.test(ruleText) || /^\/documents?\//i.test(ruleText);
+  return <div className="reservationRulesPremium noticeBox ok">
+    <b><FileText/> Regras e documento da reserva</b>
+    <small>Antes de confirmar, consulte o termo/regras do espaço. Se o documento já estiver no sistema, ele aparece abaixo automaticamente.</small>
+    <div className="reservationDocActions">
+      {looksUrl && <a className="buttonlike" href={ruleText} target="_blank" rel="noreferrer"><Download/> Abrir documento da área</a>}
+      {docs.map(d => <a className="buttonlike" key={d.id} href={documentUrl(d)} target="_blank" rel="noreferrer"><FileText/> {d.title || d.file_name || 'Documento da reserva'}</a>)}
+      {!looksUrl && !docs.length && ruleText && <div className="rulesTextBox"><b>Regras cadastradas</b><small>{ruleText}</small></div>}
+      {!ruleText && !docs.length && <div className="noticeBox warn"><b>Nenhum documento vinculado</b><small>O sistema não encontrou documento de reserva para este espaço. O síndico pode enviar em Configurações → Documentos ou vincular em Configurações → Áreas.</small></div>}
+    </div>
+  </div>;
+}
 function reservationDateISO(r={}){ return String(r.reserved_for || r.reservation_date || r.date || r.start_date || r.starts_at || '').slice(0,10); }
 function reservationStartTime(r={}){ const raw = r.start_time || (String(r.starts_at || '').match(/T(\d{2}:\d{2})/)?.[1]) || ''; return raw || (r.all_day ? '00:00' : '--'); }
 function reservationEndTime(r={}){ const raw = r.end_time || (String(r.ends_at || '').match(/T(\d{2}:\d{2})/)?.[1]) || ''; return raw || (r.all_day ? '23:59' : '--'); }
@@ -837,6 +1079,7 @@ function Reservations(props){
   }, [selectedArea, selectedDate]);
 
   const selectedAreaObj = areas.find(a => String(a.name || '') === String(selectedArea || firstAreaName)) || { name:selectedArea || firstAreaName, fee_amount:0, reservation_periods:'dia_todo,manha,tarde,noite,horario' };
+  const reservationDocs = findReservationRuleDocs(data.documents, selectedAreaObj.name);
   const periods = reservationPeriodsForArea(selectedAreaObj);
   const period = f.reservation_mode || 'noite';
   const hours = reservationPeriodHours(period);
@@ -879,7 +1122,7 @@ function Reservations(props){
         <div className="vrReservaViewBtns"><button type="button" className={view==='calendario'?'active':''} onClick={()=>goReservationView('calendario')}>Calendário</button><button type="button" className={view==='lista'?'active':''} onClick={()=>goReservationView('lista')}>Lista</button><button type="button" className={view==='nova'?'active':''} onClick={()=>goReservationView('nova')}>Nova reserva</button></div>
       </div>
       {view === 'calendario' && <div className="vrReservaMainGrid"><ReservasCalendarioNovo rows={rows} selectedArea={selectedArea} selectedDate={selectedDate} setSelectedDate={setSelectedDate} setView={goReservationView} session={session}/><div className="vrReservaDayPanel" role="complementary"><h3>{new Date(`${selectedDate || todayISO()}T12:00:00`).toLocaleDateString('pt-BR')}</h3><p>{selectedDayReservations.length ? 'Reservas neste dia:' : 'Nenhuma reserva neste dia.'}</p>{selectedDayReservations.map(r => <article className="vrReservaMiniCard" key={r.id}><b>{reservationAreaName(r)}</b><small>Unidade {r.unit || '-'} · {reservationTimeText(r)}</small><Status ok={reservationStatusClass(r.status) === 'confirmada'}>{reservationStatusLabel(r.status)}</Status></article>)}<button type="button" onClick={()=>goReservationView('nova')}><Plus/> Solicitar reserva</button></div></div>}
-      {view === 'nova' && <form className="formGrid vrReservaForm" onSubmit={submitReservation}><label>Espaço<select value={selectedArea || firstAreaName} onChange={e=>setSelectedArea(e.target.value)}>{areas.map(a=><option value={a.name} key={a.id || a.name}>{a.name}</option>)}{!areas.length && <option value="Salão de festas">Salão de festas</option>}</select></label><label>Data<input type="date" required value={selectedDate || todayISO()} onChange={e=>setSelectedDate(e.target.value)}/></label><label>Período<select value={period} onChange={e=>choosePeriod(e.target.value)}>{periods.map(p=><option value={p} key={p}>{reservationPeriodLabel(p)}</option>)}</select></label><label>Início<input type="time" disabled={period!=='horario'} value={period==='horario'?(f.start_time||'19:00'):hours[0]} onChange={e=>updateReservation({start_time:e.target.value})}/></label><label>Fim<input type="time" disabled={period!=='horario'} value={period==='horario'?(f.end_time||'23:00'):hours[1]} onChange={e=>updateReservation({end_time:e.target.value})}/></label><label>Unidade<input value={unitDefault} onChange={e=>updateReservation({unit:e.target.value})}/></label><label>Morador<input value={residentDefault} onChange={e=>updateReservation({resident:e.target.value})}/></label><label>Taxa<input type="number" step="0.01" value={f.fee_amount ?? selectedAreaObj.fee_amount ?? 0} onChange={e=>updateReservation({fee_amount:e.target.value})}/></label><label className="check"><input type="checkbox" checked={f.terms_accepted===true} onChange={e=>updateReservation({terms_accepted:e.target.checked})}/>Li e aceito as regras de utilização do espaço</label><label className="full">Observações<textarea value={f.notes||''} onChange={e=>updateReservation({notes:e.target.value})} placeholder="Observações da reserva, convidados ou necessidades especiais"/></label><button><CalendarDays/> Enviar reserva</button></form>}
+      {view === 'nova' && <><ReservationRulesPanel area={selectedAreaObj} documents={data.documents}/><form className="formGrid vrReservaForm" onSubmit={submitReservation}><label>Espaço<select value={selectedArea || firstAreaName} onChange={e=>setSelectedArea(e.target.value)}>{areas.map(a=><option value={a.name} key={a.id || a.name}>{a.name}</option>)}{!areas.length && <option value="Salão de festas">Salão de festas</option>}</select></label><label>Data<input type="date" required value={selectedDate || todayISO()} onChange={e=>setSelectedDate(e.target.value)}/></label><label>Período<select value={period} onChange={e=>choosePeriod(e.target.value)}>{periods.map(p=><option value={p} key={p}>{reservationPeriodLabel(p)}</option>)}</select></label><label>Início<input type="time" disabled={period!=='horario'} value={period==='horario'?(f.start_time||'19:00'):hours[0]} onChange={e=>updateReservation({start_time:e.target.value})}/></label><label>Fim<input type="time" disabled={period!=='horario'} value={period==='horario'?(f.end_time||'23:00'):hours[1]} onChange={e=>updateReservation({end_time:e.target.value})}/></label><label>Unidade<input value={unitDefault} onChange={e=>updateReservation({unit:e.target.value})}/></label><label>Morador<input value={residentDefault} onChange={e=>updateReservation({resident:e.target.value})}/></label><label>Taxa<input type="number" step="0.01" value={f.fee_amount ?? selectedAreaObj.fee_amount ?? 0} onChange={e=>updateReservation({fee_amount:e.target.value})}/></label><label className="check"><input type="checkbox" checked={f.terms_accepted===true} onChange={e=>updateReservation({terms_accepted:e.target.checked})}/>Li e aceito as regras de utilização do espaço</label><label className="full">Observações<textarea value={f.notes||''} onChange={e=>updateReservation({notes:e.target.value})} placeholder="Observações da reserva, convidados ou necessidades especiais"/></label><button><CalendarDays/> Enviar reserva</button></form></>}
       {view === 'lista' && <Table rows={rows} render={r=><><td><b>{reservationAreaName(r)}</b><small>{reservationDateISO(r)} · {reservationTimeText(r)}</small></td><td>Unidade {r.unit || '-'}<small>{r.resident || ''}</small></td><td><Status ok={reservationStatusClass(r.status)==='confirmada'}>{reservationStatusLabel(r.status)}</Status></td><td className="actions"><button onClick={()=>window.open(reservationGoogleUrlLocal(r),'_blank')}><CalendarDays/> Agenda</button>{session?.role !== 'morador' && <><button onClick={()=>statusAction(r,'confirmada')}>Confirmar</button><button onClick={()=>statusAction(r,'pendente_pagamento')}>Pagamento</button><button className="dangerAction" onClick={()=>cancelReservation(r)}>Cancelar</button></>}</td></>}/>} 
     </div>
   </Panel>;
@@ -950,7 +1193,7 @@ function Emergency({data,forms,setForm,action,openConfirm,settings,session}){
     <div className="emergencyStatusColumns">{groups.map(([key,label])=>{ const rows=(data.emergencyRequests||[]).filter(r=> key==='pendente' ? !['aprovada','rejeitada','recusada'].includes(String(r.status||'pendente')) : key==='aprovada' ? String(r.status)==='aprovada' : ['rejeitada','recusada'].includes(String(r.status||''))); return <div className="subpanel" key={key}><h3>{label}</h3><Table rows={rows} render={r=><><td><b>{r.type_label}</b><small>{r.occurrence_location || r.unit} · {r.message}</small></td><td><Status ok={r.status==='aprovada'}>{emergencyStatusText(r.status)}</Status></td><td className="actions"><button className="confirmAction" onClick={()=>action(`/api/emergency-requests/${r.id}/approve`,{note:'Aprovado'},'Emergência aprovada')}>Aprovar</button><button className="dangerAction" onClick={()=>action(`/api/emergency-requests/${r.id}/reject`,{note:'Rejeitada'},'Emergência rejeitada')}>Rejeitar</button></td></>}/></div>})}</div>
   </Panel>;
 }
-function Profile({forms,setForm,action,settings,session}){ const f=forms.profile; const h=forms.householdMember||{}; return <Panel title="Meu perfil" subtitle="Cada morador mantém seus contatos atualizados." icon={<UserCheck/>}><form className="formGrid" onSubmit={e=>{e.preventDefault(); action('/api/profile', f, 'Perfil atualizado', 'PUT');}}><label>Nome<input value={f.name} onChange={e=>setForm('profile',{name:e.target.value})}/></label><label>E-mail<input value={f.email} onChange={e=>setForm('profile',{email:e.target.value})}/></label><label>WhatsApp<input value={f.whatsapp_phone} onChange={e=>setForm('profile',{whatsapp_phone:e.target.value})}/></label><label>Usuário Telegram<input value={f.telegram_username||''} onChange={e=>setForm('profile',{telegram_username:e.target.value})} placeholder="@usuario"/></label><label>Chat ID Telegram<input value={f.telegram_chat_id||''} onChange={e=>setForm('profile',{telegram_chat_id:e.target.value})} placeholder="ID numérico após /start no bot"/></label><TelegramLinkBox entity="me" id={session?.id}/><label>Unidade<input value={f.unit} onChange={e=>setForm('profile',{unit:e.target.value})}/></label><label>Nova senha<input type="password" value={f.password} onChange={e=>setForm('profile',{password:e.target.value})}/></label><ChannelChooser settings={settings} value={f.notification_preferences} onChange={v=>setForm('profile',{notification_preferences:v})}/><button><Save/> Salvar meu perfil</button></form><div className="subpanel premiumForm"><h3><UserPlus/> Solicitar morador adicional da minha unidade</h3><p>Use esta opção para solicitar acesso de outro morador da mesma unidade. O cadastro continua sujeito à aprovação do síndico e ao limite configurado.</p><form className="formGrid" onSubmit={e=>{e.preventDefault(); action('/api/residents/request-same-unit', h, 'Solicitação enviada ao síndico');}}><label>Nome completo *<input required value={h.name||''} onChange={e=>setForm('householdMember',{name:e.target.value})}/></label><label>E-mail<input type="email" value={h.email||''} onChange={e=>setForm('householdMember',{email:e.target.value})}/></label><label>WhatsApp<input value={h.whatsapp_phone||''} onChange={e=>setForm('householdMember',{whatsapp_phone:e.target.value})}/></label><label>Usuário Telegram<input value={h.telegram_username||''} onChange={e=>setForm('householdMember',{telegram_username:e.target.value})} placeholder="@usuario"/></label><label>Chat ID Telegram<input value={h.telegram_chat_id||''} onChange={e=>setForm('householdMember',{telegram_chat_id:e.target.value})} placeholder="ID numérico"/><small>Após enviar, o link de vínculo poderá ser reenviado em Cadastros &gt; Aprovações.</small></label><label>Documento<input value={h.document||''} onChange={e=>setForm('householdMember',{document:e.target.value})}/></label><button><UserPlus/> Enviar para aprovação</button></form></div></Panel>; }
+function Profile({forms,setForm,action,settings,session}){ const f=forms.profile; const h=forms.householdMember||{}; return <Panel title="Meu perfil" subtitle="Cada morador mantém seus contatos atualizados." icon={<UserCheck/>}><form className="formGrid" onSubmit={e=>{e.preventDefault(); action('/api/profile', f, 'Perfil atualizado', 'PUT');}}><label>Nome<input value={f.name} onChange={e=>setForm('profile',{name:e.target.value, gender:f.gender&&f.gender!=='nao_informado'?f.gender:inferGenderFromName(e.target.value)})}/></label><label>Sexo para saudação<select value={f.gender||'nao_informado'} onChange={e=>setForm('profile',{gender:e.target.value})}>{genderOptions.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label><label>E-mail<input value={f.email} onChange={e=>setForm('profile',{email:e.target.value})}/></label><label>WhatsApp<input value={f.whatsapp_phone} onChange={e=>setForm('profile',{whatsapp_phone:e.target.value})}/></label><label>Usuário Telegram<input value={f.telegram_username||''} onChange={e=>setForm('profile',{telegram_username:e.target.value})} placeholder="@usuario"/></label><label>Chat ID Telegram<input value={f.telegram_chat_id||''} onChange={e=>setForm('profile',{telegram_chat_id:e.target.value})} placeholder="ID numérico após /start no bot"/></label><TelegramLinkBox entity="me" id={session?.id}/><label>Unidade<input value={f.unit} onChange={e=>setForm('profile',{unit:e.target.value})}/></label><label>Nova senha<input type="password" value={f.password} onChange={e=>setForm('profile',{password:e.target.value})}/></label><ChannelChooser settings={settings} value={f.notification_preferences} onChange={v=>setForm('profile',{notification_preferences:v})}/><button><Save/> Salvar meu perfil</button></form><div className="subpanel premiumForm"><h3><UserPlus/> Solicitar morador adicional da minha unidade</h3><p>Use esta opção para solicitar acesso de outro morador da mesma unidade. O cadastro continua sujeito à aprovação do síndico e ao limite configurado.</p><form className="formGrid" onSubmit={e=>{e.preventDefault(); action('/api/residents/request-same-unit', h, 'Solicitação enviada ao síndico');}}><label>Nome completo *<input required value={h.name||''} onChange={e=>setForm('householdMember',{name:e.target.value, gender:h.gender&&h.gender!=='nao_informado'?h.gender:inferGenderFromName(e.target.value)})}/></label><label>Sexo para saudação<select value={h.gender||'nao_informado'} onChange={e=>setForm('householdMember',{gender:e.target.value})}>{genderOptions.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label><label>E-mail<input type="email" value={h.email||''} onChange={e=>setForm('householdMember',{email:e.target.value})}/></label><label>WhatsApp<input value={h.whatsapp_phone||''} onChange={e=>setForm('householdMember',{whatsapp_phone:e.target.value})}/></label><label>Usuário Telegram<input value={h.telegram_username||''} onChange={e=>setForm('householdMember',{telegram_username:e.target.value})} placeholder="@usuario"/></label><label>Chat ID Telegram<input value={h.telegram_chat_id||''} onChange={e=>setForm('householdMember',{telegram_chat_id:e.target.value})} placeholder="ID numérico"/><small>Após enviar, o link de vínculo poderá ser reenviado em Cadastros &gt; Aprovações.</small></label><label>Documento<input value={h.document||''} onChange={e=>setForm('householdMember',{document:e.target.value})}/></label><button><UserPlus/> Enviar para aprovação</button></form></div></Panel>; }
 
 function EmergencySettings({forms,setForm,action,settings}){ const s=forms.settings; return <div className="stack"><SettingCard title="Emergência e elevador" icon={<Siren/>}><div className="formGrid"><label>WhatsApp da manutenção do elevador<input placeholder="Ex.: 5583999999999" value={s.ELEVATOR_MAINTENANCE_WHATSAPP || settings.ELEVATOR_MAINTENANCE_WHATSAPP || ''} onChange={e=>setForm('settings',{ELEVATOR_MAINTENANCE_WHATSAPP:e.target.value})}/></label><label>Telefone da operadora do elevador<input value={s.ELEVATOR_OPERATOR_PHONE || settings.ELEVATOR_OPERATOR_PHONE || ''} onChange={e=>setForm('settings',{ELEVATOR_OPERATOR_PHONE:e.target.value})}/></label><label>Locais de ocorrência<textarea placeholder="Um local por linha: Corredor, Vizinho, Elevador, Garagem..." value={s.EMERGENCY_LOCATIONS_TEXT || (Array.isArray(parseJson(settings.EMERGENCY_LOCATIONS, null)) ? parseJson(settings.EMERGENCY_LOCATIONS, []).join('\n') : '')} onChange={e=>setForm('settings',{EMERGENCY_LOCATIONS_TEXT:e.target.value, EMERGENCY_LOCATIONS:JSON.stringify(e.target.value.split('\n').map(x=>x.trim()).filter(Boolean))})}/></label><label className="check"><input type="checkbox" checked={bool(s.EMERGENCY_ALLOW_GENERAL_ALERT ?? settings.EMERGENCY_ALLOW_GENERAL_ALERT,true)} onChange={e=>setForm('settings',{EMERGENCY_ALLOW_GENERAL_ALERT:String(e.target.checked)})}/>Permitir aviso geral apenas para incêndio/invasão</label><button onClick={()=>saveSettings(forms,action)}><Save/> Salvar emergência</button></div></SettingCard></div>; }
 function ErrorLogs({action,isAdminReserved}){
@@ -989,7 +1232,7 @@ function NotificationSettings(props){ const {forms,setForm,action}=props; const 
 function ProviderSettings({forms,setForm,action,type,data}){ const s=forms.settings; const maps={email:[['MAIL_PROVIDER','Provedor principal'],['EMAIL_PROVIDER','Provedor de e-mail'],['SENDGRID_API_KEY','SendGrid API Key'],['SENDGRID_FROM_EMAIL','E-mail remetente'],['SENDGRID_FROM_NAME','Nome do remetente'],['SENDGRID_REPLY_TO','Responder para'],['SENDGRID_TO_DEFAULT','E-mail padrão de teste'],['MAIL_FROM','Remetente SMTP'],['SMTP_HOST','SMTP servidor'],['SMTP_PORT','SMTP porta'],['SMTP_USER','SMTP usuário'],['SMTP_PASS','SMTP senha'],['PUBLIC_APP_URL','URL pública do sistema']],telegram:[['TELEGRAM_ENABLED','Telegram ativo'],['ENABLE_TELEGRAM','Canal Telegram liberado'],['TELEGRAM_START_URL','Link de início do bot'],['TELEGRAM_BOT_USERNAME','Usuário do bot'],['TELEGRAM_BOT_TOKEN','Token do bot'],['TELEGRAM_WEBHOOK_SECRET','Segredo do webhook'],['TELEGRAM_PARSE_MODE','Modo de texto'],['TELEGRAM_API_BASE_URL','Base da API'],['TELEGRAM_WEBHOOK_URL','URL do webhook'],['TELEGRAM_ALLOWED_UPDATES','Eventos permitidos'],['PUBLIC_APP_URL','URL pública do sistema']],whatsapp:[['ENABLE_WHATSAPP','Canal WhatsApp liberado'],['WHATSAPP_API_VERSION','Versão da API'],['WHATSAPP_API_BASE_URL','Base da API'],['WHATSAPP_PHONE_NUMBER_ID','Phone Number ID'],['WHATSAPP_BUSINESS_ACCOUNT_ID','Business Account ID'],['WHATSAPP_ACCESS_TOKEN','Token de acesso'],['WHATSAPP_API_TOKEN','Token alternativo'],['WHATSAPP_TEMPLATE_PACKAGE','Template de encomenda'],['WHATSAPP_TEMPLATE_RESERVATION','Template de reserva'],['WHATSAPP_TO_DEFAULT','WhatsApp padrão de teste']]}; const title=type==='email'?'E-mail / SendGrid / SMTP':type==='telegram'?'Telegram':'WhatsApp'; const icon=type==='email'?<Mail/>:type==='telegram'?<MessageCircle/>:<Smartphone/>; const isBool=(k)=>/^ENABLE_|_ENABLED$/.test(k) || ['TELEGRAM_ENABLED'].includes(k); const testPayload= type==='email'?{channel:'email',to:s.SENDGRID_TO_DEFAULT || data.notifyConfig?.email?.sendgridFromEmail || '',subject:'Teste Vitória Régia',message:'Teste de e-mail do Sistema Vitória Régia.'}: type==='telegram'?{channel:'telegram',to:s.TELEGRAM_CHAT_ID || DEFAULT_TELEGRAM_CHAT_ID,message:'Teste do Telegram - Sistema Vitória Régia.'}:{channel:'whatsapp',to:s.WHATSAPP_TO_DEFAULT || '',message:'Teste de WhatsApp - Sistema Vitória Régia.'}; return <SettingCard title={title} icon={icon}><div className="noticeBox ok"><b>Variáveis de comunicação</b><small>Os campos abaixo substituem as variáveis do Render quando salvos no sistema. Tokens, senhas e chaves aparecem mascarados e nunca são enviados ao GitHub.</small></div><div className="formGrid providerGrid">{maps[type].map(([k,l])=> isBool(k) ? <label className="check" key={k}><input type="checkbox" checked={bool(s[k], false)} onChange={e=>setForm('settings',{[k]:String(e.target.checked), ...(k==='TELEGRAM_ENABLED'?{ENABLE_TELEGRAM:String(e.target.checked)}:{})})}/>{l}</label> : <label key={k}>{l}<input type={sensitive.has(k)?'password':'text'} placeholder={sensitive.has(k)?maskValue(s[k]):''} value={sensitive.has(k) && String(s[k]||'').includes('***')?'':(s[k]||'')} onChange={e=>setForm('settings',{[k]:e.target.value})}/></label>)}<button onClick={()=>saveSettings(forms,action)}><Save/> Salvar {title}</button><button type="button" className="secondaryAction" onClick={()=>action('/api/notify/test', testPayload, 'Teste enviado/processado') }><Send/> Testar {type==='email'?'e-mail':type==='telegram'?'Telegram':'WhatsApp'}</button>{type==='telegram'&&<><button type="button" className="secondaryAction" onClick={()=>action('/api/telegram/get-me',{},'Telegram testado') }><MessageCircle/> Verificar bot</button><button type="button" className="secondaryAction" onClick={()=>action('/api/telegram/set-webhook',{base_url:s.PUBLIC_APP_URL||window.location.origin},'Webhook configurado') }><RefreshCcw/> Configurar webhook</button><button type="button" className="secondaryAction" onClick={()=>action('/api/telegram/webhook-info',{},'Webhook verificado') }><Activity/> Ver webhook</button></>}</div><NotifyTests forms={forms} setForm={setForm} action={action} data={data}/></SettingCard>; }
 function BankSettings({forms,setForm,action}){ const s=forms.settings; const keys=[['BANK_PROVIDER','Banco/gateway'],['BANK_API_BASE_URL','URL da API'],['BANK_CLIENT_ID','Client ID'],['BANK_CLIENT_SECRET','Client secret'],['BANK_API_TOKEN','Token API'],['BANK_ACCOUNT','Conta'],['BANK_AGENCY','Agência'],['BANK_WALLET','Carteira'],['BANK_CONTRACT','Convênio/contrato'],['BANK_PIX_KEY','Chave Pix']]; return <SettingCard title="Banco e boletos" icon={<Banknote/>}><div className="formGrid">{keys.map(([k,l])=><label key={k}>{l}<input type={sensitive.has(k)?'password':'text'} placeholder={sensitive.has(k)?maskValue(s[k]):''} value={sensitive.has(k) && String(s[k]||'').includes('***')?'':(s[k]||'')} onChange={e=>setForm('settings',{[k]:e.target.value})}/></label>)}<label className="check"><input type="checkbox" checked={bool(s.BOLETO_AUTO_GENERATE,false)} onChange={e=>setForm('settings',{BOLETO_AUTO_GENERATE:String(e.target.checked)})}/>Gerar boletos automaticamente quando houver API configurada</label><button onClick={()=>saveSettings(forms,action)}><Save/> Salvar banco</button></div></SettingCard>; }
 function CondoSettings({forms,setForm,action}){ const s=forms.settings; return <SettingCard title="Condomínio" icon={<Building2/>}><div className="formGrid"><label>Nome<input value={s.CONDO_NAME||''} onChange={e=>setForm('settings',{CONDO_NAME:e.target.value})}/></label><label>Endereço<input value={s.CONDO_ADDRESS||''} onChange={e=>setForm('settings',{CONDO_ADDRESS:e.target.value})}/></label><label>Operadora do elevador<input value={s.ELEVATOR_OPERATOR_NAME||''} onChange={e=>setForm('settings',{ELEVATOR_OPERATOR_NAME:e.target.value})}/></label><label>Telefone emergência elevador<input value={s.ELEVATOR_EMERGENCY_PHONE||''} onChange={e=>setForm('settings',{ELEVATOR_EMERGENCY_PHONE:e.target.value})}/></label><label className="check"><input type="checkbox" checked={bool(s.ALLOW_MULTIPLE_RESIDENTS_PER_UNIT,false)} onChange={e=>setForm('settings',{ALLOW_MULTIPLE_RESIDENTS_PER_UNIT:String(e.target.checked)})}/>Autorizar cadastro de moradores adicionais por unidade</label><label>Quantidade máxima de moradores por unidade<input type="number" min="1" value={s.MAX_RESIDENTS_PER_UNIT||''} onChange={e=>setForm('settings',{MAX_RESIDENTS_PER_UNIT:e.target.value})}/></label><button onClick={()=>saveSettings(forms,action)}><Save/> Salvar condomínio</button></div></SettingCard>; }
-function AreasSettings({data,forms,setForm,action}){ const f=forms.commonArea; return <SettingCard title="Áreas de lazer e períodos de reserva" icon={<CalendarDays/>}><form className="formGrid" onSubmit={e=>{e.preventDefault(); action('/api/common-areas',f,'Área de lazer salva');}}><label>Nome da área<input required value={f.name} onChange={e=>setForm('commonArea',{name:e.target.value})}/></label><label>Taxa de reserva<input type="number" value={f.fee_amount} onChange={e=>setForm('commonArea',{fee_amount:e.target.value})}/></label><label>Limite de convidados<input type="number" value={f.max_guests} onChange={e=>setForm('commonArea',{max_guests:e.target.value})}/></label><label>Períodos permitidos<textarea placeholder="Um por linha: dia_todo, manha, tarde, noite, horario" value={(f.reservation_periods||'').replace(/,/g,'\n')} onChange={e=>setForm('commonArea',{reservation_periods:e.target.value.split('\n').map(x=>x.trim()).filter(Boolean).join(',')})}/></label><label className="check"><input type="checkbox" checked={f.count_children!==false} onChange={e=>setForm('commonArea',{count_children:e.target.checked})}/>Crianças contam no limite</label><label className="check"><input type="checkbox" checked={f.count_infants===true} onChange={e=>setForm('commonArea',{count_infants:e.target.checked})}/>Bebês de colo contam no limite</label><label>Regras<textarea value={f.rules_document} onChange={e=>setForm('commonArea',{rules_document:e.target.value})}/></label><button><Save/> Salvar área</button></form><Table rows={data.commonAreas} render={a=><><td><b>{a.name}</b><small>Períodos: {reservationPeriodsForArea(a).map(reservationPeriodLabel).join(', ')}</small></td><td>{money(a.fee_amount)}</td><td>{a.max_guests} convidados</td></>}/></SettingCard>; }
+function AreasSettings({data,forms,setForm,action}){ const f=forms.commonArea; return <SettingCard title="Áreas de lazer e períodos de reserva" icon={<CalendarDays/>}><form className="formGrid" onSubmit={e=>{e.preventDefault(); action('/api/common-areas',f,'Área de lazer salva');}}><label>Nome da área<input required value={f.name} onChange={e=>setForm('commonArea',{name:e.target.value})}/></label><label>Taxa de reserva<input type="number" value={f.fee_amount} onChange={e=>setForm('commonArea',{fee_amount:e.target.value})}/></label><label>Limite de convidados<input type="number" value={f.max_guests} onChange={e=>setForm('commonArea',{max_guests:e.target.value})}/></label><label>Períodos permitidos<textarea placeholder="Um por linha: dia_todo, manha, tarde, noite, horario" value={(f.reservation_periods||'').replace(/,/g,'\n')} onChange={e=>setForm('commonArea',{reservation_periods:e.target.value.split('\n').map(x=>x.trim()).filter(Boolean).join(',')})}/></label><label className="check"><input type="checkbox" checked={f.count_children!==false} onChange={e=>setForm('commonArea',{count_children:e.target.checked})}/>Crianças contam no limite</label><label className="check"><input type="checkbox" checked={f.count_infants===true} onChange={e=>setForm('commonArea',{count_infants:e.target.checked})}/>Bebês de colo contam no limite</label><label>Documento/regras da reserva<textarea placeholder="Cole o link do PDF ou escreva as regras. Se houver documento enviado com título 'reserva salão de festas', ele também aparecerá automaticamente." value={f.rules_document} onChange={e=>setForm('commonArea',{rules_document:e.target.value})}/></label><button><Save/> Salvar área</button></form><Table rows={data.commonAreas} render={a=><><td><b>{a.name}</b><small>Períodos: {reservationPeriodsForArea(a).map(reservationPeriodLabel).join(', ')}</small></td><td>{money(a.fee_amount)}</td><td>{a.max_guests} convidados</td><td>{/^https?:\/\//i.test(String(a.rules_document||''))?<a className="buttonlike" href={a.rules_document} target="_blank" rel="noreferrer"><FileText/> Abrir regras</a>:<small>{a.rules_document?'Regras em texto':'Sem documento vinculado'}</small>}</td></>}/></SettingCard>; }
 function AppsSettings({forms,setForm,action}){ const s=forms.settings; return <SettingCard title="Aplicativos" icon={<AppWindow/>}><div className="channels"><label><input type="checkbox" checked={bool(s.ENABLE_APP_PORTARIA,true)} onChange={e=>setForm('settings',{ENABLE_APP_PORTARIA:String(e.target.checked)})}/>Portaria</label><label><input type="checkbox" checked={bool(s.ENABLE_APP_SINDICO,true)} onChange={e=>setForm('settings',{ENABLE_APP_SINDICO:String(e.target.checked)})}/>Síndico</label><label><input type="checkbox" checked={bool(s.ENABLE_APP_MORADOR,true)} onChange={e=>setForm('settings',{ENABLE_APP_MORADOR:String(e.target.checked)})}/>Morador</label></div><div className="formGrid"><label>URL APK Portaria<input value={s.APK_PORTARIA_URL||''} onChange={e=>setForm('settings',{APK_PORTARIA_URL:e.target.value})}/></label><label>URL APK Síndico<input value={s.APK_SINDICO_URL||''} onChange={e=>setForm('settings',{APK_SINDICO_URL:e.target.value})}/></label><label>URL APK Morador<input value={s.APK_MORADOR_URL||''} onChange={e=>setForm('settings',{APK_MORADOR_URL:e.target.value})}/></label><label className="check"><input type="checkbox" checked={bool(s.KIOSK_PORTARIA_PREMIUM_ENABLED,true)} onChange={e=>setForm('settings',{KIOSK_PORTARIA_PREMIUM_ENABLED:String(e.target.checked)})}/>APK Portaria em modo kiosk premium</label><label>Apps liberados para troca controlada<input value={s.KIOSK_ALLOWED_APPS||'Vitória Régia Portaria,Telegram,Câmera,Wi-Fi'} onChange={e=>setForm('settings',{KIOSK_ALLOWED_APPS:e.target.value})}/></label><button onClick={()=>saveSettings(forms,action)}><Save/> Salvar apps</button></div></SettingCard>; }
 function UpdateSettings({forms,setForm,action,settings,isAdminReserved}){
   const [testMsg,setTestMsg]=useState('');
@@ -1124,6 +1367,7 @@ function Status({ok,children}){ return <span className={'status '+(ok?'ok':'warn
 function Code({children}){ return <code className="code">{children}</code>; }
 function Table({rows=[],render}){ return <div className="tableWrap"><table><tbody>{rows?.length?rows.map((r,i)=><tr key={r.id||i}>{render(r)}</tr>):<tr><td><small>Nenhum registro encontrado.</small></td></tr>}</tbody></table></div>; }
 function ConfirmModal({confirm,onCancel,onConfirm}){ return <div className="modalOverlay"><div className="confirmModal"><h2><CheckCircle2/> {confirm.title}</h2><p>Confira os dados antes de gravar. Essa etapa evita cadastros duplicados ou lançamentos incorretos.</p><div className="confirmList">{Object.entries(confirm.fields||{}).map(([k,v])=><span key={k}>{k}<b>{String(v||'-')}</b></span>)}</div><div className="modalActions"><button onClick={onCancel}>Voltar e corrigir</button><button className="primary" onClick={onConfirm}>Confirmar cadastro</button></div></div></div>; }
+function MobileViewportHint(){ return <div className="mobileViewportHint"><Smartphone/><span>Visualização premium: em celulares, use o aparelho na horizontal para tabelas, reservas e financeiro. Em tablets, o modo paisagem fica mais próximo da versão desktop.</span></div>; }
 function Footer(){ return <footer className="appFooter"><span>{VERSION}</span><span>Desenvolvido por <b>CrewCheck</b> · Todos os direitos reservados</span></footer>; }
 
 createRoot(document.getElementById('root')).render(<App/>);
