@@ -17,7 +17,7 @@ import { randomBytes, createHash, verify as cryptoVerify } from 'node:crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v12.6.4';
+const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v12.6.6';
 const DEFAULT_TELEGRAM_CHAT_ID = '8188648317';
 const JWT_SECRET = process.env.JWT_SECRET || 'troque-este-segredo-em-producao';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/vitoriaregia';
@@ -82,6 +82,20 @@ async function q(sql, params=[]) { if (!pool) throw new Error('Banco ainda não 
 function quoteIdent(name) { return '"' + String(name).replace(/"/g, '""') + '"'; }
 async function addColumn(table, columnSql) { await q(`ALTER TABLE ${quoteIdent(table)} ADD COLUMN IF NOT EXISTS ${columnSql}`).catch(e => console.warn('Migração ignorada:', table, columnSql, e.message)); }
 async function addColumnStrict(table, columnSql) { await q(`ALTER TABLE ${quoteIdent(table)} ADD COLUMN IF NOT EXISTS ${columnSql}`); }
+
+async function ensureEmergencyRequestColumns() {
+  const emergencyColumns = [
+    'occurrence_location TEXT',
+    'location_type TEXT',
+    'neighbor_unit TEXT',
+    'floor TEXT',
+    'requested_role TEXT',
+    'approved_by INTEGER',
+    'decision_note TEXT',
+    'decided_at TIMESTAMP'
+  ];
+  for (const col of emergencyColumns) await addColumn('emergency_requests', col);
+}
 async function hasColumn(table, column) {
   const r = await q(`SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1 AND column_name = $2 LIMIT 1`, [table, column]);
   return r.rowCount > 0;
@@ -576,6 +590,7 @@ CREATE TABLE IF NOT EXISTS audit(
 `);
 
   await ensureCriticalLegacySchema();
+  await ensureEmergencyRequestColumns();
 
   // Migração segura para bancos já existentes.
   // Observação: CREATE TABLE IF NOT EXISTS não altera tabelas antigas. Por isso,
@@ -619,7 +634,7 @@ CREATE TABLE IF NOT EXISTS audit(
     ['invoices','supplier TEXT'], ['invoices','document_number TEXT'], ['invoices','access_key TEXT'], ['invoices','amount NUMERIC(12,2) DEFAULT 0'], ['invoices','issue_date DATE'], ['invoices','due_date DATE'], ['invoices','unit TEXT'], ['invoices','resident_id INTEGER'], ['invoices','category TEXT DEFAULT \'nota fiscal\''], ['invoices','status TEXT DEFAULT \'registrada\''], ['invoices','extracted_text TEXT'], ['invoices','file_name TEXT'], ['invoices','created_at TIMESTAMP DEFAULT now()'],
     ['notifications','user_id INTEGER'], ['notifications','resident_id INTEGER'], ['notifications','title TEXT'], ['notifications','body TEXT'], ['notifications','channel TEXT DEFAULT \'app\''], ['notifications','channels JSONB DEFAULT \'{}\'::jsonb'], ['notifications','status TEXT DEFAULT \'nova\''], ['notifications','action_url TEXT'], ['notifications','payload JSONB DEFAULT \'{}\'::jsonb'], ['notifications','read_at TIMESTAMP'], ['notifications','created_at TIMESTAMP DEFAULT now()'],
     ['incidents','title TEXT'], ['incidents','description TEXT'], ['incidents','unit TEXT'], ['incidents','severity TEXT DEFAULT \'normal\''], ['incidents','status TEXT DEFAULT \'aberta\''], ['incidents','created_at TIMESTAMP DEFAULT now()'], ['incidents','closed_at TIMESTAMP'],
-    ['emergency_requests','type_code TEXT'], ['emergency_requests','type_label TEXT'], ['emergency_requests','unit TEXT'], ['emergency_requests','message TEXT'], ['emergency_requests','requested_by INTEGER'], ['emergency_requests','requested_role TEXT'], ['emergency_requests','status TEXT DEFAULT \'pendente\''], ['emergency_requests','notify_all BOOLEAN DEFAULT false'], ['emergency_requests','approved_by INTEGER'], ['emergency_requests','decision_note TEXT'], ['emergency_requests','created_at TIMESTAMP DEFAULT now()'], ['emergency_requests','decided_at TIMESTAMP'],
+    ['emergency_requests','type_code TEXT'], ['emergency_requests','type_label TEXT'], ['emergency_requests','unit TEXT'], ['emergency_requests','message TEXT'], ['emergency_requests','requested_by INTEGER'], ['emergency_requests','requested_role TEXT'], ['emergency_requests','status TEXT DEFAULT \'pendente\''], ['emergency_requests','notify_all BOOLEAN DEFAULT false'], ['emergency_requests','approved_by INTEGER'], ['emergency_requests','decision_note TEXT'], ['emergency_requests','occurrence_location TEXT'], ['emergency_requests','location_type TEXT'], ['emergency_requests','neighbor_unit TEXT'], ['emergency_requests','floor TEXT'], ['emergency_requests','created_at TIMESTAMP DEFAULT now()'], ['emergency_requests','decided_at TIMESTAMP'],
     ['maintenance','title TEXT'], ['maintenance','supplier TEXT'], ['maintenance','scheduled_for DATE'], ['maintenance','status TEXT DEFAULT \'planejada\''], ['maintenance','cost NUMERIC(12,2) DEFAULT 0'], ['maintenance','notes TEXT'], ['maintenance','created_at TIMESTAMP DEFAULT now()'],
 
     // settings / workflows / updates / audit
@@ -651,7 +666,7 @@ CREATE TABLE IF NOT EXISTS audit(
   await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_reservation_slot ON reservations(area, reserved_for, start_time, end_time) WHERE status <> 'cancelada'").catch(e => console.warn('Índice de reservas ignorado:', e.message));
 
   const defaultSettings = {
-    THEME_ACCENT: '#126b5f', THEME_TEXT_SIZE: 'comfort', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light', APP_VERSION:'Vitória Régia Pro v12.6.4',
+    THEME_ACCENT: '#126b5f', THEME_TEXT_SIZE: 'comfort', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light', APP_VERSION:'Vitória Régia Pro v12.6.6',
     CONDO_NAME: 'Condomínio Vitória Régia', DEVELOPED_BY: 'CrewCheck', CREWCHECK_SITE: 'https://www.crewcheck.online/', CREWCHECK_FOOTER: 'Desenvolvido por CrewCheck - todos os direitos reservados', CONDO_ADDRESS: '', WEATHER_CITY: 'João Pessoa', WEATHER_LAT: '-7.1195', WEATHER_LON: '-34.8450',
     ELEVATOR_OPERATOR_NAME: 'Operadora do elevador', ELEVATOR_EMERGENCY_PHONE: '', EMERGENCY_EMAILS: process.env.SENDGRID_TO_DEFAULT || '',
     EMERGENCY_APPROVAL_REQUIRED: 'true', FOOTER_MODE: 'minimal', EMAIL_PROVIDER: process.env.MAIL_PROVIDER || 'sendgrid',
@@ -1926,6 +1941,7 @@ async function handleEmergencyRequest(req,res,next){ try {
   const unit=req.body.unit || loginUnit || roleLocation || '';
   const message=req.body.message || '';
   const notify_all=Boolean(type.notify_all);
+  await ensureEmergencyRequestColumns();
   const r=await q('INSERT INTO emergency_requests(type_code,type_label,unit,message,requested_by,requested_role,status,notify_all,occurrence_location,location_type,neighbor_unit,floor) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',[code,type.label,unit,message,req.user.id,req.user.role,'pendente',notify_all,finalLocation,loc,neighbor,floor]);
   const body=`${type.label} solicitada. Local: ${finalLocation || unit || 'a confirmar'}. ${message}`;
   await notifyStaff({ title:'Emergência aguardando aprovação', body, action_url:'/#/emergencia' }).catch(()=>null);
