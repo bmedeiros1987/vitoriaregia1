@@ -17,7 +17,8 @@ import { randomBytes, createHash, verify as cryptoVerify } from 'node:crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v12.5.8';
+const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v12.6.2';
+const DEFAULT_TELEGRAM_CHAT_ID = '8188648317';
 const JWT_SECRET = process.env.JWT_SECRET || 'troque-este-segredo-em-producao';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/vitoriaregia';
 const DB_SSL_MODE = String(process.env.DATABASE_SSL_MODE || process.env.DATABASE_SSL || 'auto').trim().toLowerCase();
@@ -643,12 +644,12 @@ CREATE TABLE IF NOT EXISTS audit(
   await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_reservation_slot ON reservations(area, reserved_for, start_time, end_time) WHERE status <> 'cancelada'").catch(e => console.warn('Índice de reservas ignorado:', e.message));
 
   const defaultSettings = {
-    THEME_ACCENT: '#126b5f', THEME_TEXT_SIZE: 'comfort', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light', APP_VERSION:'Vitória Régia Pro v12.5.8',
+    THEME_ACCENT: '#126b5f', THEME_TEXT_SIZE: 'comfort', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light', APP_VERSION:'Vitória Régia Pro v12.6.2',
     CONDO_NAME: 'Condomínio Vitória Régia', DEVELOPED_BY: 'CrewCheck', CREWCHECK_SITE: 'https://www.crewcheck.online/', CREWCHECK_FOOTER: 'Desenvolvido por CrewCheck - todos os direitos reservados', CONDO_ADDRESS: '', WEATHER_CITY: 'João Pessoa', WEATHER_LAT: '-7.1195', WEATHER_LON: '-34.8450',
     ELEVATOR_OPERATOR_NAME: 'Operadora do elevador', ELEVATOR_EMERGENCY_PHONE: '', EMERGENCY_EMAILS: process.env.SENDGRID_TO_DEFAULT || '',
     EMERGENCY_APPROVAL_REQUIRED: 'true', FOOTER_MODE: 'minimal', EMAIL_PROVIDER: process.env.MAIL_PROVIDER || 'sendgrid',
     SENDGRID_FROM_EMAIL: process.env.SENDGRID_FROM_EMAIL || '', SENDGRID_FROM_NAME: process.env.SENDGRID_FROM_NAME || 'Condomínio Vitória Régia', SENDGRID_REPLY_TO: process.env.SENDGRID_REPLY_TO || '', EMAIL_SIGNATURE: 'Condomínio Vitória Régia',
-    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '', TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || '', TELEGRAM_BOT_USERNAME: process.env.TELEGRAM_BOT_USERNAME || 'vitoriaregia_bot', TELEGRAM_START_URL: process.env.TELEGRAM_START_URL || 'https://t.me/vitoriaregia_bot', TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET || '', TELEGRAM_ENABLED: process.env.TELEGRAM_ENABLED || process.env.ENABLE_TELEGRAM || 'true', TELEGRAM_PARSE_MODE: process.env.TELEGRAM_PARSE_MODE || '', WHATSAPP_PHONE_NUMBER_ID: '', WHATSAPP_ACCESS_TOKEN: '', WHATSAPP_API_VERSION: 'v19.0',
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '', TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || DEFAULT_TELEGRAM_CHAT_ID, TELEGRAM_BOT_USERNAME: process.env.TELEGRAM_BOT_USERNAME || 'vitoriaregia_bot', TELEGRAM_START_URL: process.env.TELEGRAM_START_URL || 'https://t.me/vitoriaregia_bot', TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET || '', TELEGRAM_ENABLED: process.env.TELEGRAM_ENABLED || process.env.ENABLE_TELEGRAM || 'true', TELEGRAM_PARSE_MODE: process.env.TELEGRAM_PARSE_MODE || '', WHATSAPP_PHONE_NUMBER_ID: '', WHATSAPP_ACCESS_TOKEN: '', WHATSAPP_API_VERSION: 'v19.0',
     DELIVERY_DEFAULT_CHANNELS: '{"app":true,"browser":true,"email":true,"telegram":true,"whatsapp":false}',
     ALLOW_MULTIPLE_RESIDENTS_PER_UNIT: 'false', MAX_RESIDENTS_PER_UNIT:'2', SHOW_UPDATES_TO_SINDICO: 'false',
     RESERVATION_DEFAULT_RULES: 'Declaro que li e aceito as normas de uso do espaço comum, incluindo horários, limpeza, ruído, convidados e responsabilidade por danos.',
@@ -660,7 +661,7 @@ CREATE TABLE IF NOT EXISTS audit(
     BANK_PROVIDER: 'manual', BANK_API_BASE_URL: '', BANK_CLIENT_ID: '', BANK_CLIENT_SECRET: '', BANK_API_TOKEN: '', BANK_CERT_PATH: '', BANK_KEY_PATH: '', BANK_ACCOUNT: '', BANK_AGENCY: '', BANK_WALLET: '', BANK_CONTRACT: '', BANK_PIX_KEY: '', BOLETO_AUTO_GENERATE: 'false',
     RESIDENT_CRITERIA: '[{"key":"possui_pet","label":"Possui pet"},{"key":"imovel_alugado","label":"Imóvel alugado"},{"key":"possui_carro","label":"Possui carro"},{"key":"idoso_ou_pcd","label":"Idoso ou pessoa com deficiência"}]', EMERGENCY_CRITICAL_ALERTS: 'true', EMERGENCY_LOCATIONS: '["Minha unidade","Corredor","Vizinho","Elevador","Garagem","Salao de Festas","Brinquedoteca","Sauna","Piscina","Portaria","Zeladoria","Limpeza"]',
     EMAIL_PROVIDER: process.env.SENDGRID_API_KEY ? 'sendgrid' : 'smtp', SENDGRID_FROM_EMAIL: process.env.SENDGRID_FROM_EMAIL || '', SENDGRID_FROM_NAME: process.env.SENDGRID_FROM_NAME || 'Condomínio Vitória Régia', SENDGRID_REPLY_TO: process.env.SENDGRID_REPLY_TO || '', SENDGRID_TO_DEFAULT: process.env.SENDGRID_TO_DEFAULT || '', SENDGRID_DATA_RESIDENCY: process.env.SENDGRID_DATA_RESIDENCY || 'global', SMTP_HOST: '', SMTP_PORT: '587', SMTP_USER: '', SMTP_PASS: '', SMTP_SECURE: 'false', MAIL_FROM: '',
-    TELEGRAM_ENABLED: process.env.TELEGRAM_ENABLED || process.env.ENABLE_TELEGRAM || 'true', TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '', TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || '', TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET || '', TELEGRAM_BOT_USERNAME: process.env.TELEGRAM_BOT_USERNAME || 'vitoriaregia_bot', TELEGRAM_START_URL: process.env.TELEGRAM_START_URL || 'https://t.me/vitoriaregia_bot', TELEGRAM_PARSE_MODE: process.env.TELEGRAM_PARSE_MODE || '',
+    TELEGRAM_ENABLED: process.env.TELEGRAM_ENABLED || process.env.ENABLE_TELEGRAM || 'true', TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '', TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || DEFAULT_TELEGRAM_CHAT_ID, TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET || '', TELEGRAM_BOT_USERNAME: process.env.TELEGRAM_BOT_USERNAME || 'vitoriaregia_bot', TELEGRAM_START_URL: process.env.TELEGRAM_START_URL || 'https://t.me/vitoriaregia_bot', TELEGRAM_PARSE_MODE: process.env.TELEGRAM_PARSE_MODE || '',
     WHATSAPP_API_VERSION: 'v19.0', WHATSAPP_PHONE_NUMBER_ID: '', WHATSAPP_BUSINESS_ACCOUNT_ID: '', WHATSAPP_ACCESS_TOKEN: '', WHATSAPP_TEMPLATE_PACKAGE: '', WHATSAPP_TEMPLATE_RESERVATION: '',
     VAPID_PUBLIC_KEY: '', VAPID_PRIVATE_KEY: '', VAPID_SUBJECT: '',
     ENABLE_SYSTEM_UPDATES: 'true', UPDATE_CHANNEL: 'stable', UPDATE_FEED_URL: '', UPDATE_APPLY_MODE: 'github', UPDATE_GITHUB_REPO: process.env.UPDATE_GITHUB_REPO || 'bmedeiros1987/vitoriaregia1', UPDATE_GITHUB_BRANCH: process.env.UPDATE_GITHUB_BRANCH || 'main'
@@ -668,7 +669,7 @@ CREATE TABLE IF NOT EXISTS audit(
   for (const [key, value] of Object.entries(defaultSettings)) await q('INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING', [key, value]);
 
   // Sincroniza variáveis do Render para canais de comunicação sem gravar segredo no GitHub.
-  const envSyncKeys = ['ENABLE_TELEGRAM','TELEGRAM_ENABLED','TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID','TELEGRAM_BOT_USERNAME','TELEGRAM_START_URL','TELEGRAM_WEBHOOK_SECRET','TELEGRAM_API_BASE_URL','TELEGRAM_PARSE_MODE','TELEGRAM_TEST_CHAT_ID','PUBLIC_APP_URL','ENABLE_EMAIL','SENDGRID_API_KEY','SMTP_PASS','SENDGRID_FROM_EMAIL','SENDGRID_FROM_NAME','SENDGRID_REPLY_TO','SENDGRID_TO_DEFAULT','EMAIL_PROVIDER','ENABLE_WHATSAPP','WHATSAPP_API_VERSION','WHATSAPP_PHONE_NUMBER_ID','WHATSAPP_BUSINESS_ACCOUNT_ID','WHATSAPP_ACCESS_TOKEN'];
+  const envSyncKeys = ['ENABLE_TELEGRAM','TELEGRAM_ENABLED','TELEGRAM_BOT_TOKEN','TELEGRAM_BOT_USERNAME','TELEGRAM_START_URL','TELEGRAM_WEBHOOK_SECRET','TELEGRAM_API_BASE_URL','TELEGRAM_PARSE_MODE','PUBLIC_APP_URL','ENABLE_EMAIL','SENDGRID_API_KEY','SMTP_PASS','SENDGRID_FROM_EMAIL','SENDGRID_FROM_NAME','SENDGRID_REPLY_TO','SENDGRID_TO_DEFAULT','EMAIL_PROVIDER','ENABLE_WHATSAPP','WHATSAPP_API_VERSION','WHATSAPP_PHONE_NUMBER_ID','WHATSAPP_BUSINESS_ACCOUNT_ID','WHATSAPP_ACCESS_TOKEN'];
   for (const key of envSyncKeys) {
     if (process.env[key] !== undefined && String(process.env[key]).trim() !== '') {
       await q('INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value', [key, String(process.env[key])]).catch(()=>null);
@@ -679,6 +680,8 @@ CREATE TABLE IF NOT EXISTS audit(
   // Vitória Régia v10.9: Telegram sempre ativo por predefinição para todos os fluxos do sistema.
   await q("INSERT INTO settings(key,value) VALUES('ENABLE_TELEGRAM','true') ON CONFLICT(key) DO UPDATE SET value='true' WHERE settings.value IS NULL OR lower(settings.value) IN ('','false','0','nao','não','off')").catch(()=>null);
   await q("INSERT INTO settings(key,value) VALUES('TELEGRAM_ENABLED','true') ON CONFLICT(key) DO UPDATE SET value='true' WHERE settings.value IS NULL OR lower(settings.value) IN ('','false','0','nao','não','off')").catch(()=>null);
+  await q("INSERT INTO settings(key,value) VALUES('TELEGRAM_CHAT_ID',$1) ON CONFLICT(key) DO UPDATE SET value=$1 WHERE settings.value IS NULL OR btrim(settings.value)=''", [DEFAULT_TELEGRAM_CHAT_ID]).catch(()=>null);
+  await q("INSERT INTO settings(key,value) VALUES('TELEGRAM_TEST_CHAT_ID',$1) ON CONFLICT(key) DO UPDATE SET value=$1 WHERE settings.value IS NULL OR btrim(settings.value)=''", [DEFAULT_TELEGRAM_CHAT_ID]).catch(()=>null);
   await q("INSERT INTO settings(key,value) VALUES('DELIVERY_DEFAULT_CHANNELS',$1) ON CONFLICT(key) DO UPDATE SET value=$1", ['{"app":true,"browser":true,"email":true,"telegram":true,"whatsapp":false}']).catch(()=>null);
   await q("UPDATE users SET notification_preferences = jsonb_set(COALESCE(notification_preferences,'{}'::jsonb), '{telegram}', 'true'::jsonb, true)").catch(()=>null);
   await q("UPDATE residents SET notification_preferences = jsonb_set(COALESCE(notification_preferences,'{}'::jsonb), '{telegram}', 'true'::jsonb, true)").catch(()=>null);
@@ -726,6 +729,7 @@ function isSecretSetting(key='') { return SECRET_SETTING_KEYS.has(String(key).to
 function maskSecretSetting(value='') { const s=String(value || ''); if (!s) return ''; if (s.includes('***')) return s; return s.length < 9 ? 'configurado' : `${s.slice(0,3)}***${s.slice(-3)}`; }
 async function getSettingsObject({ maskSecrets=false }={}) { const rows=(await q('SELECT key,value FROM settings ORDER BY key')).rows; return rows.reduce((acc,r)=>{ acc[r.key] = maskSecrets && isSecretSetting(r.key) ? maskSecretSetting(r.value) : r.value; return acc; }, {}); }
 async function getSetting(key, fallback='') { const r=await q('SELECT value FROM settings WHERE key=$1',[key]); const dbValue=r.rowCount ? String(r.rows[0].value ?? '') : ''; return dbValue !== '' ? dbValue : (process.env[key] || fallback); }
+async function getTelegramDefaultChatId() { return String(await getSetting('TELEGRAM_CHAT_ID', process.env.TELEGRAM_CHAT_ID || DEFAULT_TELEGRAM_CHAT_ID) || DEFAULT_TELEGRAM_CHAT_ID).trim(); }
 async function getRuntimeSecret(key, fallback='') {
   // Preferência: Render/env > banco de configurações > fallback.
   // Isso impede que atualizações pelo site deixem Telegram/e-mail sem credencial quando a variável está no Render.
@@ -821,9 +825,19 @@ async function packageDuplicate(body={}) {
   return r.rows[0] || null;
 }
 async function reservationDuplicate(body={}, excludeId=null) {
-  const params=[String(body.area||''), String(body.reserved_for||''), String(body.start_time||'19:00'), String(body.end_time||'23:00')];
+  const start = String(body.start_time || '00:00').slice(0,5);
+  const end = String(body.end_time || '23:59').slice(0,5);
+  const params=[String(body.area||''), String(body.reserved_for||''), start, end];
   if (excludeId) params.push(excludeId);
-  const r=await q(`SELECT * FROM reservations WHERE deleted_at IS NULL AND COALESCE(status,'') <> 'cancelada' AND lower(area)=lower($1) AND reserved_for=$2::date AND start_time=$3 AND end_time=$4 ${excludeId?'AND id <> $5':''} ORDER BY id DESC LIMIT 1`, params);
+  const r=await q(`SELECT * FROM reservations
+    WHERE deleted_at IS NULL
+      AND COALESCE(status,'') NOT IN ('cancelada','cancelado')
+      AND lower(coalesce(area,''))=lower($1)
+      AND reserved_for=$2::date
+      AND (($3::time < COALESCE(NULLIF(end_time,''),'23:59')::time)
+       AND ($4::time > COALESCE(NULLIF(start_time,''),'00:00')::time))
+      ${excludeId?'AND id <> $5':''}
+    ORDER BY id DESC LIMIT 1`, params);
   return r.rows[0] || null;
 }
 async function requireNoDuplicate(kind, record) { if (record) { const err=new Error(hasDuplicateMessage(kind)); err.status=409; err.existing=record; throw err; } }
@@ -967,13 +981,51 @@ function markTelegramDedupe(keys=[], now=Date.now()) {
 function unmarkTelegramDedupe(keys=[]) {
   for (const k of keys.filter(Boolean)) telegramDedupeMemory.delete(String(k));
 }
+function telegramPremiumMessage({ title='Vitória Régia', body='', category='notificacao', actionUrl='', details={} }={}) {
+  const icons = {
+    emergencia:'🚨', encomenda:'📦', reserva:'📅', financeiro:'💳', suporte:'🛟', ocorrencia:'📘', comunicado:'📣', cadastro:'👤', sistema:'⚙️', notificacao:'🔔'
+  };
+  const icon = icons[String(category || 'notificacao').toLowerCase()] || icons.notificacao;
+  const lines = [
+    `${icon} ${String(title || 'Notificação Vitória Régia').trim()}`,
+    '',
+    String(body || '').trim()
+  ].filter(v => v !== undefined);
+  const pairs = Object.entries(details || {}).filter(([,v]) => v !== undefined && v !== null && String(v).trim() !== '');
+  if (pairs.length) {
+    lines.push('', 'Detalhes:');
+    for (const [k,v] of pairs) lines.push(`• ${k}: ${v}`);
+  }
+  if (actionUrl) lines.push('', `Acesse: ${actionUrl}`);
+  lines.push('', 'Condomínio Vitória Régia');
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+function notificationCategoryFrom(title='', body='', payload={}) {
+  const t = `${title} ${body}`.toLowerCase();
+  if (payload?.emergency || /emerg[eê]ncia|alerta/.test(t)) return 'emergencia';
+  if (/encomenda|portaria|retirada/.test(t)) return 'encomenda';
+  if (/reserva|sal[aã]o|espa[cç]o/.test(t)) return 'reserva';
+  if (/boleto|financeiro|pagamento|taxa|cobran[cç]a/.test(t)) return 'financeiro';
+  if (/suporte|ticket|pedido/.test(t)) return 'suporte';
+  if (/ocorr[eê]ncia|livro/.test(t)) return 'ocorrencia';
+  if (/comunicado|aviso|mensagem/.test(t)) return 'comunicado';
+  if (/cadastro|senha|usu[aá]rio/.test(t)) return 'cadastro';
+  return 'notificacao';
+}
+function fullActionUrl(actionUrl='') {
+  const base = String(process.env.PUBLIC_APP_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
+  if (!actionUrl) return base || '';
+  if (/^https?:\/\//i.test(actionUrl)) return actionUrl;
+  return base ? `${base}${actionUrl.startsWith('/') ? '' : '/'}${actionUrl}` : actionUrl;
+}
+
 async function sendTelegramMessage(chatId, text, options={}) {
   if (!(await featureEnabled('telegram'))) return { ok:false, skipped:true, reason:'Telegram não liberado em Configurações.' };
   const allowDefaultChat = options.allowDefaultChat !== false;
   const cleanOptions = { ...(options || {}) };
   delete cleanOptions.allowDefaultChat;
   delete cleanOptions.dedupeKey;
-  const chat = chatId || (allowDefaultChat ? await getSetting('TELEGRAM_CHAT_ID', process.env.TELEGRAM_CHAT_ID || '') : '');
+  const chat = chatId || (allowDefaultChat ? await getTelegramDefaultChatId() : '');
   if (!chat) return { ok:false, skipped:true, reason:'Chat ID do Telegram não configurado para este destinatário.' };
   const now = Date.now();
   pruneTelegramDedupe(now);
@@ -1013,7 +1065,7 @@ async function findResident({ unit='', recipient='', resident_id=null, user_id=n
   return null;
 }
 async function createNotification({ resident_id=null, user_id=null, title, body, channel='app', channels={}, action_url='', payload={}, status='enviando' }) {
-  const normalizedChannels = { ...(channels || {}) };
+  const normalizedChannels = { app:true, browser:true, telegram:true, email:false, ...(channels || {}) };
   const normalizedPayload = { ...(payload || {}) };
   const r=await q('INSERT INTO notifications(user_id,resident_id,title,body,channel,channels,status,delivery_status,delivery_started_at,action_url,payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,now(),$9,$10) RETURNING *',[user_id,resident_id,title,body,channel,JSON.stringify(normalizedChannels),status,JSON.stringify({ app:'registrada' }),action_url,JSON.stringify(normalizedPayload)]);
   const notification = r.rows[0];
@@ -1028,9 +1080,8 @@ async function createNotification({ resident_id=null, user_id=null, title, body,
       if (!target && user_id) target = (await q('SELECT telegram_chat_id, notification_preferences FROM users WHERE id=$1',[user_id])).rows[0] || null;
       const prefs = parseJson(target?.notification_preferences, { telegram:true });
       if (prefs.telegram !== false) {
-        const result = await sendTelegramMessage(target?.telegram_chat_id || '', `${title || 'Notificação Vitória Régia'}
-
-${body || ''}`, { disable_web_page_preview:true, allowDefaultChat:false, dedupeKey:`notification:${target?.telegram_chat_id || resident_id || user_id}:${title}:${body}` }).catch(e=>({ ok:false, error:e.message }));
+        const premium = telegramPremiumMessage({ title:title || 'Notificação Vitória Régia', body:body || '', category:notificationCategoryFrom(title, body, normalizedPayload), actionUrl:fullActionUrl(action_url), details: normalizedPayload?.package_id ? { Código: normalizedPayload.pickup_code || '', Encomenda: normalizedPayload.package_id } : {} });
+        const result = await sendTelegramMessage(target?.telegram_chat_id || '', premium, { disable_web_page_preview:true, allowDefaultChat:true, dedupeKey:`notification:${target?.telegram_chat_id || resident_id || user_id || 'default'}:${title}:${body}` }).catch(e=>({ ok:false, error:e.message }));
         await updateNotificationDelivery(notification.id, { telegram: result }).catch(()=>null);
       }
     } catch(e) {
@@ -1053,7 +1104,8 @@ async function notifyResident(resident, { title, body, channels={}, action_url='
   const jobs = {};
   if (prefs.telegram) {
     const tgOptions = payload?.telegram_reply_markup ? { reply_markup: payload.telegram_reply_markup, disable_web_page_preview:true } : { disable_web_page_preview:true };
-    jobs.telegram = withTimeout(sendTelegramMessage(resident?.telegram_chat_id || '', body, { ...tgOptions, allowDefaultChat:false, dedupeKey:`resident:${notification?.id || resident?.id || 'sem-id'}:telegram` }).catch(e=>({ ok:false, error:e.message })), Number(process.env.TELEGRAM_TIMEOUT_MS || 6500), 'Telegram');
+    const premium = telegramPremiumMessage({ title, body, category:notificationCategoryFrom(title, body, payload), actionUrl:fullActionUrl(action_url), details: payload?.package_id ? { Código: payload.pickup_code || '', Encomenda: payload.package_id } : {} });
+    jobs.telegram = withTimeout(sendTelegramMessage(resident?.telegram_chat_id || '', premium, { ...tgOptions, allowDefaultChat:true, dedupeKey:`resident:${notification?.id || resident?.id || 'sem-id'}:telegram` }).catch(e=>({ ok:false, error:e.message })), Number(process.env.TELEGRAM_TIMEOUT_MS || 6500), 'Telegram');
   }
   if (prefs.email && resident?.email) jobs.email = withTimeout(sendEmailSmart({ to: resident.email, subject:title, text:body, actionUrl: action_url, actionLabel:'Abrir no sistema' }).catch(e=>({ ok:false, error:e.message })), Number(process.env.EMAIL_TIMEOUT_MS || 12000), 'E-mail');
   if (prefs.browser && resident?.id) jobs.browser = sendBrowserPushToResident(resident.id, title, body, action_url || '/', payload).catch(e=>({ ok:false, error:e.message }));
@@ -1071,9 +1123,7 @@ async function notifyStaff({ title, body, action_url='', channels={} }) {
     if (n?.id) notifIds.push(n.id);
   }
   const jobs = {};
-  if (await featureEnabled('telegram')) jobs.telegram = withTimeout(sendTelegramMessage('', `${title}
-
-${body}`, { disable_web_page_preview:true, dedupeKey:`staff:${title}:${body}` }).catch(e=>({ ok:false, error:e.message })), Number(process.env.TELEGRAM_TIMEOUT_MS || 6500), 'Telegram');
+  if (await featureEnabled('telegram')) jobs.telegram = withTimeout(sendTelegramMessage('', telegramPremiumMessage({ title, body, category:notificationCategoryFrom(title, body, {}), actionUrl:fullActionUrl(action_url) }), { disable_web_page_preview:true, dedupeKey:`staff:${title}:${body}` }).catch(e=>({ ok:false, error:e.message })), Number(process.env.TELEGRAM_TIMEOUT_MS || 6500), 'Telegram');
   const emails = staff.map(u=>u.email).filter(Boolean);
   if (emails.length && await featureEnabled('email')) jobs.email = withTimeout(sendEmailSmart({ to: emails.join(','), subject:title, text:body, actionUrl: action_url, actionLabel:'Abrir no sistema' }).catch(e=>({ ok:false, error:e.message })), Number(process.env.EMAIL_TIMEOUT_MS || 12000), 'E-mail');
   const entries = await Promise.all(Object.entries(jobs).map(async ([k,p]) => [k, await p]));
@@ -1089,7 +1139,7 @@ async function sendTemporaryPasswordToUser(user, temp, title='Senha temporária 
   await createNotification({ user_id:user.id, title:'Senha temporária gerada', body:'Uma senha temporária foi enviada pelos seus canais cadastrados.', channel:'app', channels:prefs, payload:{ __skip_auto_delivery:true } }).catch(()=>null);
   const jobs=[];
   if (prefs.email && user.email) jobs.push(sendEmailSmart({ to:user.email, subject:title, text:body, actionUrl:'/#/perfil', actionLabel:'Abrir meu perfil' }).catch(e=>({ ok:false, error:e.message })));
-  if (prefs.telegram) jobs.push(sendTelegramMessage(user.telegram_chat_id || '', body).catch(e=>({ ok:false, error:e.message }))); 
+  if (prefs.telegram) jobs.push(sendTelegramMessage(user.telegram_chat_id || '', telegramPremiumMessage({ title, body, category:'cadastro', actionUrl:fullActionUrl('/#/perfil') })).catch(e=>({ ok:false, error:e.message }))); 
   if (prefs.whatsapp && (user.whatsapp_phone || user.phone)) jobs.push(sendWhatsAppText(user.whatsapp_phone || user.phone, body).catch(e=>({ ok:false, error:e.message })));
   return Promise.all(jobs);
 }
@@ -1602,13 +1652,13 @@ app.post('/api/registration-requests/:id/reject', auth, can('users.manage'), asy
 app.get('/api/employees', auth, can('employees.manage'), async (_req,res,next)=>{ try { res.json((await q('SELECT * FROM employees ORDER BY active DESC,name')).rows); } catch(e){ next(e); } });
 app.post('/api/employees', auth, can('employees.manage'), async (req,res,next)=>{ try { requireFields(req.body,['name']); const r=await q('INSERT INTO employees(name,role,phone,email,active,notes) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',[req.body.name,req.body.role||'portaria',req.body.phone||'',req.body.email||'',req.body.active!==false,req.body.notes||'']); res.json(r.rows[0]); } catch(e){ next(e); } });
 app.get('/api/shifts', auth, async (req,res,next)=>{ try { const full = hasPermission(req.user,'shifts.manage') || req.user.role==='sindico' || req.user.role==='master'; const base = full ? '' : 'WHERE s.starts_at::date BETWEEN current_date - interval \'7 days\' AND current_date + interval \'45 days\''; res.json((await q(`SELECT s.*, e.name employee_name, e.email employee_email, e.phone employee_phone, rep.name temporary_for_employee_name FROM shifts s LEFT JOIN employees e ON e.id=s.employee_id LEFT JOIN employees rep ON rep.id=s.temporary_for_employee_id ${base} ORDER BY starts_at DESC LIMIT 300`)).rows); } catch(e){ next(e); } });
-app.post('/api/shifts', auth, can('shifts.manage'), async (req,res,next)=>{ try { requireFields(req.body,['employee_id','starts_at','ends_at']); const payload=[req.body.employee_id,req.body.role||'portaria',req.body.starts_at,req.body.ends_at,req.body.status||'programada',req.body.notes||'',req.body.shift_type||'custom',req.body.recurrence_type||'single',JSON.stringify(req.body.weekdays||[]),Array.isArray(req.body.month_days)?req.body.month_days.join(','):(req.body.month_days||''),req.body.start_time||'',req.body.end_time||'',req.body.temporary_for_employee_id||null,req.body.allow_employee_edit===true,req.body.substitution_reason||'']; const r=await q('INSERT INTO shifts(employee_id,role,starts_at,ends_at,status,notes,shift_type,recurrence_type,weekdays,month_days,start_time,end_time,temporary_for_employee_id,allow_employee_edit,substitution_reason) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *',payload); const created=r.rows[0]; const emp=(await q('SELECT * FROM employees WHERE id=$1',[created.employee_id])).rows[0]; const rep=created.temporary_for_employee_id?(await q('SELECT * FROM employees WHERE id=$1',[created.temporary_for_employee_id])).rows[0]:null; const text=`Escala Vitória Régia\nFunção: ${created.role}\nPeríodo: ${new Date(created.starts_at).toLocaleString('pt-BR')} até ${new Date(created.ends_at).toLocaleString('pt-BR')}\n${created.substitution_reason ? 'Motivo da substituição: '+created.substitution_reason+'\n' : ''}${created.notes||''}`; if(emp?.email) await sendEmailSmart({to:emp.email,subject:'Sua escala foi atualizada - Vitória Régia',text}).catch(()=>null); if(await featureEnabled('telegram')) await sendTelegramMessage('', `${emp?.name||'Funcionário'}, sua escala foi atualizada.\n${text}`).catch(()=>null); if(rep){ if(rep.email) await sendEmailSmart({to:rep.email,subject:'Substituição de escala registrada - Vitória Régia',text:`Você foi substituído temporariamente.\n${text}`}).catch(()=>null); if(await featureEnabled('telegram')) await sendTelegramMessage('', `${rep.name}, há uma substituição temporária na sua escala.\n${text}`).catch(()=>null); } await audit(req.user.email,'cadastrou escala',`${emp?.name||created.employee_id} ${created.starts_at}`); res.json(created); } catch(e){ next(e); } });
+app.post('/api/shifts', auth, can('shifts.manage'), async (req,res,next)=>{ try { requireFields(req.body,['employee_id','starts_at','ends_at']); const payload=[req.body.employee_id,req.body.role||'portaria',req.body.starts_at,req.body.ends_at,req.body.status||'programada',req.body.notes||'',req.body.shift_type||'custom',req.body.recurrence_type||'single',JSON.stringify(req.body.weekdays||[]),Array.isArray(req.body.month_days)?req.body.month_days.join(','):(req.body.month_days||''),req.body.start_time||'',req.body.end_time||'',req.body.temporary_for_employee_id||null,req.body.allow_employee_edit===true,req.body.substitution_reason||'']; const r=await q('INSERT INTO shifts(employee_id,role,starts_at,ends_at,status,notes,shift_type,recurrence_type,weekdays,month_days,start_time,end_time,temporary_for_employee_id,allow_employee_edit,substitution_reason) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *',payload); const created=r.rows[0]; const emp=(await q('SELECT * FROM employees WHERE id=$1',[created.employee_id])).rows[0]; const rep=created.temporary_for_employee_id?(await q('SELECT * FROM employees WHERE id=$1',[created.temporary_for_employee_id])).rows[0]:null; const text=`Escala Vitória Régia\nFunção: ${created.role}\nPeríodo: ${new Date(created.starts_at).toLocaleString('pt-BR')} até ${new Date(created.ends_at).toLocaleString('pt-BR')}\n${created.substitution_reason ? 'Motivo da substituição: '+created.substitution_reason+'\n' : ''}${created.notes||''}`; if(emp?.email) await sendEmailSmart({to:emp.email,subject:'Sua escala foi atualizada - Vitória Régia',text}).catch(()=>null); if(await featureEnabled('telegram')) await sendTelegramMessage('', telegramPremiumMessage({ title:'Escala atualizada', body:`${emp?.name||'Funcionário'}, sua escala foi atualizada.\n${text}`, category:'sistema' })).catch(()=>null); if(rep){ if(rep.email) await sendEmailSmart({to:rep.email,subject:'Substituição de escala registrada - Vitória Régia',text:`Você foi substituído temporariamente.\n${text}`}).catch(()=>null); if(await featureEnabled('telegram')) await sendTelegramMessage('', telegramPremiumMessage({ title:'Substituição de escala', body:`${rep.name}, há uma substituição temporária na sua escala.\n${text}`, category:'sistema' })).catch(()=>null); } await audit(req.user.email,'cadastrou escala',`${emp?.name||created.employee_id} ${created.starts_at}`); res.json(created); } catch(e){ next(e); } });
 app.get('/api/shifts/on-duty', auth, async (req,res,next)=>{ try { res.json(await currentOnDuty(req.query.role || 'portaria') || {}); } catch(e){ next(e); } });
 app.get('/api/shifts/:id/google', auth, async (req,res,next)=>{ try { const s=(await q('SELECT s.*, e.name employee_name FROM shifts s LEFT JOIN employees e ON e.id=s.employee_id WHERE s.id=$1',[req.params.id])).rows[0]; if(!s) return res.status(404).json({error:'Escala não encontrada.'}); const fmt=d=>new Date(d).toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z/,'Z'); const title=encodeURIComponent(`Escala ${s.role||''} - ${s.employee_name||''}`); const details=encodeURIComponent(`Escala Vitória Régia\nFunção: ${s.role||''}\nObservações: ${s.notes||''}`); res.json({url:`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${fmt(s.starts_at)}/${fmt(s.ends_at)}&details=${details}&location=${encodeURIComponent('Condomínio Vitória Régia')}`}); } catch(e){ next(e); } });
 
 app.get('/api/messages', auth, async (req,res,next)=>{ try { if (isResident(req.user) && req.user.resident_id) return res.json((await q('SELECT m.*, e.name employee_name FROM messages m LEFT JOIN employees e ON e.id=m.assigned_employee_id WHERE m.resident_id=$1 ORDER BY m.id DESC',[req.user.resident_id])).rows); res.json((await q('SELECT m.*, e.name employee_name, r.name resident_name FROM messages m LEFT JOIN employees e ON e.id=m.assigned_employee_id LEFT JOIN residents r ON r.id=m.resident_id ORDER BY m.id DESC LIMIT 200')).rows); } catch(e){ next(e); } });
 app.post('/api/messages', auth, async (req,res,next)=>{ try { requireFields(req.body,['subject','body']); const resident=await findResident({ resident_id:req.user.resident_id, unit:req.body.unit, user_id:req.user.id }); const duty=await currentOnDuty('portaria'); const r=await q('INSERT INTO messages(resident_id,user_id,unit,subject,body,assigned_employee_id) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',[resident?.id||req.user.resident_id||null,req.user.id,req.body.unit||resident?.unit||'',req.body.subject,req.body.body,duty?.employee_id||null]); if (duty?.employee_email) await sendEmailSmart({ to:duty.employee_email, subject:`Mensagem do morador - ${req.body.subject}`, text:req.body.body }).catch(()=>null);
-  if (await featureEnabled('telegram')) await sendTelegramMessage('', `Mensagem do morador - ${req.body.subject}\nUnidade: ${req.body.unit||resident?.unit||'-'}\n${req.body.body}`).catch(()=>null); await createNotification({ title:'Nova mensagem de morador', body:`${req.body.subject} - Unidade ${req.body.unit || resident?.unit || '-'}`, user_id:null, channel:'app', payload:{ message_id:r.rows[0].id, employee_id:duty?.employee_id||null } }).catch(()=>null); res.json({ ...r.rows[0], assigned_employee:duty?.employee_name||null }); } catch(e){ next(e); } });
+  if (await featureEnabled('telegram')) await sendTelegramMessage('', telegramPremiumMessage({ title:`Mensagem do morador - ${req.body.subject}`, body:req.body.body, category:'comunicado', details:{ Unidade:req.body.unit||resident?.unit||'-' } })).catch(()=>null); await createNotification({ title:'Nova mensagem de morador', body:`${req.body.subject} - Unidade ${req.body.unit || resident?.unit || '-'}`, user_id:null, channel:'app', payload:{ message_id:r.rows[0].id, employee_id:duty?.employee_id||null } }).catch(()=>null); res.json({ ...r.rows[0], assigned_employee:duty?.employee_name||null }); } catch(e){ next(e); } });
 app.post('/api/messages/:id/respond', auth, can('messages.manage'), async (req,res,next)=>{ try {
   requireFields(req.body,['response']);
   const r=await q("UPDATE messages SET status='respondida',response=$1,responded_by=$2,responded_at=now() WHERE id=$3 RETURNING *",[req.body.response,req.user.email,req.params.id]);
@@ -2011,7 +2061,7 @@ app.get('/api/notify/config', auth, can('settings.manage'), async (_req,res,next
   const sendgridKey = process.env.SENDGRID_API_KEY || await getSetting('SENDGRID_API_KEY','');
   res.json({
     email: { enabled: await featureEnabled('email'), provider: await getSetting('MAIL_PROVIDER', await getSetting('EMAIL_PROVIDER', sendgridKey ? 'sendgrid' : 'smtp')), sendgridApiKeyConfigured: safeBool(sendgridKey), sendgridApiKey: maskSecretSetting(sendgridKey), sendgridFromEmail: await getSetting('SENDGRID_FROM_EMAIL', process.env.SENDGRID_FROM_EMAIL || ''), sendgridFromName: await getSetting('SENDGRID_FROM_NAME', 'Condomínio Vitória Régia'), replyTo: await getSetting('SENDGRID_REPLY_TO',''), smtpHost: await getSetting('SMTP_HOST',''), smtpPort: await getSetting('SMTP_PORT','587'), smtpUser: await getSetting('SMTP_USER',''), smtpPassConfigured: safeBool(smtpPass) },
-    telegram: { enabled: await featureEnabled('telegram'), configured: safeBool(telegramToken), token: maskSecretSetting(telegramToken), chatDefaultConfigured: safeBool(await getSetting('TELEGRAM_CHAT_ID', process.env.TELEGRAM_CHAT_ID || '')), chatDefault: maskSecretSetting(await getSetting('TELEGRAM_CHAT_ID', process.env.TELEGRAM_CHAT_ID || '')), botUsername: await getSetting('TELEGRAM_BOT_USERNAME', process.env.TELEGRAM_BOT_USERNAME || ''), startUrl: await getSetting('TELEGRAM_START_URL', process.env.TELEGRAM_START_URL || ''), apiBaseUrl: await getSetting('TELEGRAM_API_BASE_URL', process.env.TELEGRAM_API_BASE_URL || 'https://api.telegram.org'), webhookSecretConfigured: safeBool(await getSetting('TELEGRAM_WEBHOOK_SECRET', process.env.TELEGRAM_WEBHOOK_SECRET || '')) },
+    telegram: { enabled: await featureEnabled('telegram'), configured: safeBool(telegramToken), token: maskSecretSetting(telegramToken), chatDefaultConfigured: safeBool(await getTelegramDefaultChatId()), chatDefault: maskSecretSetting(await getTelegramDefaultChatId()), chatDefaultRaw: await getTelegramDefaultChatId(), botUsername: await getSetting('TELEGRAM_BOT_USERNAME', process.env.TELEGRAM_BOT_USERNAME || ''), startUrl: await getSetting('TELEGRAM_START_URL', process.env.TELEGRAM_START_URL || ''), apiBaseUrl: await getSetting('TELEGRAM_API_BASE_URL', process.env.TELEGRAM_API_BASE_URL || 'https://api.telegram.org'), webhookSecretConfigured: safeBool(await getSetting('TELEGRAM_WEBHOOK_SECRET', process.env.TELEGRAM_WEBHOOK_SECRET || '')) },
     whatsapp: { enabled: await featureEnabled('whatsapp'), configured: safeBool(await getSetting('WHATSAPP_PHONE_NUMBER_ID', process.env.WHATSAPP_PHONE_NUMBER_ID || '')) && safeBool(whatsToken), token: maskSecretSetting(whatsToken), phoneNumberId: await getSetting('WHATSAPP_PHONE_NUMBER_ID',''), businessAccountId: await getSetting('WHATSAPP_BUSINESS_ACCOUNT_ID',''), apiVersion: await getSetting('WHATSAPP_API_VERSION','v19.0'), apiBaseUrl: await getSetting('WHATSAPP_API_BASE_URL','https://graph.facebook.com') },
     browser: { enabled: await featureEnabled('browser'), configured: safeBool(await getSetting('VAPID_PUBLIC_KEY', process.env.VAPID_PUBLIC_KEY || '')) && safeBool(await getSetting('VAPID_PRIVATE_KEY', process.env.VAPID_PRIVATE_KEY || '')), publicKeyConfigured: safeBool(await getSetting('VAPID_PUBLIC_KEY', process.env.VAPID_PUBLIC_KEY || '')) }
   });
@@ -2019,7 +2069,7 @@ app.get('/api/notify/config', auth, can('settings.manage'), async (_req,res,next
 app.post('/api/notify/test', auth, can('settings.manage'), async (req,res,next)=>{ try {
   const channel=String(req.body.channel || 'email'); const msg=req.body.message || 'Mensagem de teste Vitória Régia';
   if (channel === 'email') return res.json(await sendEmailSmart({ to:req.body.to || req.body.email || await getSetting('SENDGRID_TO_DEFAULT',''), subject:req.body.subject || 'Teste Vitória Régia', text:msg, actionUrl:req.body.action_url || await getSetting('PUBLIC_APP_URL',''), actionLabel:req.body.action_label || 'Abrir sistema' }));
-  if (channel === 'telegram') return res.json(await sendTelegramMessage(req.body.chat_id || req.body.to || '', msg));
+  if (channel === 'telegram') return res.json(await sendTelegramMessage(req.body.chat_id || req.body.to || '', telegramPremiumMessage({ title:req.body.subject || 'Teste Vitória Régia', body:msg, category:'sistema', actionUrl:fullActionUrl('/#/comunicacao') })));
   if (channel === 'whatsapp') return res.json(await sendWhatsAppText(req.body.phone || req.body.to || '', msg));
   if (channel === 'browser') { await createNotification({ user_id:req.user.id, title:req.body.subject || 'Teste Vitória Régia', body:msg, channel:'app', channels:{ app:true,browser:true }, payload:{ test:true } }); return res.json({ ok:true, channel:'browser' }); }
   res.status(400).json({ error:'Canal inválido.' });
@@ -2089,7 +2139,7 @@ app.post('/api/telegram/set-webhook', auth, can('settings.manage'), async (req,r
 } catch(e){ next(e); } });
 app.post('/api/telegram/test', auth, can('settings.manage'), async (req,res,next)=>{ try {
   const msg=req.body?.message || 'Teste do Telegram - Sistema Vitória Régia';
-  res.json(await sendTelegramMessage(req.body?.chat_id || req.body?.to || '', msg));
+  res.json(await sendTelegramMessage(req.body?.chat_id || req.body?.to || '', telegramPremiumMessage({ title:'Teste do Telegram', body:msg, category:'sistema', actionUrl:fullActionUrl('/#/configuracoes/telegram') })));
 } catch(e){ next(e); } });
 app.post('/api/telegram/webhook', async (req,res,next)=>{ try {
   const cb=req.body?.callback_query;
@@ -2111,7 +2161,7 @@ app.post('/api/telegram/webhook', async (req,res,next)=>{ try {
 app.delete('/api/finance/:id', auth, can('finance.manage'), async (req,res,next)=>{ try { await q("UPDATE finance SET deleted_at=now(), status='removido' WHERE id=$1",[req.params.id]); await audit(req.user.email,'removeu financeiro',req.params.id); res.json({ ok:true }); } catch(e){ next(e); } });
 app.delete('/api/boletos/:id', auth, can('finance.manage'), async (req,res,next)=>{ try { await q("UPDATE boletos SET deleted_at=now(), status='removido' WHERE id=$1",[req.params.id]); await audit(req.user.email,'removeu boleto',req.params.id); res.json({ ok:true }); } catch(e){ next(e); } });
 app.post('/api/notify/email', auth, can('notices.manage'), async (req,res,next)=>{ try { requireFields(req.body,['to','subject','body']); const result=await sendEmailSmart({ to:req.body.to, subject:req.body.subject, text:`${req.body.body}\n\n${await getSetting('EMAIL_SIGNATURE','Condomínio Vitória Régia')}` }); res.json(result); } catch(e){ next(e); } });
-app.post('/api/notify/telegram', auth, can('notices.manage'), async (req,res,next)=>{ try { requireFields(req.body,['message']); res.json(await sendTelegramMessage(req.body.chat_id || '', req.body.message)); } catch(e){ next(e); } });
+app.post('/api/notify/telegram', auth, can('notices.manage'), async (req,res,next)=>{ try { requireFields(req.body,['message']); res.json(await sendTelegramMessage(req.body.chat_id || '', telegramPremiumMessage({ title:req.body.title || 'Notificação Vitória Régia', body:req.body.message, category:req.body.category || 'comunicado', actionUrl:fullActionUrl(req.body.action_url || '/#/comunicacao') }))); } catch(e){ next(e); } });
 app.post('/api/notify/whatsapp', auth, can('notices.manage'), async (req,res,next)=>{ try { requireFields(req.body,['phone','message']); res.json(await sendWhatsAppText(req.body.phone, req.body.message)); } catch(e){ next(e); } });
 app.get('/api/audit', auth, can('audit.view'), async (_req,res,next)=>{ try { res.json((await q('SELECT * FROM audit ORDER BY id DESC LIMIT 150')).rows); } catch(e){ next(e); } });
 app.get('/api/export', auth, can('audit.view'), async (_req,res,next)=>{ try { const tables=['residents','users','employees','shifts','messages','packages','visitors','common_areas','reservations','reservation_visitors','finance','boletos','notices','invoices','incidents','emergency_requests','maintenance','settings','emergency_types','system_updates','manuals','documents','occurrence_book','support_tickets','faqs']; const out={}; for (const t of tables) out[t]=(await q(`SELECT * FROM ${t} ORDER BY 1 DESC LIMIT 1000`)).rows; res.json(out); } catch(e){ next(e); } });

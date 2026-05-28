@@ -1,3 +1,7 @@
+# Vitória Régia Pro v12.6.1
+
+Pacote cumulativo com token de atualização corrigido.
+
 # Vitória Régia Pro v9.3
 
 Sistema de gestão condominial completo para síndico, portaria, moradores e funcionários.

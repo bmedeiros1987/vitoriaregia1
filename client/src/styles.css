@@ -708,3 +708,39 @@ body[data-appearance="dark"] .appShell>aside{background:linear-gradient(180deg,#
 
 /* v12.5.5 — Reservas redesenhadas e estabilizadas */
 .vrReservaShell{display:flex;flex-direction:column;gap:18px}.vrReservaToolbar{display:grid;grid-template-columns:1fr 1fr auto;gap:14px;align-items:end;background:linear-gradient(135deg,rgba(18,107,95,.08),rgba(53,181,162,.08));border:1px solid rgba(18,107,95,.14);border-radius:22px;padding:16px}.vrReservaToolbar>div{display:flex;flex-direction:column;gap:7px}.vrReservaToolbar select,.vrReservaToolbar input{min-height:42px;border-radius:14px;border:1px solid var(--border);padding:0 12px;background:var(--card)}.vrReservaViewBtns{display:flex!important;flex-direction:row!important;gap:8px}.vrReservaViewBtns button{border:1px solid var(--border);background:var(--card);border-radius:999px;padding:11px 14px}.vrReservaViewBtns button.active{background:var(--accent);color:white;border-color:var(--accent)}.vrReservaMainGrid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px}.vrReservaCalendarCard{background:var(--card);border:1px solid var(--border);border-radius:26px;padding:18px;box-shadow:var(--shadow)}.vrReservaCalendarTop{display:flex;justify-content:space-between;gap:14px;align-items:center;margin-bottom:14px}.vrReservaCalendarTop b{text-transform:capitalize}.vrReservaMonthNav{display:flex;align-items:center;gap:12px}.vrReservaMonthNav button{width:36px;height:36px;border-radius:50%;border:1px solid var(--border);background:var(--bg);font-size:22px}.vrReservaWeekdays,.vrReservaMonthGrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}.vrReservaWeekdays span{text-align:center;font-size:12px;color:var(--muted);font-weight:800;text-transform:uppercase}.vrReservaMonthGrid button{min-height:116px;border:1px solid var(--border);background:var(--bg);border-radius:18px;padding:10px;text-align:left;display:flex;flex-direction:column;gap:6px;cursor:pointer}.vrReservaMonthGrid button:hover{border-color:var(--accent);transform:translateY(-1px)}.vrReservaMonthGrid button.selected{outline:3px solid rgba(18,107,95,.18);border-color:var(--accent)}.vrReservaMonthGrid button.muted{opacity:.45}.vrReservaMonthGrid button.busy{background:rgba(18,107,95,.06)}.vrReservaMonthGrid button.free em{color:var(--muted);font-style:normal;font-size:12px}.vrReservaEvent{display:block;border-radius:10px;background:white;border:1px solid rgba(18,107,95,.12);padding:5px 7px}.vrReservaEvent b,.vrReservaEvent small{display:block;font-size:11px;line-height:1.25}.vrReservaDayPanel,.vrReservaForm{background:var(--card);border:1px solid var(--border);border-radius:24px;padding:18px;box-shadow:var(--shadow)}.vrReservaDayPanel{display:flex;flex-direction:column;gap:12px}.vrReservaMiniCard{display:flex;flex-direction:column;gap:5px;border:1px solid var(--border);border-radius:16px;padding:12px;background:var(--bg)}.vrReservaForm{margin:0}.vrReservaForm .full{grid-column:1/-1}@media(max-width:980px){.vrReservaToolbar,.vrReservaMainGrid{grid-template-columns:1fr}.vrReservaViewBtns{flex-wrap:wrap}.vrReservaMonthGrid button{min-height:92px;padding:8px}.vrReservaEvent{display:none}}@media(max-width:620px){.vrReservaWeekdays,.vrReservaMonthGrid{gap:5px}.vrReservaMonthGrid button{min-height:68px;border-radius:12px}.vrReservaMonthGrid button small,.vrReservaMonthGrid button em{display:none}.vrReservaToolbar{padding:12px;border-radius:18px}}
+
+
+/* v12.5.9 — Correção definitiva Reservas: somente o menu principal pode receber estilo de aside fixo */
+.appShell .content aside,
+.appShell main aside{
+  position:static!important;
+  left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;
+  width:auto!important;max-width:none!important;min-width:0!important;
+  background:transparent!important;
+  backdrop-filter:none!important;
+  border:0!important;
+  border-radius:0!important;
+  box-shadow:none!important;
+  padding:0!important;
+  display:block!important;
+  z-index:auto!important;
+}
+.vrReservaDayPanel{
+  position:relative!important;
+  min-width:0!important;
+  overflow:visible!important;
+}
+.vrReservaMainGrid{
+  align-items:start!important;
+}
+@media(max-width:980px){
+  .vrReservaDayPanel{order:-1;}
+}
+
+/* v12.6.1 — Reservas: status visual e horários parciais */
+.vrReservaEvent.confirmada{background:color-mix(in srgb,var(--ok) 12%,#fff)!important;border-color:color-mix(in srgb,var(--ok) 32%,var(--line))!important;color:#064e3b!important}
+.vrReservaEvent.preconfirmada{background:color-mix(in srgb,var(--accent) 10%,#fff)!important;border-color:color-mix(in srgb,var(--accent) 28%,var(--line))!important;color:#0f3f3a!important}
+.vrReservaEvent.pendente{background:color-mix(in srgb,var(--warn) 12%,#fff)!important;border-color:color-mix(in srgb,var(--warn) 32%,var(--line))!important;color:#7c2d12!important}
+.vrReservaEvent.cancelada{display:none!important}
+.vrReservaMiniCard .status{width:max-content}
+.financePage .premiumForm,.boletosPage .premiumForm,.invoicesPage .premiumForm,.residentsPage .premiumForm,.usersPage .premiumForm{margin-bottom:16px}

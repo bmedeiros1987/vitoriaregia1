@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 520" role="img" aria-label="Vitória Régia Condomínio">
+  <defs>
+    <linearGradient id="tower" x1="270" y1="80" x2="600" y2="360" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0f6f6a"/>
+      <stop offset="1" stop-color="#073654"/>
+    </linearGradient>
+    <linearGradient id="soft" x1="160" y1="270" x2="730" y2="410" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0c7168"/>
+      <stop offset="1" stop-color="#40c2a6"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M315 338V142c0-19 15-34 34-34h72v230" stroke="url(#tower)" stroke-width="18"/>
+    <path d="M480 338V98c0-20 16-36 36-36h71c20 0 36 16 36 36v240" stroke="url(#tower)" stroke-width="18"/>
+    <path d="M265 338V192c0-17 14-31 31-31h38" stroke="url(#tower)" stroke-width="14"/>
+    <path d="M620 161h39c17 0 31 14 31 31v146" stroke="url(#tower)" stroke-width="14"/>
+    <path d="M354 157h44M354 202h44M354 247h44M354 292h44" stroke="#799aa6" stroke-width="10"/>
+    <path d="M522 112h56M522 157h56M522 202h56M522 247h56M522 292h56" stroke="#799aa6" stroke-width="10"/>
+    <path d="M292 207h27M292 252h27M292 297h27M646 207h27M646 252h27M646 297h27" stroke="#799aa6" stroke-width="8"/>
+    <path d="M225 353c68-45 136-45 204 0" stroke="url(#soft)" stroke-width="16"/>
+    <path d="M497 353c68-45 136-45 204 0" stroke="url(#soft)" stroke-width="16"/>
+    <path d="M186 371h535" stroke="#0a314f" stroke-width="10"/>
+  </g>
+  <text x="450" y="430" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="58" letter-spacing="3" fill="#082846">VITÓRIA RÉGIA</text>
+  <path d="M244 455h142M514 455h142" stroke="#249681" stroke-width="4" stroke-linecap="round"/>
+  <text x="450" y="467" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" letter-spacing="9" fill="#456273">CONDOMÍNIO</text>
+</svg>
