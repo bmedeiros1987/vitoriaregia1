@@ -671,7 +671,7 @@ CREATE TABLE IF NOT EXISTS audit(
     ELEVATOR_OPERATOR_NAME: 'Operadora do elevador', ELEVATOR_EMERGENCY_PHONE: '', EMERGENCY_EMAILS: process.env.SENDGRID_TO_DEFAULT || '',
     EMERGENCY_APPROVAL_REQUIRED: 'true', FOOTER_MODE: 'minimal', EMAIL_PROVIDER: process.env.MAIL_PROVIDER || 'sendgrid',
     SENDGRID_FROM_EMAIL: process.env.SENDGRID_FROM_EMAIL || '', SENDGRID_FROM_NAME: process.env.SENDGRID_FROM_NAME || 'Condomínio Vitória Régia', SENDGRID_REPLY_TO: process.env.SENDGRID_REPLY_TO || '', EMAIL_SIGNATURE: 'Condomínio Vitória Régia',
-    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '', TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || DEFAULT_TELEGRAM_CHAT_ID, TELEGRAM_PORTARIA_CHAT_ID: process.env.TELEGRAM_PORTARIA_CHAT_ID || DEFAULT_TELEGRAM_CHAT_ID, TELEGRAM_PORTARIA_LABEL: process.env.TELEGRAM_PORTARIA_LABEL || 'Celular Portaria', TELEGRAM_PORTARIA_ENABLED: process.env.TELEGRAM_PORTARIA_ENABLED || 'true', TELEGRAM_PORTARIA_RECEIVE_EMERGENCY: process.env.TELEGRAM_PORTARIA_RECEIVE_EMERGENCY || 'true', TELEGRAM_PORTARIA_RECEIVE_PACKAGES: process.env.TELEGRAM_PORTARIA_RECEIVE_PACKAGES || 'true', TELEGRAM_INTERCOM_FALLBACK_ENABLED: process.env.TELEGRAM_INTERCOM_FALLBACK_ENABLED || 'true', PACKAGE_ELEVATOR_AUTH_ENABLED: process.env.PACKAGE_ELEVATOR_AUTH_ENABLED || 'true', PACKAGE_TELEGRAM_DECISIONS_ENABLED: process.env.PACKAGE_TELEGRAM_DECISIONS_ENABLED || 'true', KIOSK_PORTARIA_PREMIUM_ENABLED: process.env.KIOSK_PORTARIA_PREMIUM_ENABLED || 'true', KIOSK_PORTARIA_PIN: process.env.KIOSK_PORTARIA_PIN || '', KIOSK_ALLOWED_APPS: process.env.KIOSK_ALLOWED_APPS || 'Vitória Régia Portaria,Telegram,Câmera,Wi-Fi', TELEGRAM_BOT_USERNAME: process.env.TELEGRAM_BOT_USERNAME || 'vitoriaregia_bot', TELEGRAM_START_URL: process.env.TELEGRAM_START_URL || 'https://t.me/vitoriaregia_bot', TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET || '', TELEGRAM_ENABLED: process.env.TELEGRAM_ENABLED || process.env.ENABLE_TELEGRAM || 'true', TELEGRAM_PARSE_MODE: process.env.TELEGRAM_PARSE_MODE || '', WHATSAPP_PHONE_NUMBER_ID: '', WHATSAPP_ACCESS_TOKEN: '', WHATSAPP_API_VERSION: 'v19.0',
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '', TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || DEFAULT_TELEGRAM_CHAT_ID, TELEGRAM_PORTARIA_CHAT_ID: process.env.TELEGRAM_PORTARIA_CHAT_ID || DEFAULT_TELEGRAM_CHAT_ID, TELEGRAM_PORTARIA_LABEL: process.env.TELEGRAM_PORTARIA_LABEL || 'Celular Portaria', TELEGRAM_PORTARIA_ENABLED: process.env.TELEGRAM_PORTARIA_ENABLED || 'true', TELEGRAM_PORTARIA_RECEIVE_EMERGENCY: process.env.TELEGRAM_PORTARIA_RECEIVE_EMERGENCY || 'true', TELEGRAM_PORTARIA_RECEIVE_PACKAGES: process.env.TELEGRAM_PORTARIA_RECEIVE_PACKAGES || 'true', TELEGRAM_INTERCOM_FALLBACK_ENABLED: process.env.TELEGRAM_INTERCOM_FALLBACK_ENABLED || 'true', TELEGRAM_EMERGENCY_CONFIRMATION_ENABLED: process.env.TELEGRAM_EMERGENCY_CONFIRMATION_ENABLED || 'true', PACKAGE_ELEVATOR_AUTH_ENABLED: process.env.PACKAGE_ELEVATOR_AUTH_ENABLED || 'true', PACKAGE_TELEGRAM_DECISIONS_ENABLED: process.env.PACKAGE_TELEGRAM_DECISIONS_ENABLED || 'true', KIOSK_PORTARIA_PREMIUM_ENABLED: process.env.KIOSK_PORTARIA_PREMIUM_ENABLED || 'true', KIOSK_PORTARIA_PIN: process.env.KIOSK_PORTARIA_PIN || '', KIOSK_ALLOWED_APPS: process.env.KIOSK_ALLOWED_APPS || 'Vitória Régia Portaria,Telegram,Câmera,Wi-Fi', TELEGRAM_BOT_USERNAME: process.env.TELEGRAM_BOT_USERNAME || 'vitoriaregia_bot', TELEGRAM_START_URL: process.env.TELEGRAM_START_URL || 'https://t.me/vitoriaregia_bot', TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET || '', TELEGRAM_ENABLED: process.env.TELEGRAM_ENABLED || process.env.ENABLE_TELEGRAM || 'true', TELEGRAM_PARSE_MODE: process.env.TELEGRAM_PARSE_MODE || '', WHATSAPP_PHONE_NUMBER_ID: '', WHATSAPP_ACCESS_TOKEN: '', WHATSAPP_API_VERSION: 'v19.0',
     DELIVERY_DEFAULT_CHANNELS: '{"app":true,"browser":true,"email":true,"telegram":true,"whatsapp":false}',
     ALLOW_MULTIPLE_RESIDENTS_PER_UNIT: 'false', MAX_RESIDENTS_PER_UNIT:'2', SHOW_UPDATES_TO_SINDICO: 'false',
     RESERVATION_DEFAULT_RULES: 'Declaro que li e aceito as normas de uso do espaço comum, incluindo horários, limpeza, ruído, convidados e responsabilidade por danos.',
@@ -683,7 +683,7 @@ CREATE TABLE IF NOT EXISTS audit(
     BANK_PROVIDER: 'manual', BANK_API_BASE_URL: '', BANK_CLIENT_ID: '', BANK_CLIENT_SECRET: '', BANK_API_TOKEN: '', BANK_CERT_PATH: '', BANK_KEY_PATH: '', BANK_ACCOUNT: '', BANK_AGENCY: '', BANK_WALLET: '', BANK_CONTRACT: '', BANK_PIX_KEY: '', BOLETO_AUTO_GENERATE: 'false',
     RESIDENT_CRITERIA: '[{"key":"possui_pet","label":"Possui pet"},{"key":"imovel_alugado","label":"Imóvel alugado"},{"key":"possui_carro","label":"Possui carro"},{"key":"idoso_ou_pcd","label":"Idoso ou pessoa com deficiência"}]', EMERGENCY_CRITICAL_ALERTS: 'true', EMERGENCY_LOCATIONS: '["Minha unidade","Corredor","Vizinho","Elevador","Garagem","Salao de Festas","Brinquedoteca","Sauna","Piscina","Portaria","Zeladoria","Limpeza"]',
     EMAIL_PROVIDER: process.env.SENDGRID_API_KEY ? 'sendgrid' : 'smtp', SENDGRID_FROM_EMAIL: process.env.SENDGRID_FROM_EMAIL || '', SENDGRID_FROM_NAME: process.env.SENDGRID_FROM_NAME || 'Condomínio Vitória Régia', SENDGRID_REPLY_TO: process.env.SENDGRID_REPLY_TO || '', SENDGRID_TO_DEFAULT: process.env.SENDGRID_TO_DEFAULT || '', SENDGRID_DATA_RESIDENCY: process.env.SENDGRID_DATA_RESIDENCY || 'global', SMTP_HOST: '', SMTP_PORT: '587', SMTP_USER: '', SMTP_PASS: '', SMTP_SECURE: 'false', MAIL_FROM: '',
-    TELEGRAM_ENABLED: process.env.TELEGRAM_ENABLED || process.env.ENABLE_TELEGRAM || 'true', TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '', TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || DEFAULT_TELEGRAM_CHAT_ID, TELEGRAM_PORTARIA_CHAT_ID: process.env.TELEGRAM_PORTARIA_CHAT_ID || DEFAULT_TELEGRAM_CHAT_ID, TELEGRAM_PORTARIA_LABEL: process.env.TELEGRAM_PORTARIA_LABEL || 'Celular Portaria', TELEGRAM_PORTARIA_ENABLED: process.env.TELEGRAM_PORTARIA_ENABLED || 'true', TELEGRAM_PORTARIA_RECEIVE_EMERGENCY: process.env.TELEGRAM_PORTARIA_RECEIVE_EMERGENCY || 'true', TELEGRAM_PORTARIA_RECEIVE_PACKAGES: process.env.TELEGRAM_PORTARIA_RECEIVE_PACKAGES || 'true', TELEGRAM_INTERCOM_FALLBACK_ENABLED: process.env.TELEGRAM_INTERCOM_FALLBACK_ENABLED || 'true', PACKAGE_ELEVATOR_AUTH_ENABLED: process.env.PACKAGE_ELEVATOR_AUTH_ENABLED || 'true', PACKAGE_TELEGRAM_DECISIONS_ENABLED: process.env.PACKAGE_TELEGRAM_DECISIONS_ENABLED || 'true', KIOSK_PORTARIA_PREMIUM_ENABLED: process.env.KIOSK_PORTARIA_PREMIUM_ENABLED || 'true', KIOSK_PORTARIA_PIN: process.env.KIOSK_PORTARIA_PIN || '', KIOSK_ALLOWED_APPS: process.env.KIOSK_ALLOWED_APPS || 'Vitória Régia Portaria,Telegram,Câmera,Wi-Fi', TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET || '', TELEGRAM_BOT_USERNAME: process.env.TELEGRAM_BOT_USERNAME || 'vitoriaregia_bot', TELEGRAM_START_URL: process.env.TELEGRAM_START_URL || 'https://t.me/vitoriaregia_bot', TELEGRAM_PARSE_MODE: process.env.TELEGRAM_PARSE_MODE || '',
+    TELEGRAM_ENABLED: process.env.TELEGRAM_ENABLED || process.env.ENABLE_TELEGRAM || 'true', TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '', TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || DEFAULT_TELEGRAM_CHAT_ID, TELEGRAM_PORTARIA_CHAT_ID: process.env.TELEGRAM_PORTARIA_CHAT_ID || DEFAULT_TELEGRAM_CHAT_ID, TELEGRAM_PORTARIA_LABEL: process.env.TELEGRAM_PORTARIA_LABEL || 'Celular Portaria', TELEGRAM_PORTARIA_ENABLED: process.env.TELEGRAM_PORTARIA_ENABLED || 'true', TELEGRAM_PORTARIA_RECEIVE_EMERGENCY: process.env.TELEGRAM_PORTARIA_RECEIVE_EMERGENCY || 'true', TELEGRAM_PORTARIA_RECEIVE_PACKAGES: process.env.TELEGRAM_PORTARIA_RECEIVE_PACKAGES || 'true', TELEGRAM_INTERCOM_FALLBACK_ENABLED: process.env.TELEGRAM_INTERCOM_FALLBACK_ENABLED || 'true', TELEGRAM_EMERGENCY_CONFIRMATION_ENABLED: process.env.TELEGRAM_EMERGENCY_CONFIRMATION_ENABLED || 'true', PACKAGE_ELEVATOR_AUTH_ENABLED: process.env.PACKAGE_ELEVATOR_AUTH_ENABLED || 'true', PACKAGE_TELEGRAM_DECISIONS_ENABLED: process.env.PACKAGE_TELEGRAM_DECISIONS_ENABLED || 'true', KIOSK_PORTARIA_PREMIUM_ENABLED: process.env.KIOSK_PORTARIA_PREMIUM_ENABLED || 'true', KIOSK_PORTARIA_PIN: process.env.KIOSK_PORTARIA_PIN || '', KIOSK_ALLOWED_APPS: process.env.KIOSK_ALLOWED_APPS || 'Vitória Régia Portaria,Telegram,Câmera,Wi-Fi', TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET || '', TELEGRAM_BOT_USERNAME: process.env.TELEGRAM_BOT_USERNAME || 'vitoriaregia_bot', TELEGRAM_START_URL: process.env.TELEGRAM_START_URL || 'https://t.me/vitoriaregia_bot', TELEGRAM_PARSE_MODE: process.env.TELEGRAM_PARSE_MODE || '',
     WHATSAPP_API_VERSION: 'v19.0', WHATSAPP_PHONE_NUMBER_ID: '', WHATSAPP_BUSINESS_ACCOUNT_ID: '', WHATSAPP_ACCESS_TOKEN: '', WHATSAPP_TEMPLATE_PACKAGE: '', WHATSAPP_TEMPLATE_RESERVATION: '',
     VAPID_PUBLIC_KEY: '', VAPID_PRIVATE_KEY: '', VAPID_SUBJECT: '',
     ENABLE_SYSTEM_UPDATES: 'true', UPDATE_CHANNEL: 'stable', UPDATE_FEED_URL: '', UPDATE_APPLY_MODE: 'github', UPDATE_GITHUB_REPO: process.env.UPDATE_GITHUB_REPO || 'bmedeiros1987/vitoriaregia1', UPDATE_GITHUB_BRANCH: process.env.UPDATE_GITHUB_BRANCH || 'main'
@@ -691,7 +691,7 @@ CREATE TABLE IF NOT EXISTS audit(
   for (const [key, value] of Object.entries(defaultSettings)) await q('INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING', [key, value]);
 
   // Sincroniza variáveis do Render para canais de comunicação sem gravar segredo no GitHub.
-  const envSyncKeys = ['ENABLE_TELEGRAM','TELEGRAM_ENABLED','TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID','TELEGRAM_PORTARIA_CHAT_ID','TELEGRAM_PORTARIA_LABEL','TELEGRAM_PORTARIA_ENABLED','TELEGRAM_PORTARIA_RECEIVE_EMERGENCY','TELEGRAM_PORTARIA_RECEIVE_PACKAGES','TELEGRAM_INTERCOM_FALLBACK_ENABLED','PACKAGE_ELEVATOR_AUTH_ENABLED','PACKAGE_TELEGRAM_DECISIONS_ENABLED','KIOSK_PORTARIA_PREMIUM_ENABLED','KIOSK_PORTARIA_PIN','KIOSK_ALLOWED_APPS','TELEGRAM_BOT_USERNAME','TELEGRAM_START_URL','TELEGRAM_WEBHOOK_SECRET','TELEGRAM_API_BASE_URL','TELEGRAM_PARSE_MODE','TELEGRAM_SUPPORT_CHAT_ID','PUBLIC_APP_URL','ENABLE_EMAIL','SENDGRID_API_KEY','SMTP_PASS','SENDGRID_FROM_EMAIL','SENDGRID_FROM_NAME','SENDGRID_REPLY_TO','SENDGRID_TO_DEFAULT','EMAIL_PROVIDER','ENABLE_WHATSAPP','WHATSAPP_API_VERSION','WHATSAPP_PHONE_NUMBER_ID','WHATSAPP_BUSINESS_ACCOUNT_ID','WHATSAPP_ACCESS_TOKEN'];
+  const envSyncKeys = ['ENABLE_TELEGRAM','TELEGRAM_ENABLED','TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID','TELEGRAM_PORTARIA_CHAT_ID','TELEGRAM_PORTARIA_LABEL','TELEGRAM_PORTARIA_ENABLED','TELEGRAM_PORTARIA_RECEIVE_EMERGENCY','TELEGRAM_PORTARIA_RECEIVE_PACKAGES','TELEGRAM_INTERCOM_FALLBACK_ENABLED','TELEGRAM_EMERGENCY_CONFIRMATION_ENABLED','PACKAGE_ELEVATOR_AUTH_ENABLED','PACKAGE_TELEGRAM_DECISIONS_ENABLED','KIOSK_PORTARIA_PREMIUM_ENABLED','KIOSK_PORTARIA_PIN','KIOSK_ALLOWED_APPS','TELEGRAM_BOT_USERNAME','TELEGRAM_START_URL','TELEGRAM_WEBHOOK_SECRET','TELEGRAM_API_BASE_URL','TELEGRAM_PARSE_MODE','TELEGRAM_SUPPORT_CHAT_ID','PUBLIC_APP_URL','ENABLE_EMAIL','SENDGRID_API_KEY','SMTP_PASS','SENDGRID_FROM_EMAIL','SENDGRID_FROM_NAME','SENDGRID_REPLY_TO','SENDGRID_TO_DEFAULT','EMAIL_PROVIDER','ENABLE_WHATSAPP','WHATSAPP_API_VERSION','WHATSAPP_PHONE_NUMBER_ID','WHATSAPP_BUSINESS_ACCOUNT_ID','WHATSAPP_ACCESS_TOKEN'];
   for (const key of envSyncKeys) {
     if (process.env[key] !== undefined && String(process.env[key]).trim() !== '') {
       await q('INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value', [key, String(process.env[key])]).catch(()=>null);
@@ -710,6 +710,7 @@ CREATE TABLE IF NOT EXISTS audit(
   await q("INSERT INTO settings(key,value) VALUES('TELEGRAM_PORTARIA_RECEIVE_EMERGENCY','true') ON CONFLICT(key) DO NOTHING").catch(()=>null);
   await q("INSERT INTO settings(key,value) VALUES('TELEGRAM_PORTARIA_RECEIVE_PACKAGES','true') ON CONFLICT(key) DO NOTHING").catch(()=>null);
   await q("INSERT INTO settings(key,value) VALUES('TELEGRAM_INTERCOM_FALLBACK_ENABLED','true') ON CONFLICT(key) DO NOTHING").catch(()=>null);
+  await q("INSERT INTO settings(key,value) VALUES('TELEGRAM_EMERGENCY_CONFIRMATION_ENABLED','true') ON CONFLICT(key) DO NOTHING").catch(()=>null);
   await q("INSERT INTO settings(key,value) VALUES('PACKAGE_ELEVATOR_AUTH_ENABLED','true') ON CONFLICT(key) DO NOTHING").catch(()=>null);
   await q("INSERT INTO settings(key,value) VALUES('PACKAGE_TELEGRAM_DECISIONS_ENABLED','true') ON CONFLICT(key) DO NOTHING").catch(()=>null);
   await q("INSERT INTO settings(key,value) VALUES('KIOSK_PORTARIA_PREMIUM_ENABLED','true') ON CONFLICT(key) DO NOTHING").catch(()=>null);
@@ -786,7 +787,7 @@ async function getRuntimeSecret(key, fallback='') {
   return dbValue !== '' && !dbValue.includes('***') && dbValue !== 'configurado' ? dbValue : fallback;
 }
 async function preserveCommunicationSettingsSnapshot() {
-  const keys=['ENABLE_EMAIL','EMAIL_PROVIDER','SENDGRID_API_KEY','SENDGRID_FROM_EMAIL','SENDGRID_FROM_NAME','SENDGRID_REPLY_TO','SENDGRID_TO_DEFAULT','SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','SMTP_SECURE','MAIL_FROM','ENABLE_TELEGRAM','TELEGRAM_ENABLED','TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID','TELEGRAM_TEST_CHAT_ID','TELEGRAM_BOT_USERNAME','TELEGRAM_START_URL','TELEGRAM_WEBHOOK_SECRET','TELEGRAM_API_BASE_URL','TELEGRAM_PARSE_MODE','TELEGRAM_SUPPORT_CHAT_ID','ENABLE_WHATSAPP','WHATSAPP_ACCESS_TOKEN','WHATSAPP_PHONE_NUMBER_ID','PUBLIC_APP_URL','UPDATE_GITHUB_TOKEN','UPDATE_GITHUB_REPO','UPDATE_GITHUB_BRANCH','RENDER_DEPLOY_HOOK_URL'];
+  const keys=['ENABLE_EMAIL','EMAIL_PROVIDER','SENDGRID_API_KEY','SENDGRID_FROM_EMAIL','SENDGRID_FROM_NAME','SENDGRID_REPLY_TO','SENDGRID_TO_DEFAULT','SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','SMTP_SECURE','MAIL_FROM','ENABLE_TELEGRAM','TELEGRAM_ENABLED','TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID','TELEGRAM_TEST_CHAT_ID','TELEGRAM_BOT_USERNAME','TELEGRAM_START_URL','TELEGRAM_WEBHOOK_SECRET','TELEGRAM_API_BASE_URL','TELEGRAM_PARSE_MODE','TELEGRAM_SUPPORT_CHAT_ID','TELEGRAM_EMERGENCY_CONFIRMATION_ENABLED','ENABLE_WHATSAPP','WHATSAPP_ACCESS_TOKEN','WHATSAPP_PHONE_NUMBER_ID','PUBLIC_APP_URL','UPDATE_GITHUB_TOKEN','UPDATE_GITHUB_REPO','UPDATE_GITHUB_BRANCH','RENDER_DEPLOY_HOOK_URL'];
   const out={};
   for (const k of keys) { const v = await getRuntimeSecret(k,''); if (v) out[k]=v; }
   return out;
@@ -828,7 +829,7 @@ async function filterChannelsByPlan(channels={}) {
   out.browser = Boolean(out.browser) && await featureEnabled('browser');
   return out;
 }
-const PLATFORM_SETTING_KEYS = new Set(['ENABLE_EMAIL','ENABLE_TELEGRAM','ENABLE_WHATSAPP','ENABLE_BROWSER_PUSH','ENABLE_APP_PORTARIA','ENABLE_APP_SINDICO','ENABLE_APP_MORADOR','REGISTRATION_REQUIRE_EMAIL','REGISTRATION_REQUIRE_WHATSAPP','REGISTRATION_REQUIRE_TELEGRAM','BANK_PROVIDER','BANK_API_BASE_URL','BANK_CLIENT_ID','BANK_ACCOUNT','BANK_AGENCY','BANK_WALLET','BANK_CONTRACT','BANK_PIX_KEY','BOLETO_AUTO_GENERATE','BOLETO_PROVIDER','ENABLE_SYSTEM_UPDATES','UPDATE_CHANNEL','UPDATE_FEED_URL','UPDATE_APPLY_MODE','UPDATE_GITHUB_REPO','UPDATE_GITHUB_BRANCH','APK_PORTARIA_URL','APK_SINDICO_URL','APK_MORADOR_URL','RESERVATION_MAX_GUESTS_DEFAULT','RESERVATION_COUNT_CHILDREN','RESERVATION_COUNT_INFANTS','RESIDENT_CRITERIA','EMERGENCY_CRITICAL_ALERTS','ALLOW_MULTIPLE_RESIDENTS_PER_UNIT','MAX_RESIDENTS_PER_UNIT','SHOW_UPDATES_TO_SINDICO','EMAIL_PROVIDER','SENDGRID_FROM_EMAIL','SENDGRID_FROM_NAME','SENDGRID_REPLY_TO','SENDGRID_TO_DEFAULT','SENDGRID_DATA_RESIDENCY','SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','SMTP_SECURE','MAIL_FROM','TELEGRAM_ENABLED','TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID','TELEGRAM_PORTARIA_CHAT_ID','TELEGRAM_PORTARIA_LABEL','TELEGRAM_PORTARIA_ENABLED','TELEGRAM_PORTARIA_RECEIVE_EMERGENCY','TELEGRAM_PORTARIA_RECEIVE_PACKAGES','TELEGRAM_INTERCOM_FALLBACK_ENABLED','PACKAGE_ELEVATOR_AUTH_ENABLED','PACKAGE_TELEGRAM_DECISIONS_ENABLED','KIOSK_PORTARIA_PREMIUM_ENABLED','KIOSK_PORTARIA_PIN','KIOSK_ALLOWED_APPS','TELEGRAM_WEBHOOK_SECRET','TELEGRAM_BOT_USERNAME','TELEGRAM_START_URL','TELEGRAM_PARSE_MODE','WHATSAPP_API_VERSION','WHATSAPP_PHONE_NUMBER_ID','WHATSAPP_BUSINESS_ACCOUNT_ID','WHATSAPP_ACCESS_TOKEN','WHATSAPP_TEMPLATE_PACKAGE','WHATSAPP_TEMPLATE_RESERVATION','VAPID_PUBLIC_KEY','VAPID_PRIVATE_KEY','VAPID_SUBJECT']);
+const PLATFORM_SETTING_KEYS = new Set(['ENABLE_EMAIL','ENABLE_TELEGRAM','ENABLE_WHATSAPP','ENABLE_BROWSER_PUSH','ENABLE_APP_PORTARIA','ENABLE_APP_SINDICO','ENABLE_APP_MORADOR','REGISTRATION_REQUIRE_EMAIL','REGISTRATION_REQUIRE_WHATSAPP','REGISTRATION_REQUIRE_TELEGRAM','BANK_PROVIDER','BANK_API_BASE_URL','BANK_CLIENT_ID','BANK_ACCOUNT','BANK_AGENCY','BANK_WALLET','BANK_CONTRACT','BANK_PIX_KEY','BOLETO_AUTO_GENERATE','BOLETO_PROVIDER','ENABLE_SYSTEM_UPDATES','UPDATE_CHANNEL','UPDATE_FEED_URL','UPDATE_APPLY_MODE','UPDATE_GITHUB_REPO','UPDATE_GITHUB_BRANCH','APK_PORTARIA_URL','APK_SINDICO_URL','APK_MORADOR_URL','RESERVATION_MAX_GUESTS_DEFAULT','RESERVATION_COUNT_CHILDREN','RESERVATION_COUNT_INFANTS','RESIDENT_CRITERIA','EMERGENCY_CRITICAL_ALERTS','ALLOW_MULTIPLE_RESIDENTS_PER_UNIT','MAX_RESIDENTS_PER_UNIT','SHOW_UPDATES_TO_SINDICO','EMAIL_PROVIDER','SENDGRID_FROM_EMAIL','SENDGRID_FROM_NAME','SENDGRID_REPLY_TO','SENDGRID_TO_DEFAULT','SENDGRID_DATA_RESIDENCY','SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','SMTP_SECURE','MAIL_FROM','TELEGRAM_ENABLED','TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID','TELEGRAM_PORTARIA_CHAT_ID','TELEGRAM_PORTARIA_LABEL','TELEGRAM_PORTARIA_ENABLED','TELEGRAM_PORTARIA_RECEIVE_EMERGENCY','TELEGRAM_PORTARIA_RECEIVE_PACKAGES','TELEGRAM_INTERCOM_FALLBACK_ENABLED','TELEGRAM_EMERGENCY_CONFIRMATION_ENABLED','PACKAGE_ELEVATOR_AUTH_ENABLED','PACKAGE_TELEGRAM_DECISIONS_ENABLED','KIOSK_PORTARIA_PREMIUM_ENABLED','KIOSK_PORTARIA_PIN','KIOSK_ALLOWED_APPS','TELEGRAM_WEBHOOK_SECRET','TELEGRAM_BOT_USERNAME','TELEGRAM_START_URL','TELEGRAM_PARSE_MODE','WHATSAPP_API_VERSION','WHATSAPP_PHONE_NUMBER_ID','WHATSAPP_BUSINESS_ACCOUNT_ID','WHATSAPP_ACCESS_TOKEN','WHATSAPP_TEMPLATE_PACKAGE','WHATSAPP_TEMPLATE_RESERVATION','VAPID_PUBLIC_KEY','VAPID_PRIVATE_KEY','VAPID_SUBJECT']);
 function containsProtectedSettings(body={}) { return Object.keys(body || {}).some(k => PLATFORM_SETTING_KEYS.has(k)); }
 async function publicSettingsObject() {
   const s = await getSettingsObject();
@@ -847,6 +848,29 @@ function normalizeUnit(unit='') { return String(unit || '').trim().replace(/\s+/
 function normalizeEmail(email='') { return String(email || '').trim().toLowerCase(); }
 function hasDuplicateMessage(kind) { return `${kind} já cadastrado. Confira o cadastro existente antes de gravar novamente.`; }
 function formatDeliveryPreference(v='') { const key=String(v||'').toLowerCase(); return ({ receber_elevador:'Autorizou envio pelo elevador', elevador:'Autorizou envio pelo elevador', retirar_portaria:'Vai retirar na portaria', buscar_portaria:'Vai retirar na portaria', retirar_mais_tarde:'Vai retirar mais tarde', retirar_agora:'Está indo retirar agora', chamar_interfone:'Pediu contato/interfone antes', nao_reconhece:'Não reconhece esta encomenda', portaria:'Vai retirar na portaria', nao_informado:'Aguardando escolha do morador' }[key] || 'Aguardando escolha do morador'); }
+function normalizePackagePreference(v='') {
+  const key=String(v||'').trim().toLowerCase();
+  return ({ elevador:'receber_elevador', receber_elevador:'receber_elevador', enviar_elevador:'receber_elevador', retirar_portaria:'retirar_portaria', buscar_portaria:'retirar_portaria', retirar:'retirar_portaria', retirar_mais_tarde:'retirar_mais_tarde', mais_tarde:'retirar_mais_tarde', retirar_agora:'retirar_agora', agora:'retirar_agora', chamar_interfone:'chamar_interfone', interfone:'chamar_interfone', nao_reconhece:'nao_reconhece', nao_reconheco:'nao_reconhece', desconhece:'nao_reconhece' }[key] || key || 'nao_informado');
+}
+function packageDecisionKeyboard(packageId) {
+  const id=String(packageId || '').trim();
+  return { inline_keyboard:[
+    [ { text:'🛗 Enviar pelo elevador', callback_data:`pkg:${id}:receber_elevador` }, { text:'🚶 Vou retirar agora', callback_data:`pkg:${id}:retirar_agora` } ],
+    [ { text:'🕒 Retirar mais tarde', callback_data:`pkg:${id}:retirar_mais_tarde` }, { text:'📞 Chamar no interfone', callback_data:`pkg:${id}:chamar_interfone` } ],
+    [ { text:'❌ Não reconheço', callback_data:`pkg:${id}:nao_reconhece` } ]
+  ] };
+}
+function emergencyApprovalKeyboard(emergencyId) {
+  const id=String(emergencyId || '').trim();
+  return { inline_keyboard:[
+    [ { text:'✅ Confirmar emergência', callback_data:`emg:${id}:aprovar` }, { text:'❌ Rejeitar / falso alarme', callback_data:`emg:${id}:rejeitar` } ],
+    [ { text:'📲 Abrir no sistema', url:fullActionUrl('/#/emergencia') } ]
+  ] };
+}
+function callbackFromIdentity(cb={}) {
+  return { id:String(cb?.from?.id || ''), username:String(cb?.from?.username || ''), name:[cb?.from?.first_name, cb?.from?.last_name].filter(Boolean).join(' ').trim() };
+}
+
 async function residentDuplicate(body={}, excludeId=null) {
   const unit = normalizeUnit(body.unit); const email = normalizeEmail(body.email); const doc = onlyDigits(body.document || '');
   const allowMultiple = boolValue(await getSetting('ALLOW_MULTIPLE_RESIDENTS_PER_UNIT','false'), false);
@@ -995,6 +1019,7 @@ async function telegramApi(method, body={}) {
   } catch(e) {
     if (method !== 'sendMessage') return { ok:false, error:e.name === 'AbortError' ? 'Tempo limite do Telegram excedido.' : e.message };
   } finally { clearTimeout(timer); }
+  if (body.reply_markup) return { ok:false, error:'Falha ao enviar Telegram por POST; fallback GET desativado para preservar botões inline.', data:body, transport:'post_required_for_buttons' };
   const chat = encodeURIComponent(body.chat_id || '');
   const text = encodeURIComponent(body.text || '');
   const url = `${base}/bot${token}/sendMessage?chat_id=${chat}&text=${text}`;
@@ -1099,6 +1124,52 @@ async function sendPortariaTelegram({ title, body, category='notificacao', actio
   const text = telegramPremiumMessage({ title, body, category, actionUrl:fullActionUrl(action_url), details:{ ...details, Destino:label } });
   return sendTelegramMessage(chat, text, { disable_web_page_preview:true, allowDefaultChat:false, dedupeKey:dedupeKey || `portaria:${category}:${title}:${body}` });
 }
+
+async function sendEmergencyApprovalTelegram(emergency={}) {
+  if (!boolValue(await getSetting('TELEGRAM_EMERGENCY_CONFIRMATION_ENABLED','true'), true)) return { ok:false, skipped:true, reason:'Confirmação Telegram de emergência desativada.' };
+  if (!(await featureEnabled('telegram'))) return { ok:false, skipped:true, reason:'Telegram desativado.' };
+  const roles = ['sindico','subsindico','portaria','master','admin'];
+  const staff = (await q("SELECT id,name,email,role,telegram_chat_id,telegram_username FROM users WHERE role = ANY($1) AND COALESCE(active,true)=true", [roles])).rows;
+  const targets = new Map();
+  for (const u of staff) if (u.telegram_chat_id) targets.set(String(u.telegram_chat_id).trim(), { label:u.name || u.email || u.role, role:u.role });
+  const portariaChat = await getTelegramPortariaChatId();
+  if (await telegramPortariaEnabled('emergencia') && portariaChat) targets.set(String(portariaChat).trim(), { label:await getSetting('TELEGRAM_PORTARIA_LABEL','Celular Portaria'), role:'portaria' });
+  const defaultChat = await getTelegramDefaultChatId();
+  if (defaultChat) targets.set(String(defaultChat).trim(), { label:'Chat padrão do condomínio', role:'administracao' });
+  const finalLocation = emergency.occurrence_location || emergency.unit || 'a confirmar';
+  const text = telegramPremiumMessage({
+    title:'Emergência aguardando confirmação',
+    body:`${emergency.type_label || emergency.type_code || 'Emergência'} solicitada. Confirme ou rejeite diretamente pelo botão abaixo.`,
+    category:'emergencia',
+    actionUrl:fullActionUrl('/#/emergencia'),
+    details:{ Local:finalLocation, Unidade:emergency.unit || '-', Solicitante:emergency.requested_role || '-', Código:emergency.id || '' }
+  });
+  const reply_markup = emergencyApprovalKeyboard(emergency.id);
+  const results=[];
+  for (const [chat, meta] of targets.entries()) {
+    if (!chat) continue;
+    const result = await sendTelegramMessage(chat, text, { reply_markup, disable_web_page_preview:true, allowDefaultChat:false, dedupeKey:`emergency-approval:${emergency.id}:${chat}` }).catch(e=>({ ok:false, error:e.message }));
+    results.push({ chat, role:meta.role, ok:result.ok, result });
+  }
+  return { ok:results.some(r=>r.ok), results };
+}
+async function telegramCallbackActor(cb={}) {
+  const who = callbackFromIdentity(cb);
+  if (!who.id) return null;
+  const u=(await q("SELECT id,name,email,role,telegram_chat_id FROM users WHERE telegram_chat_id=$1 AND role IN ('sindico','subsindico','portaria','master','admin') AND COALESCE(active,true)=true ORDER BY id DESC LIMIT 1", [who.id]).catch(()=>({rows:[]}))).rows[0];
+  if (u) return { type:'user', id:u.id, role:u.role, name:u.name || u.email || who.name || who.username || 'Telegram' };
+  const defaultChat = await getTelegramDefaultChatId();
+  const portariaChat = await getTelegramPortariaChatId();
+  if ([defaultChat, portariaChat].filter(Boolean).map(String).includes(String(who.id))) return { type:'telegram', id:null, role:'portaria', name:who.name || who.username || 'Telegram autorizado' };
+  return null;
+}
+async function notifyEmergencyDecision(er={}, action='aprovar') {
+  const approved = action === 'aprovar';
+  const title = approved ? 'Emergência confirmada' : 'Emergência rejeitada';
+  const body = `${er.type_label || er.type_code || 'Emergência'} · Local: ${er.occurrence_location || er.unit || 'a confirmar'}.`;
+  if (approved && er.notify_all) await notifyAllResidents({ title, body, channels:{ app:true,browser:true,email:false,telegram:true,whatsapp:true }, action_url:'/#/emergencia', payload:{ emergency:true, critical:true, type:er.type_code } }).catch(()=>null);
+  await notifyStaff({ title, body, action_url:'/#/emergencia', channels:{ telegram:false,email:false,browser:true } }).catch(()=>null);
+}
 async function sendWhatsAppText(phone, text) { if (!(await featureEnabled('whatsapp'))) return { ok:false, skipped:true, reason:'WhatsApp não liberado nas configurações.' }; const phoneId=await getSetting('WHATSAPP_PHONE_NUMBER_ID', process.env.WHATSAPP_PHONE_NUMBER_ID || ''); const token=await getSetting('WHATSAPP_ACCESS_TOKEN', process.env.WHATSAPP_ACCESS_TOKEN || process.env.WHATSAPP_API_TOKEN || ''); const version=await getSetting('WHATSAPP_API_VERSION', process.env.WHATSAPP_API_VERSION || 'v19.0'); const to = onlyDigits(phone); if (!phoneId || !token || !to) return { ok:false, skipped:true }; const r = await fetch(`https://graph.facebook.com/${version}/${phoneId}/messages`, { method:'POST', headers:{ 'content-type':'application/json', authorization:`Bearer ${token}` }, body: JSON.stringify({ messaging_product:'whatsapp', to, type:'text', text:{ body:text } }) }); return { ok:r.ok, data: await r.json().catch(()=>({})) }; }
 async function findResident({ unit='', recipient='', resident_id=null, user_id=null }={}) {
   if (resident_id) { const r=await q('SELECT * FROM residents WHERE id=$1 AND COALESCE(active,true)=true',[resident_id]); if (r.rowCount) return r.rows[0]; }
@@ -1170,14 +1241,14 @@ async function notifyResident(resident, { title, body, channels={}, action_url='
   return { ok: !Object.values(delivery).some(v=>v && !v.ok && !v.skipped), notification_id:notification?.id || null, delivery, resumo:Object.fromEntries(Object.entries(delivery).map(([k,v])=>[k,channelResultSummary(v)])) };
 }
 async function notifyStaff({ title, body, action_url='', channels={} }) {
-  const staff = (await q("SELECT * FROM users WHERE role IN ('master','sindico','admin','portaria') AND active=true")).rows;
+  const staff = (await q("SELECT * FROM users WHERE role IN ('master','admin','sindico','subsindico','portaria') AND active=true")).rows;
   const notifIds=[];
   for (const user of staff) {
     const n = await createNotification({ user_id:user.id, title, body, channel:'app', channels:{ app:true, browser:true, telegram:true, email:true, ...channels }, action_url, payload:{ __skip_auto_delivery:true }, status:'enviando' }).catch(()=>null);
     if (n?.id) notifIds.push(n.id);
   }
   const jobs = {};
-  if (await featureEnabled('telegram')) { const category=notificationCategoryFrom(title, body, {}); jobs.telegram = withTimeout(sendTelegramMessage('', telegramPremiumMessage({ title, body, category, actionUrl:fullActionUrl(action_url) }), { disable_web_page_preview:true, dedupeKey:`staff:${title}:${body}` }).catch(e=>({ ok:false, error:e.message })), Number(process.env.TELEGRAM_TIMEOUT_MS || 6500), 'Telegram'); jobs.telegram_portaria = withTimeout(sendPortariaTelegram({ title, body, category, action_url, dedupeKey:`staff-portaria:${title}:${body}` }).catch(e=>({ ok:false, error:e.message })), Number(process.env.TELEGRAM_TIMEOUT_MS || 6500), 'Telegram Portaria'); }
+  if (channels.telegram !== false && await featureEnabled('telegram')) { const category=notificationCategoryFrom(title, body, {}); jobs.telegram = withTimeout(sendTelegramMessage('', telegramPremiumMessage({ title, body, category, actionUrl:fullActionUrl(action_url) }), { disable_web_page_preview:true, dedupeKey:`staff:${title}:${body}` }).catch(e=>({ ok:false, error:e.message })), Number(process.env.TELEGRAM_TIMEOUT_MS || 6500), 'Telegram'); jobs.telegram_portaria = withTimeout(sendPortariaTelegram({ title, body, category, action_url, dedupeKey:`staff-portaria:${title}:${body}` }).catch(e=>({ ok:false, error:e.message })), Number(process.env.TELEGRAM_TIMEOUT_MS || 6500), 'Telegram Portaria'); }
   const emails = staff.map(u=>u.email).filter(Boolean);
   if (emails.length && await featureEnabled('email')) jobs.email = withTimeout(sendEmailSmart({ to: emails.join(','), subject:title, text:body, actionUrl: action_url, actionLabel:'Abrir no sistema' }).catch(e=>({ ok:false, error:e.message })), Number(process.env.EMAIL_TIMEOUT_MS || 12000), 'E-mail');
   const entries = await Promise.all(Object.entries(jobs).map(async ([k,p]) => [k, await p]));
@@ -1726,7 +1797,7 @@ app.post('/api/messages/:id/respond', auth, can('messages.manage'), async (req,r
 } catch(e){ next(e); } });
 
 app.get('/api/packages', auth, can('packages.view'), async (req,res,next)=>{ try { if (isResident(req.user) && req.user.resident_id) return res.json((await q('SELECT * FROM packages WHERE resident_id=$1 AND deleted_at IS NULL ORDER BY id DESC',[req.user.resident_id])).rows); res.json((await q('SELECT p.*, r.name resident_name, r.email resident_email, r.whatsapp_phone FROM packages p LEFT JOIN residents r ON r.id=p.resident_id WHERE p.deleted_at IS NULL ORDER BY p.id DESC')).rows); } catch(e){ next(e); } });
-app.post('/api/packages', auth, can('packages.manage'), async (req,res,next)=>{ try { requireFields(req.body,['tracking','recipient','unit']); await requireNoDuplicate('Encomenda', await packageDuplicate(req.body)); const resident=await findResident(req.body); const pickup=randomCode(6); const channels={ app:true, browser:true, ...parseJson(await getSetting('DELIVERY_DEFAULT_CHANNELS','{}'),{}), ...(req.body.notification_channels || {}), telegram:true }; const r=await q('INSERT INTO packages(tracking,recipient,unit,resident_id,label,notes,extracted_text,pickup_code,notification_channels,notification_status,photo_url) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',[req.body.tracking,req.body.recipient,req.body.unit,resident?.id||null,req.body.label||req.body.tracking,req.body.notes||'',req.body.extracted_text||'',pickup,JSON.stringify(channels),resident?'enviando':'sem_vinculo',req.body.photo_url||'']); const pack=r.rows[0]; const action_url=`/#/encomendas?package=${pack.id}`; const body=`Sua encomenda ${pack.tracking} chegou na portaria. Código de retirada: ${pickup}. Escolha pelo Telegram: autorizar envio pelo elevador, retirar agora, retirar mais tarde, pedir contato por interfone ou informar que não reconhece.`; if (resident) await notifyResident(resident,{ title:'Encomenda chegou', body, channels, action_url, payload:{ package_id:pack.id, pickup_code:pickup, telegram_reply_markup:{ inline_keyboard:[[ { text:'🛗 Enviar pelo elevador', callback_data:`pkg:${pack.id}:receber_elevador` }, { text:'🚶 Vou retirar agora', callback_data:`pkg:${pack.id}:retirar_agora` } ],[ { text:'🕒 Retirar mais tarde', callback_data:`pkg:${pack.id}:retirar_mais_tarde` }, { text:'📞 Chamar no interfone', callback_data:`pkg:${pack.id}:chamar_interfone` } ],[ { text:'❌ Não reconheço', callback_data:`pkg:${pack.id}:nao_reconhece` } ]] } } }).catch(()=>null); await sendPortariaTelegram({ title:'Encomenda cadastrada', body:`${pack.tracking} · Unidade ${pack.unit || '-'} · ${pack.recipient || resident?.name || ''}. Aguardando decisão do morador.`, category:'encomenda', action_url:'/#/portaria/encomendas', details:{ Código:pack.tracking, Unidade:pack.unit || '-', Retirada:pickup }, dedupeKey:`package-created-portaria:${pack.id}` }).catch(()=>null); await audit(req.user.email,'registrou encomenda',`${pack.tracking} ${resident?'vinculada':'sem vínculo'}`); await q("UPDATE packages SET notification_status='enviada' WHERE id=$1",[pack.id]).catch(()=>null); res.json({ ...pack, resident, linked:Boolean(resident) }); } catch(e){ next(e); } });
+app.post('/api/packages', auth, can('packages.manage'), async (req,res,next)=>{ try { requireFields(req.body,['tracking','recipient','unit']); await requireNoDuplicate('Encomenda', await packageDuplicate(req.body)); const resident=await findResident(req.body); const pickup=randomCode(6); const channels={ app:true, browser:true, ...parseJson(await getSetting('DELIVERY_DEFAULT_CHANNELS','{}'),{}), ...(req.body.notification_channels || {}), telegram:true }; const r=await q('INSERT INTO packages(tracking,recipient,unit,resident_id,label,notes,extracted_text,pickup_code,notification_channels,notification_status,photo_url) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',[req.body.tracking,req.body.recipient,req.body.unit,resident?.id||null,req.body.label||req.body.tracking,req.body.notes||'',req.body.extracted_text||'',pickup,JSON.stringify(channels),resident?'enviando':'sem_vinculo',req.body.photo_url||'']); const pack=r.rows[0]; const action_url=`/#/encomendas?package=${pack.id}`; const body=`Sua encomenda ${pack.tracking} chegou na portaria. Código de retirada: ${pickup}. Escolha pelo Telegram: autorizar envio pelo elevador, retirar agora, retirar mais tarde, pedir contato por interfone ou informar que não reconhece.`; if (resident) await notifyResident(resident,{ title:'Encomenda chegou', body, channels, action_url, payload:{ package_id:pack.id, pickup_code:pickup, telegram_reply_markup:packageDecisionKeyboard(pack.id) } }).catch(()=>null); await sendPortariaTelegram({ title:'Encomenda cadastrada', body:`${pack.tracking} · Unidade ${pack.unit || '-'} · ${pack.recipient || resident?.name || ''}. Aguardando decisão do morador.`, category:'encomenda', action_url:'/#/portaria/encomendas', details:{ Código:pack.tracking, Unidade:pack.unit || '-', Retirada:pickup }, dedupeKey:`package-created-portaria:${pack.id}` }).catch(()=>null); await audit(req.user.email,'registrou encomenda',`${pack.tracking} ${resident?'vinculada':'sem vínculo'}`); await q("UPDATE packages SET notification_status='enviada' WHERE id=$1",[pack.id]).catch(()=>null); res.json({ ...pack, resident, linked:Boolean(resident) }); } catch(e){ next(e); } });
 app.post('/api/packages/:id/preference', auth, async (req,res,next)=>{ try { if (!isResident(req.user)) return res.status(403).json({ error:'Somente o morador pode escolher o método de entrega.' }); const preference=req.body.delivery_preference || req.body.preference || 'retirar_portaria'; const r=await q('UPDATE packages SET delivery_preference=$1,resident_response_at=now() WHERE id=$2 AND (resident_id=$3 OR $4=true) RETURNING *',[preference,req.params.id,req.user.resident_id,isMaster(req.user)]); if(!r.rowCount) return res.status(404).json({ error:'Encomenda não encontrada para este morador.' }); await notifyStaff({ title:'Preferência de entrega informada', body:`Encomenda ${r.rows[0]?.tracking || req.params.id}: ${formatDeliveryPreference(preference)}`, action_url:`/#/encomendas` }).catch(()=>null); res.json(r.rows[0]||{}); } catch(e){ next(e); } });
 app.post('/api/packages/:id/intercom-fallback', auth, can('packages.manage'), async (req,res,next)=>{ try {
   if (!boolValue(await getSetting('TELEGRAM_INTERCOM_FALLBACK_ENABLED','true'), true)) return res.status(400).json({ error:'Fallback Telegram por interfone está desativado.' });
@@ -1734,7 +1805,7 @@ app.post('/api/packages/:id/intercom-fallback', auth, can('packages.manage'), as
   if(!p) return res.status(404).json({ error:'Encomenda não encontrada.' });
   const resident=await findResident({ resident_id:p.resident_id, unit:p.unit, recipient:p.recipient });
   const body=`A portaria tentou contato por interfone, mas não conseguiu falar. Encomenda ${p.tracking || p.label || p.id} está aguardando orientação. Responda pelo botão: enviar pelo elevador, retirar agora, retirar mais tarde ou não reconheço.`;
-  if (resident) await notifyResident(resident,{ title:'Portaria tentou interfone', body, channels:{ app:true,browser:true,email:false,telegram:true,whatsapp:false }, action_url:'/#/portaria/encomendas', payload:{ package_id:p.id, pickup_code:p.pickup_code || '', telegram_reply_markup:{ inline_keyboard:[[ { text:'🛗 Enviar pelo elevador', callback_data:`pkg:${p.id}:receber_elevador` }, { text:'🚶 Vou retirar agora', callback_data:`pkg:${p.id}:retirar_agora` } ],[ { text:'🕒 Retirar mais tarde', callback_data:`pkg:${p.id}:retirar_mais_tarde` }, { text:'❌ Não reconheço', callback_data:`pkg:${p.id}:nao_reconhece` } ]] } } }).catch(()=>null);
+  if (resident) await notifyResident(resident,{ title:'Portaria tentou interfone', body, channels:{ app:true,browser:true,email:false,telegram:true,whatsapp:false }, action_url:'/#/portaria/encomendas', payload:{ package_id:p.id, pickup_code:p.pickup_code || '', telegram_reply_markup:packageDecisionKeyboard(p.id) } }).catch(()=>null);
   await sendPortariaTelegram({ title:'Interfone sem contato', body:`Mensagem enviada ao morador da unidade ${p.unit || '-'}. Encomenda ${p.tracking || p.id}.`, category:'encomenda', action_url:'/#/portaria/encomendas', details:{ Unidade:p.unit || '-', Código:p.tracking || p.id, Morador:resident?.name || p.recipient || '-' }, dedupeKey:`intercom-fallback-portaria:${p.id}` }).catch(()=>null);
   await audit(req.user.email,'acionou Telegram após interfone sem contato',`${p.tracking || p.id} unidade ${p.unit || '-'}`).catch(()=>null);
   res.json({ ok:true, package:p, resident, message: resident ? 'Telegram enviado ao morador e à portaria.' : 'Morador não localizado; aviso enviado à portaria.' });
@@ -1944,7 +2015,8 @@ async function handleEmergencyRequest(req,res,next){ try {
   await ensureEmergencyRequestColumns();
   const r=await q('INSERT INTO emergency_requests(type_code,type_label,unit,message,requested_by,requested_role,status,notify_all,occurrence_location,location_type,neighbor_unit,floor) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',[code,type.label,unit,message,req.user.id,req.user.role,'pendente',notify_all,finalLocation,loc,neighbor,floor]);
   const body=`${type.label} solicitada. Local: ${finalLocation || unit || 'a confirmar'}. ${message}`;
-  await notifyStaff({ title:'Emergência aguardando aprovação', body, action_url:'/#/emergencia' }).catch(()=>null);
+  await notifyStaff({ title:'Emergência aguardando aprovação', body, action_url:'/#/emergencia', channels:{ telegram:false,email:true,browser:true } }).catch(()=>null);
+  await sendEmergencyApprovalTelegram(r.rows[0]).catch(e=>console.warn('Falha ao enviar confirmação Telegram de emergência:', e.message));
   await q('INSERT INTO incidents(title,description,unit,severity,status) VALUES($1,$2,$3,$4,$5)', [`Emergência pendente: ${type.label}`, `${body}\nContato: ${type.supplier || '-'} ${type.phone || ''}\nOrientação: ${type.instructions || '-'}`, unit || finalLocation, 'critica', 'aberta']).catch(()=>null);
   res.json({ ok:true, request:r.rows[0], message:'Solicitação enviada para aprovação da portaria/síndico.', emergency:type });
 } catch(e){ next(e); } }
@@ -2247,17 +2319,72 @@ app.post('/api/telegram/test', auth, can('settings.manage'), async (req,res,next
 } catch(e){ next(e); } });
 app.post('/api/telegram/webhook', async (req,res,next)=>{ try {
   const cb=req.body?.callback_query;
-  if (cb?.data && /^pkg:\d+:(receber_elevador|retirar_portaria|retirar_mais_tarde|retirar_agora|chamar_interfone|nao_reconhece)$/.test(cb.data)) {
-    const [,id,pref]=cb.data.split(':');
-    const r=await q('UPDATE packages SET delivery_preference=$1,resident_response_at=now() WHERE id=$2 RETURNING *',[pref,id]);
-    await notifyStaff({ title:'Preferência de entrega informada', body:`Encomenda ${r.rows[0]?.tracking || id}: ${formatDeliveryPreference(pref)}`, action_url:'/#/portaria/encomendas' }).catch(()=>null);
-    await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text:'Preferência registrada para a portaria.' }).catch(()=>null);
-  }
-  if (cb?.data && /^msg:\d+:recebido$/.test(cb.data)) {
-    const [,id]=cb.data.split(':');
-    const r=await q("UPDATE messages SET status='recebida_pelo_morador' WHERE id=$1 RETURNING *",[id]);
-    await notifyStaff({ title:'Morador confirmou recebimento', body:`Mensagem ${id} confirmada pelo Telegram.`, action_url:'/#/comunicacao' }).catch(()=>null);
-    await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text:'Confirmação registrada.' }).catch(()=>null);
+  if (cb?.data) {
+    const data=String(cb.data || '').trim();
+    if (data === 'noop') {
+      await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text:'Esta ação já foi processada.' }).catch(()=>null);
+      return res.json({ ok:true, noop:true });
+    }
+
+    const pkgMatch=data.match(/^(?:pkg|package):(\d+):(receber_elevador|elevador|retirar_portaria|retirar_mais_tarde|retirar_agora|chamar_interfone|nao_reconhece|nao_reconheco)$/i);
+    if (pkgMatch) {
+      const id=pkgMatch[1];
+      const pref=normalizePackagePreference(pkgMatch[2]);
+      const r=await q('UPDATE packages SET delivery_preference=$1,resident_response_at=now(),notification_status=$2 WHERE id=$3 RETURNING *',[pref,'respondida_telegram',id]);
+      const pack=r.rows[0];
+      const label=formatDeliveryPreference(pref);
+      await notifyStaff({ title:'Preferência de entrega informada', body:`Encomenda ${pack?.tracking || id}: ${label}`, action_url:'/#/portaria/encomendas', channels:{ telegram:true,email:false,browser:true } }).catch(()=>null);
+      await sendPortariaTelegram({ title:'Resposta do morador sobre encomenda', body:`${pack?.tracking || id}: ${label}`, category:'encomenda', action_url:'/#/portaria/encomendas', details:{ Unidade:pack?.unit || '-', Encomenda:pack?.tracking || id, Preferência:label }, dedupeKey:`pkg-callback-portaria:${id}:${pref}` }).catch(()=>null);
+      await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text:'Preferência registrada para a portaria.' }).catch(()=>null);
+      if (cb.message?.chat?.id && cb.message?.message_id) {
+        const original=String(cb.message.text || cb.message.caption || '').slice(0,3500);
+        await telegramApi('editMessageText',{ chat_id:cb.message.chat.id, message_id:cb.message.message_id, text:`${original}\n\n✅ Resposta registrada: ${label}`, reply_markup:{ inline_keyboard:[[ { text:'✅ Registrado', callback_data:'noop' } ]] } }).catch(()=>null);
+      }
+      return res.json({ ok:true, type:'package', id, preference:pref });
+    }
+
+    const emgMatch=data.match(/^(?:emg|emergency):(\d+):(aprovar|approve|confirmar|rejeitar|reject|negar)$/i);
+    if (emgMatch) {
+      const id=emgMatch[1];
+      const action=/^(aprovar|approve|confirmar)$/i.test(emgMatch[2]) ? 'aprovar' : 'rejeitar';
+      const actor=await telegramCallbackActor(cb);
+      if (!actor) {
+        await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text:'Telegram não autorizado para confirmar emergência.', show_alert:true }).catch(()=>null);
+        return res.json({ ok:false, unauthorized:true });
+      }
+      const status=action==='aprovar' ? 'aprovada' : 'rejeitada';
+      const existing=(await q('SELECT * FROM emergency_requests WHERE id=$1',[id])).rows[0];
+      if (!existing) {
+        await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text:'Emergência não encontrada.', show_alert:true }).catch(()=>null);
+        return res.json({ ok:false, not_found:true });
+      }
+      if (['aprovada','rejeitada','cancelada'].includes(String(existing.status||'').toLowerCase())) {
+        await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text:`Esta emergência já está ${existing.status}.` }).catch(()=>null);
+        return res.json({ ok:true, already:true, status:existing.status });
+      }
+      const r=await q("UPDATE emergency_requests SET status=$1,approved_by=COALESCE($2,approved_by),decision_note=$3,decided_at=now() WHERE id=$4 RETURNING *",[status,actor.id,`Decidido pelo Telegram por ${actor.name || actor.role || 'responsável'}`,id]);
+      const er=r.rows[0];
+      await notifyEmergencyDecision(er, action).catch(()=>null);
+      await audit(actor.name || 'telegram','confirmou emergência pelo Telegram',`${er.type_label || er.type_code} ${status}`).catch(()=>null);
+      await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text: action==='aprovar' ? 'Emergência confirmada.' : 'Emergência rejeitada.' }).catch(()=>null);
+      if (cb.message?.chat?.id && cb.message?.message_id) {
+        const original=String(cb.message.text || cb.message.caption || '').slice(0,3500);
+        const decision=action==='aprovar' ? '✅ Emergência confirmada' : '❌ Emergência rejeitada';
+        await telegramApi('editMessageText',{ chat_id:cb.message.chat.id, message_id:cb.message.message_id, text:`${original}\n\n${decision} por ${actor.name || 'responsável'}.`, reply_markup:{ inline_keyboard:[[ { text:'✅ Decisão registrada', callback_data:'noop' } ]] } }).catch(()=>null);
+      }
+      return res.json({ ok:true, type:'emergency', id, status });
+    }
+
+    if (/^msg:\d+:recebido$/.test(data)) {
+      const [,id]=data.split(':');
+      await q("UPDATE messages SET status='recebida_pelo_morador' WHERE id=$1 RETURNING *",[id]);
+      await notifyStaff({ title:'Morador confirmou recebimento', body:`Mensagem ${id} confirmada pelo Telegram.`, action_url:'/#/comunicacao' }).catch(()=>null);
+      await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text:'Confirmação registrada.' }).catch(()=>null);
+      return res.json({ ok:true, type:'message', id });
+    }
+
+    await telegramApi('answerCallbackQuery',{ callback_query_id:cb.id, text:'Ação não reconhecida pelo sistema. Atualize a mensagem e tente novamente.', show_alert:true }).catch(()=>null);
+    return res.json({ ok:false, unknown_callback:data });
   }
   res.json({ ok:true });
 } catch(e){ next(e); } });

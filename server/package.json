@@ -1,6 +1,6 @@
 {
   "name": "vitoria-regia-pro-server",
-  "version": "12.6.7",
+  "version": "12.6.8",
   "private": true,
   "type": "module",
   "scripts": {
@@ -24,5 +24,5 @@
   "engines": {
     "node": "20.19.0"
   },
-  "description": "Backend Vitória Régia Pro v12.6.7"
+  "description": "Backend Vitória Régia Pro v12.6.8"
 }
