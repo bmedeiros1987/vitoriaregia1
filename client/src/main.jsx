@@ -11,7 +11,7 @@ import {
 import './styles.css';
 
 const API = import.meta.env.VITE_API_URL || '';
-const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v12.7.8';
+const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v12.7.9';
 const DEFAULT_TELEGRAM_CHAT_ID = '8188648317';
 const money = (v) => Number(v || 0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
 const date = (v) => v ? new Date(String(v)).toLocaleDateString('pt-BR', { timeZone:'UTC' }) : '-';
@@ -95,8 +95,8 @@ function initialForms(){ return {
   commonArea:{ id:'', name:'', fee_amount:'', rules_document:'', active:true, requires_approval:true, max_guests:'30', count_children:true, count_infants:false, reservation_periods:'dia_todo,manha,tarde,noite,horario' },
   finance:{ title:'', amount:'', type:'receita', due_date:'', unit:'', category:'geral', generate_boleto:false, digitable_line:'', payment_link:'', bank_name:'' }, boleto:{ title:'', amount:'', due_date:'', unit:'', bank_name:'', digitable_line:'', barcode:'', pdf_url:'', payment_link:'' },
   invoice:{ supplier:'', document_number:'', access_key:'', amount:'', issue_date:'', due_date:'', unit:'', category:'nota fiscal', extracted_text:'', file_name:'' },
-  notice:{ title:'', body:'', priority:'normal', target_role:'todos', target_criteria:{} }, buildingNews:{ title:'', body:'', priority:'normal', photo_data:'' }, notifyTest:{ channel:'email', to:'', phone:'', chat_id:'', telegram_username:'', target_type:'padrao', resident_id:'', user_id:'', subject:'Teste Vitória Régia', message:'Mensagem de teste do Sistema Vitória Régia.' },
-  message:{ subject:'', body:'', unit:'' }, emergency:{ type:'elevador', unit:'', location_type:'Minha unidade', occurrence_location:'Minha unidade', neighbor_unit:'', floor:'', message:'' }, settings:{ TELEGRAM_CHAT_ID:DEFAULT_TELEGRAM_CHAT_ID, TELEGRAM_TEST_CHAT_ID:DEFAULT_TELEGRAM_CHAT_ID, ELEVATOR_MAINTENANCE_WHATSAPP:'', EMERGENCY_ALLOW_GENERAL_ALERT:'true' }, systemUpdate:{ validation_code:'', mode:'github' }, document:{ title:'', description:'', audience:'publico', is_public:true }, occurrence:{ title:'', description:'', category:'queixa', priority:'normal', unit:'' }, support:{ subject:'', body:'', priority:'normal' }, financeImport:{ text:'', unit:'', previewRows:[] }
+  notice:{ title:'', body:'', priority:'normal', target_role:'todos', target_criteria:{}, display_from:'', expires_at:'' }, buildingNews:{ title:'', body:'', priority:'normal', photo_data:'', display_from:'', expires_at:'' }, notifyTest:{ channel:'email', to:'', phone:'', chat_id:'', telegram_username:'', target_type:'padrao', resident_id:'', user_id:'', subject:'Teste Vitória Régia', message:'Mensagem de teste do Sistema Vitória Régia.' },
+  message:{ subject:'', body:'', unit:'' }, emergency:{ type:'elevador', unit:'', location_type:'Minha unidade', occurrence_location:'Minha unidade', neighbor_unit:'', floor:'', message:'' }, settings:{ TELEGRAM_CHAT_ID:DEFAULT_TELEGRAM_CHAT_ID, TELEGRAM_TEST_CHAT_ID:DEFAULT_TELEGRAM_CHAT_ID, ELEVATOR_MAINTENANCE_WHATSAPP:'', EMERGENCY_ALLOW_GENERAL_ALERT:'true' }, systemUpdate:{ validation_code:'', mode:'github' }, document:{ title:'', description:'', audience:'publico', is_public:true, document_type:'geral', competence_date:'', reference_date:'' }, occurrence:{ title:'', description:'', category:'queixa', priority:'normal', unit:'' }, support:{ subject:'', body:'', priority:'normal' }, financeImport:{ text:'', unit:'', previewRows:[] }
 };}
 function emptyData(){ return { settings:{}, dashboard:null, residents:[], users:[], employees:[], shifts:[], messages:[], packages:[], visitors:[], invoices:[], notices:[], reservations:[], finance:[], boletos:[], commonAreas:[], incidents:[], maintenance:[], emergencyTypes:[], emergencyRequests:[], registrationRequests:[], notifications:[], audit:[], weather:null, systemUpdates:[], manuals:[], documents:[], faqs:[], supportTickets:[], occurrenceBook:[], notifyConfig:null, buildingNews:[] }; }
 async function request(path, opts={}){
@@ -165,6 +165,7 @@ function App(){
   const [err,setErr] = useState('');
   const [confirm,setConfirm] = useState(null);
   const [reading,setReading] = useState('');
+  const [readingProgress,setReadingProgress] = useState(null);
   const [cameraReader,setCameraReader] = useState(null);
   const [criticalAlert,setCriticalAlert] = useState(null);
   const [lookup,setLookup] = useState({});
@@ -286,13 +287,21 @@ function App(){
   async function readImage(file, type, scanner={}){
     if(!file) return;
     setReading(type);
+    setReadingProgress({ type, percent:8, text:type==='package'?'Preparando leitura da etiqueta...':'Preparando leitura da nota...' });
     try {
       notify(type==='package' ? 'Lendo etiqueta. Segure a câmera reta e com boa luz.' : 'Lendo nota fiscal. Confira os dados ao final.');
       const detectedCodes = uniqueCodes([...(scanner.codes || []), ...(await detectCodesFromFile(file))]);
-      if(detectedCodes.length) setToast(`Código lido: ${detectedCodes[0].rawValue}`);
-      const result = await Tesseract.recognize(file, 'por+eng', { logger: m => { if(m?.status==='recognizing text' && m.progress) setToast(`Leitura automática ${Math.round(m.progress*100)}%`); } });
+      if(detectedCodes.length) setReadingProgress({ type, percent:18, text:`Código lido: ${detectedCodes[0].rawValue}` });
+      const result = await Tesseract.recognize(file, 'por+eng', { logger: m => {
+        if(m?.status){
+          const percent = m?.status==='recognizing text' && m.progress ? Math.max(24, Math.min(92, Math.round(m.progress*100))) : 18;
+          const label = m?.status==='recognizing text' ? 'Lendo texto da etiqueta...' : 'Preparando OCR...';
+          setReadingProgress({ type, percent, text:label });
+        }
+      } });
       const text = result?.data?.text || '';
       if(!text.trim()) throw new Error('não foi possível identificar texto na imagem. Tente aproximar e tirar outra foto.');
+      setReadingProgress({ type, percent:94, text:'Validando dados encontrados...' });
       const parsed = await post(type==='package' ? '/api/ocr/parse-package' : '/api/ocr/parse-invoice', type==='package' ? { text, codes:detectedCodes } : { text });
       if(type==='package'){
         const patch = nonEmpty({ tracking:parsed.tracking, recipient:parsed.recipient, unit:parsed.unit, label:parsed.label, notes:parsed.notes, extracted_text:text, carrier:parsed.carrier, barcode:parsed.barcode, barcode_format:parsed.barcode_format, order_number:parsed.order_number, invoice_number:parsed.invoice_number, validation_status:parsed.validation_status, ocr_confidence:parsed.confidence, source_type:parsed.source_type });
@@ -302,10 +311,12 @@ function App(){
         const patch = nonEmpty({ supplier:parsed.supplier, document_number:parsed.document_number, access_key:parsed.access_key, amount:parsed.amount, issue_date:parsed.issue_date, due_date:parsed.due_date, unit:parsed.unit, category:parsed.category, extracted_text:text });
         setForm('invoice', { ...forms.invoice, ...patch });
       }
+      setReadingProgress({ type, percent:100, text:'Leitura concluída. Confira antes de salvar.' });
       notify('Leitura automática concluída. Preenchi somente o que consegui detectar. Confira antes de salvar.');
     } catch(e){
+      setReadingProgress({ type, percent:100, error:true, text:'Leitura não autorizada ou não concluída. Verifique permissão e tente novamente.' });
       notify('Não consegui fazer a leitura automática: '+e.message, true);
-    } finally { setReading(''); }
+    } finally { setTimeout(()=>setReadingProgress(null), 1800); setReading(''); }
   }
   async function fileToData(file, cb){ if(!file) return; const reader = new FileReader(); reader.onload = () => cb(reader.result); reader.readAsDataURL(file); }
   function openCameraReader(type='package'){
@@ -322,7 +333,7 @@ function App(){
   const routeNow = currentRouteState();
   const reservasRouteLocked = active==='reservas' || routeNow.active==='reservas' || isReservasHash();
   const visualActive = reservasRouteLocked ? 'reservas' : active;
-  const props = { data, forms, setForm, action, notify, loadAll, settings, session, can, openConfirm, lookup, lookupUnit, prefillResidentFromContext, readImage, openCameraReader, reading, fileToData, setActive:go, sub, setSub, isAdminReserved, configTab, setConfigTab, del, logout };
+  const props = { data, forms, setForm, action, notify, loadAll, settings, session, can, openConfirm, lookup, lookupUnit, prefillResidentFromContext, readImage, openCameraReader, reading, readingProgress, fileToData, setActive:go, sub, setSub, isAdminReserved, configTab, setConfigTab, del, logout };
   return <div className={shellClass}>
     <button className="mobileMenu" onClick={()=>setMenuOpen(true)}><Menu /></button>{menuOpen && <div className="overlay" onClick={()=>setMenuOpen(false)} />}
     <aside><div className="brand brandCompact brandLogoOnly"><img src="/logo-vitoria-regia-menu.svg" className="brandLogo"/><button className="insideClose menuToggle" title={menuOpen ? 'Fechar menu' : (menuClosed?'Expandir menu':'Recolher menu')} onClick={()=>{ if(window.innerWidth < 861) setMenuOpen(false); else setMenuClosed(!menuClosed); }}>{window.innerWidth < 861 ? <X/> : (menuClosed ? <ChevronRight/> : <PanelLeft/>)}</button></div><nav>{menuItems.map(([key,label,Icon]) => <button key={key} className={visualActive===key?'active':''} aria-current={visualActive===key?'page':undefined} onClick={()=>go(key, key==='reservas'?'calendario':undefined)}><Icon /><span>{label}</span></button>)}</nav><div className="sideBottom"><button onClick={()=>go('perfil')}><UserCheck/><span>Meu perfil</span></button><button onClick={logout}><LogOut/><span>Sair</span></button></div></aside>
@@ -528,7 +539,7 @@ function LoginPage({ forms,setForm,mode,setMode,doLogin,err,setShowPass,showPass
 function Topbar({session,settings,data,setActive}){
   const unread = data?.notifications?.filter?.(n=>!n.read_at)?.length || 0;
   return <header className="topbar mobileAlignedTopbar">
-    <div><small>{settings.CONDO_NAME || 'Condomínio Vitória Régia'}</small><h1>{greetingForUser(session)}! 👋</h1></div>
+    <div><small>{settings.CONDO_NAME || 'Condomínio Vitória Régia'}</small><h1>Painel do condomínio</h1></div>
     <div className="topActions">
       <button className="notificationBell topBell" title="Abrir notificações" onClick={()=>setActive('comunicacao','notificacoes')}><Bell/>{unread>0 && <em>{unread}</em>}</button>
       <button className="profileBadge" onClick={()=>setActive('perfil')}><UserCheck/><span>{firstName(session?.name) || roleLabel(session?.role)}<small>Perfil ativo</small></span></button>
@@ -540,15 +551,29 @@ function BuildingFeed({data,setActive,session,forms,setForm,action,fileToData,lo
   const canManage = ['master','admin','sindico','subsindico'].includes(session?.role);
   const news = Array.isArray(data.buildingNews) ? data.buildingNews : [];
   const notices = Array.isArray(data.notices) ? data.notices : [];
+  const isVisibleNow = (item={}) => {
+    const now = Date.now();
+    const start = item.display_from || item.publish_at || item.scheduled_for;
+    const end = item.expires_at || item.expiration_date;
+    if(start && new Date(start).getTime() > now) return false;
+    if(end && new Date(end).getTime() < now) return false;
+    return true;
+  };
   const feed = [
-    ...news.map(n => ({...n, kind:'news', date:n.created_at || n.updated_at, badge:'Notícia do prédio'})),
-    ...notices.map(n => ({...n, kind:'notice', date:n.created_at, badge:'Comunicado'}))
+    ...news.filter(isVisibleNow).map(n => ({...n, kind:'news', date:n.display_from || n.created_at || n.updated_at, badge:'Notícia do prédio'})),
+    ...notices.filter(isVisibleNow).map(n => ({...n, kind:'notice', date:n.display_from || n.created_at, badge:'Comunicado'}))
   ].sort((a,b)=>new Date(b.date||0)-new Date(a.date||0)).slice(0,6);
   const f=forms.buildingNews || {};
   async function submit(e){
     e.preventDefault();
     const ok = await action('/api/building-news', f, 'Notícia do prédio publicada');
-    if(ok){ setForm('buildingNews',{ title:'', body:'', priority:'normal', photo_data:'' }); loadAll?.(); }
+    if(ok){ setForm('buildingNews',{ title:'', body:'', priority:'normal', photo_data:'', display_from:'', expires_at:'' }); loadAll?.(); }
+  }
+  async function removeFeedItem(item){
+    if(!canManage) return;
+    if(!confirm(`Apagar ${item.kind==='news'?'notícia':'comunicado'}?`)) return;
+    await action(item.kind==='news' ? `/api/building-news/${item.id}` : `/api/notices/${item.id}`, {}, 'Publicação apagada', 'DELETE');
+    await loadAll?.();
   }
   return <section className="buildingFeedPremium">
     <div className="feedHead"><div><span className="eyebrow">Comunicação do prédio</span><h3>Notícias e comunicados</h3><p>Informações importantes do condomínio em um só lugar.</p></div><button type="button" onClick={()=>setActive('comunicacao','comunicados')}><Bell/> Ver comunicados</button></div>
@@ -556,13 +581,15 @@ function BuildingFeed({data,setActive,session,forms,setForm,action,fileToData,lo
       <div><b>Nova notícia do prédio</b><small>Somente síndico/subsíndico/admin podem publicar com foto.</small></div>
       <label>Título<input required value={f.title||''} onChange={e=>setForm('buildingNews',{title:e.target.value})}/></label>
       <label>Prioridade<select value={f.priority||'normal'} onChange={e=>setForm('buildingNews',{priority:e.target.value})}><option value="normal">Normal</option><option value="alta">Alta</option><option value="critica">Crítica</option></select></label>
+      <label>Exibir a partir de<input type="datetime-local" value={f.display_from||''} onChange={e=>setForm('buildingNews',{display_from:e.target.value})}/></label>
+      <label>Expira em<input type="datetime-local" value={f.expires_at||''} onChange={e=>setForm('buildingNews',{expires_at:e.target.value})}/></label>
       <label className="full">Texto<textarea required value={f.body||''} onChange={e=>setForm('buildingNews',{body:e.target.value})}/></label>
       <label className="fileButton"><Camera/> Upload de foto<input type="file" accept="image/*" onChange={e=>fileToData?.(e.target.files?.[0], photo_data=>setForm('buildingNews',{photo_data}))}/></label>
       {f.photo_data && <img src={f.photo_data} className="newsPreview"/>}
       <button><Send/> Publicar notícia</button>
     </form>}
     <div className="feedGrid">{feed.map(item=><article className={item.kind==='news'?'feedCard news':'feedCard notice'} key={`${item.kind}-${item.id}`}>
-      {item.photo_data && <img src={item.photo_data}/>}<span>{item.badge}</span><h4>{item.title}</h4><p>{item.body}</p><small>{item.date ? new Date(item.date).toLocaleString('pt-BR') : ''}</small>
+      {item.photo_data && <img src={item.photo_data}/>}<span>{item.badge}</span><h4>{item.title}</h4><p>{item.body}</p><small>{item.date ? new Date(item.date).toLocaleString('pt-BR') : ''}{item.expires_at ? ` · expira ${new Date(item.expires_at).toLocaleString('pt-BR')}` : ''}</small>{canManage && <button type="button" className="feedDelete" onClick={()=>removeFeedItem(item)}><X/> Apagar</button>}
     </article>)}{!feed.length && <div className="noticeBox ok"><b>Nenhuma notícia publicada ainda</b><small>Os comunicados e notícias do prédio aparecerão aqui.</small></div>}</div>
   </section>;
 }
@@ -582,6 +609,13 @@ function Dashboard({data,setActive,settings,session,forms,setForm,action,fileToD
 function Portaria(props){ return <Panel title="Portaria" subtitle="Encomendas, visitantes, reservas e atendimento rápido." icon={<Package/>}><SubTabs value={props.sub} setValue={props.setSub} tabs={[['encomendas','Encomendas'],['leitor','Leitor Premium'],['visitantes','Visitantes'],['escalas','Escalas'],['mensagens','Mensagens']]} />{props.sub==='encomendas'&&<Packages {...props}/>} {props.sub==='leitor'&&<PackageScannerPremium {...props}/>} {props.sub==='visitantes'&&<Visitors {...props}/>} {props.sub==='escalas'&&<Shifts {...props}/>} {props.sub==='mensagens'&&<Messages {...props}/>}</Panel>; }
 function UnitLookupBox({result,onRegister}){ if(!result) return null; const arr=result.residents || []; return <div className={arr.length?'noticeBox ok':'noticeBox warn'}>{arr.length ? <><b>Morador encontrado</b><small>{arr.map(r=>`${r.name} · ${r.email || r.whatsapp_phone || r.phone || 'sem contato'}`).join(' | ')}</small></> : <><b>Nenhum morador cadastrado nesta unidade.</b><small>Recomende o cadastro antes de confirmar, principalmente para notificação automática.</small>{onRegister && <button type="button" className="buttonlike secondary" onClick={onRegister}><UserPlus/> Abrir cadastro pré-preenchido</button>}</>}</div>; }
 
+
+function OcrProgressBar({progress}){
+  if(!progress) return null;
+  const pct = Math.max(0, Math.min(100, Number(progress.percent || 0)));
+  return <div className={progress.error?'progressWrap ocrProgress warn':'progressWrap ocrProgress'}><div className="progressTop"><b>{progress.text || 'Processando leitura automática...'}</b><small>{pct}%</small></div><div className="progressBar"><span style={{width:pct+'%'}}/></div></div>;
+}
+
 function PackageScanSummary({f={},lookup}){
   const confidence = Number(f.ocr_confidence || 0);
   const status = f.validation_status || 'pendente';
@@ -593,7 +627,7 @@ function PackageScanSummary({f={},lookup}){
   </div>;
 }
 function PackageScannerPremium(props){
-  const {forms,setForm,readImage,openCameraReader,reading,action,openConfirm,lookup,lookupUnit,prefillResidentFromContext,data}=props;
+  const {forms,setForm,readImage,openCameraReader,reading,readingProgress,action,openConfirm,lookup,lookupUnit,prefillResidentFromContext,data}=props;
   const f=forms.package;
   const canAuto = Boolean(f.tracking && f.unit && f.recipient && Number(f.ocr_confidence || 0) >= 80);
   function save(auto=false){
@@ -607,6 +641,7 @@ function PackageScannerPremium(props){
       <label className="fileButton"><ScanLine/> {reading==='package'?'Lendo etiqueta...':'Escolher foto / câmera padrão'}<input type="file" accept="image/*" capture="environment" onChange={e=>readImage(e.target.files?.[0],'package')}/></label>
       <button type="button" className="secondaryAction" onClick={()=>lookupUnit('package', f.unit, f.recipient)}><Search/> Validar unidade/morador</button>
     </div>
+    {readingProgress?.type==='package' && <OcrProgressBar progress={readingProgress}/>}
     <PackageScanSummary f={f} lookup={lookup.package}/>
     <form className="formGrid premiumForm" onSubmit={e=>{e.preventDefault(); save(false);}}>
       <label>Código/rastreio<input required value={f.tracking} onChange={e=>setForm('package',{tracking:e.target.value})}/></label>
@@ -626,7 +661,7 @@ function PackageScannerPremium(props){
   </div>;
 }
 
-function Packages({forms,setForm,action,openConfirm,lookup,lookupUnit,prefillResidentFromContext,readImage,openCameraReader,reading,data,del,loadAll,session}){
+function Packages({forms,setForm,action,openConfirm,lookup,lookupUnit,prefillResidentFromContext,readImage,openCameraReader,reading,readingProgress,data,del,loadAll,session}){
   const f=forms.package;
   const isResident=session?.role==='morador';
   const summary={Código:f.tracking, Destinatário:f.recipient, Unidade:f.unit, 'Canais':Object.entries(f.notification_channels||{}).filter(([,v])=>v).map(([k])=>channelNames[k]||k).join(', ')};
@@ -640,6 +675,7 @@ function Packages({forms,setForm,action,openConfirm,lookup,lookupUnit,prefillRes
       <ChannelChooser settings={data.settings} value={f.notification_channels} onChange={v=>setForm('package',{notification_channels:v})}/><PackageScanSummary f={f} lookup={lookup.package}/>
       <button type="button" className="fileButton cameraOpenButton" onClick={()=>openCameraReader?.('package')}><Camera/> Abrir câmera do celular</button>
       <label className="fileButton"><ScanLine/> {reading==='package'?'Lendo etiqueta...':'Escolher foto/usar câmera padrão'}<input type="file" accept="image/*" capture="environment" onChange={e=>readImage(e.target.files?.[0],'package')}/></label>
+      {readingProgress?.type==='package' && <div className="full"><OcrProgressBar progress={readingProgress}/></div>}
       <div className="formGrid full packageExtraFields"><label>Transportadora<input value={f.carrier || ''} onChange={e=>setForm('package',{carrier:e.target.value,label:e.target.value})}/></label><label>Código de barras/QR<input value={f.barcode || ''} onChange={e=>setForm('package',{barcode:e.target.value})}/></label><label>Confiança OCR<input value={f.ocr_confidence || ''} onChange={e=>setForm('package',{ocr_confidence:e.target.value})}/></label><label>Status da leitura<select value={f.validation_status || 'pendente'} onChange={e=>setForm('package',{validation_status:e.target.value})}><option value="pendente">Pendente</option><option value="validada">Validada</option><option value="revisao">Revisão</option><option value="duplicada">Possível duplicada</option></select></label></div><textarea placeholder="Texto lido automaticamente / observações" value={f.extracted_text} onChange={e=>setForm('package',{extracted_text:e.target.value})}/>
       <button><Plus/> Conferir e cadastrar</button>
     </form>
@@ -726,7 +762,8 @@ function Comunicacao(props){
   async function removeNotification(id){ await action(`/api/notifications/${id}`, {}, 'Notificação apagada', 'DELETE'); }
   async function removeAllNotifications(){ if(!confirm('Apagar todas as notificações visíveis nesta tela?')) return; await action('/api/notifications', {}, 'Todas as notificações foram apagadas', 'DELETE'); }
   async function markRead(id){ await action(`/api/notifications/${id}/read`, {}, 'Notificação marcada como lida'); }
-  function submitNotice(e){ e.preventDefault(); action('/api/notices', notice, 'Comunicado enviado'); }
+  async function submitNotice(e){ e.preventDefault(); const ok=await action('/api/notices', notice, 'Comunicado enviado e usuários notificados'); if(ok) setForm('notice',{ title:'', body:'', priority:'normal', target_role:'todos', target_criteria:{}, display_from:'', expires_at:'' }); }
+  async function removeNotice(id){ if(!confirm('Apagar este comunicado?')) return; await action(`/api/notices/${id}`, {}, 'Comunicado apagado', 'DELETE'); await loadAll?.(); }
   return <Panel title="Comunicação" subtitle="Comunicados, notificações e testes de envio do condomínio." icon={<Bell/>}>
     <SubTabs value={activeTab} setValue={changeTab} tabs={availableTabs}/>
     {activeTab==='notificacoes' && <div className="stack communicationPanel">
@@ -744,14 +781,17 @@ function Comunicacao(props){
         <label>Título *<input required value={notice.title||''} onChange={e=>setForm('notice',{title:e.target.value})}/></label>
         <label>Prioridade<select value={notice.priority||'normal'} onChange={e=>setForm('notice',{priority:e.target.value})}><option value="normal">Normal</option><option value="alta">Alta</option><option value="critica">Crítica</option></select></label>
         <label>Público<select value={notice.target_role||'todos'} onChange={e=>setForm('notice',{target_role:e.target.value})}><option value="todos">Todos</option><option value="morador">Moradores</option><option value="sindico">Síndico/Administração</option><option value="portaria">Portaria</option></select></label>
+        <label>Exibir a partir de<input type="datetime-local" value={notice.display_from||''} onChange={e=>setForm('notice',{display_from:e.target.value})}/></label>
+        <label>Expira em<input type="datetime-local" value={notice.expires_at||''} onChange={e=>setForm('notice',{expires_at:e.target.value})}/></label>
         <label className="full">Mensagem *<textarea required value={notice.body||''} onChange={e=>setForm('notice',{body:e.target.value})} placeholder="Digite o comunicado que será exibido no sistema e enviado aos canais configurados."/></label>
         <div className="full criteriaBox"><b>Critérios de moradores</b><small>Use somente quando quiser segmentar moradores cadastrados com essas características.</small><div className="channels">{criteria.map(c=><label key={c.key}><input type="checkbox" checked={Boolean(targetCriteria[c.key])} onChange={e=>setForm('notice',{target_criteria:{...targetCriteria,[c.key]:e.target.checked}})}/>{c.label}</label>)}</div></div>
         <button><Send/> Enviar comunicado</button>
       </form>}
       <Table rows={notices} render={n=><>
         <td><b>{n.title}</b><small>{n.body}</small></td>
-        <td><Status ok={String(n.priority||'normal')==='normal'}>{n.priority || 'normal'}</Status><small>{date(n.created_at)}</small></td>
+        <td><Status ok={String(n.priority||'normal')==='normal'}>{n.priority || 'normal'}</Status><small>{date(n.display_from || n.created_at)}{n.expires_at ? ` · expira ${date(n.expires_at)}` : ''}</small></td>
         <td><Code>{n.target_role || 'todos'}</Code></td>
+        {canManageNotices && <td className="actions"><button type="button" className="dangerAction" onClick={()=>removeNotice(n.id)}><Trash2/> Apagar</button></td>}
       </>}/>
     </div>}
     {activeTab==='testes' && <NotifyTests forms={forms} setForm={setForm} action={action} data={data}/>} 
@@ -827,7 +867,7 @@ function FinanceDashboardPremium({data,setSub,docs=[]}){
   </div>;
 }
 function BalancetesFinanceiros({docs=[]}){
-  return <div className="stack financeStatements"><div className="noticeBox ok"><b><FileText/> Balancetes e prestação de contas</b><small>O sistema procura automaticamente documentos com título/descrição como balancete, demonstrativo, prestação de contas, financeiro ou contábil.</small></div><Table rows={docs} render={d=><><td><b>{d.title||d.file_name}</b><small>{d.description||d.file_name}</small></td><td><Status ok={d.is_public}>{d.is_public?'Público':'Restrito'}</Status><small>{date(d.created_at)}</small></td><td><a className="buttonlike" href={documentUrl(d)} target="_blank" rel="noreferrer"><Download/> Abrir</a></td></>}/>{!docs.length&&<div className="noticeBox warn"><b>Nenhum balancete localizado nos documentos carregados</b><small>Não consigo verificar o banco de produção daqui. Esta tela vai exibir automaticamente o balancete quando ele estiver na tabela de documentos com título/descrição correspondente.</small></div>}</div>;
+  return <div className="stack financeStatements"><div className="noticeBox ok"><b><FileText/> Balancetes e prestação de contas</b><small>O sistema organiza balancetes por competência/data. Para PDF escaneado, informe a competência ao enviar o documento ou use título como 'Balancete Abril/2025'.</small></div><Table rows={docs} render={d=><><td><b>{d.title||d.file_name}</b><small>{d.description||d.file_name}</small></td><td><Status ok={d.is_public}>{d.is_public?'Público':'Restrito'}</Status><small>{documentTypeLabel(d.document_type)} · {competenceLabel(d)}</small></td><td><a className="buttonlike" href={documentUrl(d)} target="_blank" rel="noreferrer"><Download/> Abrir</a></td></>}/>{!docs.length&&<div className="noticeBox warn"><b>Nenhum balancete localizado nos documentos carregados</b><small>Não consigo verificar o banco de produção daqui. Esta tela vai exibir automaticamente o balancete quando ele estiver na tabela de documentos com título/descrição correspondente.</small></div>}</div>;
 }
 function Finance({data,forms,setForm,action,openConfirm}){
   const f=forms.finance || {};
@@ -962,11 +1002,37 @@ function findReservationRuleDocs(documents=[], areaName=''){
     return isReservation && areaMatches;
   }).slice(0,4);
 }
+function parseCompetenceFromDocument(d={}){
+  const explicit = d.competence_date || d.reference_date;
+  if(explicit) return String(explicit).slice(0,10);
+  const hay = normalizeTextForSearch([d.title,d.description,d.file_name].join(' '));
+  const monthMap = { janeiro:'01', fevereiro:'02', marco:'03', abril:'04', maio:'05', junho:'06', julho:'07', agosto:'08', setembro:'09', outubro:'10', novembro:'11', dezembro:'12', jan:'01', fev:'02', mar:'03', abr:'04', mai:'05', jun:'06', jul:'07', ago:'08', set:'09', out:'10', nov:'11', dez:'12' };
+  let m = hay.match(/(janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro|jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[\s\/-]*(20\d{2}|19\d{2})/);
+  if(m) return `${m[2]}-${monthMap[m[1]] || '01'}-01`;
+  m = hay.match(/(20\d{2}|19\d{2})[\s_\/-]?(0?[1-9]|1[0-2])/);
+  if(m) return `${m[1]}-${String(m[2]).padStart(2,'0')}-01`;
+  m = hay.match(/(0?[1-9]|1[0-2])[\s_\/-](20\d{2}|19\d{2})/);
+  if(m) return `${m[2]}-${String(m[1]).padStart(2,'0')}-01`;
+  return d.created_at || '';
+}
+function competenceLabel(d={}){
+  const iso=parseCompetenceFromDocument(d);
+  if(!iso) return 'Sem competência informada';
+  const dt=new Date(String(iso).slice(0,10)+'T12:00:00');
+  return Number.isNaN(dt.getTime()) ? 'Sem competência informada' : dt.toLocaleDateString('pt-BR',{month:'long', year:'numeric'});
+}
+function documentTypeLabel(t=''){
+  return ({balancete:'Balancete', demonstrativo:'Demonstrativo', prestacao_contas:'Prestação de contas', reserva_salao:'Reserva do salão', regimento:'Regimento', geral:'Documento'}[String(t||'').toLowerCase()] || 'Documento');
+}
+function sortDocumentsByCompetence(list=[]){
+  return [...list].sort((a,b)=>String(parseCompetenceFromDocument(b)||'').localeCompare(String(parseCompetenceFromDocument(a)||'')) || Number(b.id||0)-Number(a.id||0));
+}
 function findFinancialDocs(documents=[]){
-  return (Array.isArray(documents) ? documents : []).filter(d => {
-    const hay = normalizeTextForSearch([d.title,d.description,d.file_name,d.audience].join(' '));
+  const docs=(Array.isArray(documents) ? documents : []).filter(d => {
+    const hay = normalizeTextForSearch([d.document_type,d.title,d.description,d.file_name,d.audience].join(' '));
     return /balancete|balanco|balan[cç]o|demonstrativo|prestacao|presta[cç][aã]o|financeiro|contabil|contábil|receita|despesa|extrato/.test(hay);
-  }).slice(0,8);
+  });
+  return sortDocumentsByCompetence(docs).slice(0,24);
 }
 function ReservationRulesPanel({area={}, documents=[]}){
   const ruleText = String(area?.rules_document || '').trim();
@@ -1337,8 +1403,18 @@ function Updates({data,forms,setForm,notify,loadAll,isAdminReserved}){
   }
   return <div className="updatePanel"><div className="updateDrop premiumUpdate"><UploadCloud/><h3>Atualizar pelo site</h3><p>Envie aqui o ZIP oficial de atualização. O sistema valida o token interno e o hash SHA-256, aplica a atualização e retorna para a tela de login para carregar a nova versão.</p><div className="secureUpdateNote"><ShieldCheck/><small>O token de validação fica protegido dentro do ZIP oficial e não é exibido na tela.</small></div><button type="button" className="fileButton updateZipButton" onClick={()=>fileInputRef.current?.click()}><UploadCloud/> Selecionar ZIP</button><input ref={fileInputRef} type="file" accept=".zip,application/zip,application/x-zip-compressed" style={{display:'none'}} onChange={e=>upload(e.target.files?.[0])}/>{selectedFileName&&<div className="noticeBox"><b>Arquivo selecionado</b><small>{selectedFileName}</small></div>}{!isAdminReserved&&<div className="noticeBox warn"><b>Acesso reservado</b><small>O botão abre o seletor, mas o envio só é aceito pelo backend para usuário master/admin.</small></div>}{progress>0&&<div className="progressWrap"><div className="progressTop"><b>{progressText}</b><small>{progress}%</small></div><div className="progressBar"><span style={{width:progress+'%'}}/></div></div>}<div className="noticeBox ok"><b>Observação importante</b><small>Após aplicar uma atualização, entre novamente no sistema. Isso evita carregar telas antigas do navegador durante o deploy.</small></div></div><Table rows={data.systemUpdates} render={u=><><td><b>{u.title||u.version||u.update_code}</b><small>{u.update_code}</small></td><td><Status ok={['validado','aplicado','publicada'].includes(u.status)}>{u.status}</Status></td><td><Code>{u.manifest?.signature ? 'Assinatura digital' : 'Token interno + hash'}</Code></td><td className="actions">{isAdminReserved&&<button className="confirmAction" onClick={()=>applyUpdate(u)}>Aplicar</button>}</td></>}/></div>;
 }
-function Documents({data}){ const rows=data.documents||[]; return <div className="stack"><div className="noticeBox ok"><b>Documentos do condomínio</b><small>Documentos públicos ficam disponíveis para todos os usuários. Documentos restritos aparecem somente para perfis autorizados.</small></div><Table rows={rows} render={d=><><td><b>{d.title}</b><small>{d.description || d.file_name}</small></td><td><Status ok={d.is_public}>{d.is_public?'Público':'Restrito'}</Status><small>{d.audience || 'geral'}</small></td><td><a className="buttonlike" href={`${API}/api/documents/${d.id}/download`} target="_blank" rel="noreferrer"><Download/> Baixar</a></td></>}/></div>; }
-function DocumentsSettings({forms,setForm,action,loadAll}){ const [file,setFile]=useState(null); async function upload(e){ e.preventDefault(); if(!file) return alert('Selecione um arquivo.'); const fd=new FormData(); fd.append('document',file); fd.append('title',forms.document.title||file.name); fd.append('description',forms.document.description||''); fd.append('audience',forms.document.audience||'publico'); fd.append('is_public',String(forms.document.is_public!==false)); await request('/api/documents/upload',{method:'POST',body:fd,raw:true}); await loadAll?.(); alert('Documento enviado ao sistema.'); } return <SettingCard title="Documentos do condomínio" icon={<FileUp/>}><form className="formGrid" onSubmit={upload}><label>Título<input value={forms.document.title||''} onChange={e=>setForm('document',{title:e.target.value})}/></label><label>Público<select value={forms.document.audience||'publico'} onChange={e=>setForm('document',{audience:e.target.value})}><option value="publico">Público geral</option><option value="morador">Moradores</option><option value="portaria">Portaria</option><option value="sindico">Síndico</option><option value="restrito">Restrito</option></select></label><label className="check"><input type="checkbox" checked={forms.document.is_public!==false} onChange={e=>setForm('document',{is_public:e.target.checked})}/>Documento público para usuários</label><label className="full">Descrição<textarea value={forms.document.description||''} onChange={e=>setForm('document',{description:e.target.value})}/></label><label className="fileButton"><UploadCloud/> Selecionar arquivo<input type="file" onChange={e=>setFile(e.target.files?.[0]||null)}/></label><button><UploadCloud/> Enviar documento</button></form></SettingCard>; }
+
+function inferDocumentTypeFromText(text=''){
+  const hay=normalizeTextForSearch(text);
+  if(/balancete|balanco|balan[cç]o/.test(hay)) return 'balancete';
+  if(/demonstrativo/.test(hay)) return 'demonstrativo';
+  if(/prestacao|presta[cç][aã]o/.test(hay)) return 'prestacao_contas';
+  if(/reserva|salao|sal[aã]o|festas|termo/.test(hay)) return 'reserva_salao';
+  if(/regimento|norma/.test(hay)) return 'regimento';
+  return 'geral';
+}
+function Documents({data}){ const rows=data.documents||[]; return <div className="stack"><div className="noticeBox ok"><b>Documentos do condomínio</b><small>Documentos públicos ficam disponíveis para todos os usuários. Documentos restritos aparecem somente para perfis autorizados.</small></div><Table rows={rows} render={d=><><td><b>{d.title}</b><small>{d.description || d.file_name}</small><small>{documentTypeLabel(d.document_type)} · {competenceLabel(d)}</small></td><td><Status ok={d.is_public}>{d.is_public?'Público':'Restrito'}</Status><small>{d.audience || 'geral'}</small></td><td><a className="buttonlike" href={`${API}/api/documents/${d.id}/download`} target="_blank" rel="noreferrer"><Download/> Baixar</a></td></>}/></div>; }
+function DocumentsSettings({forms,setForm,action,loadAll}){ const [file,setFile]=useState(null); async function upload(e){ e.preventDefault(); if(!file) return alert('Selecione um arquivo.'); const fd=new FormData(); fd.append('document',file); fd.append('title',forms.document.title||file.name); fd.append('description',forms.document.description||''); fd.append('audience',forms.document.audience||'publico'); fd.append('is_public',String(forms.document.is_public!==false)); fd.append('document_type',forms.document.document_type||inferDocumentTypeFromText(forms.document.title||file.name)); fd.append('competence_date',forms.document.competence_date||''); fd.append('reference_date',forms.document.reference_date||forms.document.competence_date||''); await request('/api/documents/upload',{method:'POST',body:fd,raw:true}); await loadAll?.(); alert('Documento enviado ao sistema.'); } return <SettingCard title="Documentos do condomínio" icon={<FileUp/>}><div className="noticeBox ok"><b>Organização por tipo e competência</b><small>Para balancetes escaneados, informe a competência para aparecerem corretamente em Financeiro &gt; Balancetes. Exemplo: Abril/2025 = 2025-04-01.</small></div><form className="formGrid" onSubmit={upload}><label>Título<input value={forms.document.title||''} onChange={e=>setForm('document',{title:e.target.value, document_type:forms.document.document_type||inferDocumentTypeFromText(e.target.value)})}/></label><label>Tipo de documento<select value={forms.document.document_type||'geral'} onChange={e=>setForm('document',{document_type:e.target.value})}><option value="geral">Documento geral</option><option value="balancete">Balancete</option><option value="demonstrativo">Demonstrativo financeiro</option><option value="prestacao_contas">Prestação de contas</option><option value="reserva_salao">Reserva/termo do Salão de Festas</option><option value="regimento">Regimento/Normas</option></select></label><label>Competência / mês de referência<input type="date" value={forms.document.competence_date||''} onChange={e=>setForm('document',{competence_date:e.target.value, reference_date:e.target.value})}/></label><label>Público<select value={forms.document.audience||'publico'} onChange={e=>setForm('document',{audience:e.target.value})}><option value="publico">Público geral</option><option value="morador">Moradores</option><option value="portaria">Portaria</option><option value="sindico">Síndico</option><option value="restrito">Restrito</option></select></label><label className="check"><input type="checkbox" checked={forms.document.is_public!==false} onChange={e=>setForm('document',{is_public:e.target.checked})}/>Documento público para usuários</label><label className="full">Descrição<textarea value={forms.document.description||''} onChange={e=>setForm('document',{description:e.target.value})}/></label><label className="fileButton"><UploadCloud/> Selecionar arquivo<input type="file" onChange={e=>setFile(e.target.files?.[0]||null)}/></label><button><UploadCloud/> Enviar documento</button></form></SettingCard>; }
 function OccurrenceBook({data,forms,setForm,action,session}){ const f=forms.occurrence||{}; const isManager=['sindico','subsindico','admin','master','portaria'].includes(session?.role); return <Panel title="Livro de Ocorrências" subtitle="Registre queixas, situações e solicitações de forma organizada e rastreável." icon={<BookOpen/>}><form className="formGrid premiumForm" onSubmit={e=>{e.preventDefault(); action('/api/occurrence-book', f, 'Ocorrência registrada e encaminhada ao síndico/subsíndico');}}><label>Título *<input required value={f.title||''} onChange={e=>setForm('occurrence',{title:e.target.value})}/></label><label>Local / unidade<input placeholder={session?.unit||'Ex.: 602, garagem, corredor'} value={f.unit||session?.unit||''} onChange={e=>setForm('occurrence',{unit:e.target.value})}/></label><label>Categoria<select value={f.category||'queixa'} onChange={e=>setForm('occurrence',{category:e.target.value})}><option value="queixa">Queixa</option><option value="barulho">Barulho</option><option value="convivencia">Convivência</option><option value="seguranca">Segurança</option><option value="manutencao">Manutenção</option><option value="outro">Outro</option></select></label><label>Prioridade<select value={f.priority||'normal'} onChange={e=>setForm('occurrence',{priority:e.target.value})}><option value="normal">Normal</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select></label><label className="full">Descrição *<textarea required value={f.description||''} onChange={e=>setForm('occurrence',{description:e.target.value})} placeholder="Descreva com clareza o que aconteceu, onde ocorreu e quando foi percebido."/></label><button><Send/> Registrar ocorrência</button></form><Table rows={data.occurrenceBook||[]} render={o=><><td><b>{o.title}</b><small>{o.description}</small></td><td>{o.unit||'-'}<small>{o.category} · {o.priority}</small></td><td><Status ok={o.status==='fechada'}>{o.status}</Status><small>{date(o.created_at)}</small></td>{isManager&&<td className="actions"><button onClick={()=>{const response=prompt('Resposta ao morador'); if(response) action(`/api/occurrence-book/${o.id}/respond`,{response,status:'respondida'},'Ocorrência respondida');}}>Responder</button><button onClick={()=>action(`/api/occurrence-book/${o.id}/respond`,{response:o.response||'Fechada pelo painel',status:'fechada'},'Ocorrência fechada')}>Fechar</button></td>}</>}/></Panel>; }
 function SupportPage({data,forms,setForm,action,session}){ const f=forms.support||{}; return <Panel title="Suporte e Ajuda" subtitle="Perguntas frequentes, manuais e contato com o suporte do sistema." icon={<HelpCircle/>}><div className="supportGrid"><section className="subpanel"><h3><MessageSquareText/> Falar com suporte</h3><p>Envie uma dúvida ou solicitação. O sistema registra o pedido e notifica os responsáveis pelos canais disponíveis.</p><form className="formGrid" onSubmit={e=>{e.preventDefault(); action('/api/support-tickets', f, 'Pedido de suporte enviado');}}><label>Assunto *<input required value={f.subject||''} onChange={e=>setForm('support',{subject:e.target.value})}/></label><label>Prioridade<select value={f.priority||'normal'} onChange={e=>setForm('support',{priority:e.target.value})}><option value="normal">Normal</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select></label><label className="full">Mensagem *<textarea required value={f.body||''} onChange={e=>setForm('support',{body:e.target.value})}/></label><button><Send/> Enviar suporte</button></form></section><section className="subpanel"><h3><FileSearch/> Perguntas frequentes</h3>{(data.faqs||[]).map(q=><details className="faqItem" key={q.id}><summary>{q.question}</summary><p>{q.answer}</p></details>)}</section></div><Table rows={data.supportTickets||[]} render={t=><><td><b>{t.subject}</b><small>{t.body}</small></td><td><Status ok={t.status==='respondido'}>{t.status}</Status><small>{date(t.created_at)}</small></td><td>{t.response||'-'}</td></>}/></Panel>; }
 function FinanceImport({forms,setForm,action,loadAll}){ const f=forms.financeImport||{}; async function preview(){ const r=await post('/api/finance/import-document',{text:f.text, unit:f.unit, preview:true}); setForm('financeImport',{previewRows:r.rows||[]}); } async function importRows(){ await action('/api/finance/import-document',{text:f.text, unit:f.unit, preview:false},'Lançamentos importados para o financeiro'); await loadAll?.(); } return <div className="stack"><div className="noticeBox ok"><b>Importar lançamentos de documentos</b><small>Cole o texto lido de balancetes, notas ou documentos financeiros. O sistema identifica datas, descrições e valores e permite importar para o financeiro.</small></div><div className="formGrid premiumForm"><label>Unidade relacionada, se houver<input value={f.unit||''} onChange={e=>setForm('financeImport',{unit:e.target.value})}/></label><label className="full">Texto extraído do documento<textarea rows="10" value={f.text||''} onChange={e=>setForm('financeImport',{text:e.target.value})} placeholder="Cole aqui o texto do balancete, nota ou demonstrativo."/></label><button type="button" onClick={preview}><Search/> Pré-visualizar lançamentos</button><button type="button" className="confirmAction" onClick={importRows}><UploadCloud/> Importar para o financeiro</button></div><Table rows={f.previewRows||[]} render={r=><><td><b>{r.title}</b><small>{r.category}</small></td><td>{money(r.amount)}</td><td>{r.due_date||'-'}</td><td><Status ok={r.type==='receita'}>{r.type}</Status></td></>}/></div>; }
@@ -1367,7 +1443,7 @@ function Status({ok,children}){ return <span className={'status '+(ok?'ok':'warn
 function Code({children}){ return <code className="code">{children}</code>; }
 function Table({rows=[],render}){ return <div className="tableWrap"><table><tbody>{rows?.length?rows.map((r,i)=><tr key={r.id||i}>{render(r)}</tr>):<tr><td><small>Nenhum registro encontrado.</small></td></tr>}</tbody></table></div>; }
 function ConfirmModal({confirm,onCancel,onConfirm}){ return <div className="modalOverlay"><div className="confirmModal"><h2><CheckCircle2/> {confirm.title}</h2><p>Confira os dados antes de gravar. Essa etapa evita cadastros duplicados ou lançamentos incorretos.</p><div className="confirmList">{Object.entries(confirm.fields||{}).map(([k,v])=><span key={k}>{k}<b>{String(v||'-')}</b></span>)}</div><div className="modalActions"><button onClick={onCancel}>Voltar e corrigir</button><button className="primary" onClick={onConfirm}>Confirmar cadastro</button></div></div></div>; }
-function MobileViewportHint(){ return <div className="mobileViewportHint"><Smartphone/><span>Visualização premium: em celulares, use o aparelho na horizontal para tabelas, reservas e financeiro. Em tablets, o modo paisagem fica mais próximo da versão desktop.</span></div>; }
+function MobileViewportHint(){ const [closed,setClosed]=useState(()=>localStorage.getItem('vr_mobile_hint_closed')==='1'); if(closed) return null; return <div className="mobileViewportHint"><Smartphone/><span><b>Visualização premium</b> · Para tabelas, reservas e financeiro, gire o celular para a horizontal. No tablet, o modo paisagem fica igual ao desktop.</span><button type="button" aria-label="Fechar aviso" onClick={()=>{localStorage.setItem('vr_mobile_hint_closed','1'); setClosed(true);}}><X/></button></div>; }
 function Footer(){ return <footer className="appFooter"><span>{VERSION}</span><span>Desenvolvido por <b>CrewCheck</b> · Todos os direitos reservados</span></footer>; }
 
 createRoot(document.getElementById('root')).render(<App/>);

@@ -17,7 +17,7 @@ import { randomBytes, createHash, verify as cryptoVerify } from 'node:crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v12.7.7';
+const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v12.7.8';
 const DEFAULT_TELEGRAM_CHAT_ID = '8188648317';
 const JWT_SECRET = process.env.JWT_SECRET || 'troque-este-segredo-em-producao';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/vitoriaregia';
@@ -153,6 +153,27 @@ async function ensureCriticalLegacySchema() {
 }
 async function audit(actor, action, entity='') { await q('INSERT INTO audit(actor,action,entity) VALUES($1,$2,$3)', [actor || 'sistema', action, entity]).catch(()=>null); }
 function randomCode(len=6) { return randomBytes(12).toString('hex').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0, len); }
+
+function inferDocumentType(text=''){
+  const hay = String(text||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  if(/balancete|balanco|balan[cç]o/.test(hay)) return 'balancete';
+  if(/demonstrativo/.test(hay)) return 'demonstrativo';
+  if(/prestacao|presta[cç][aã]o/.test(hay)) return 'prestacao_contas';
+  if(/reserva|salao|salao|festas|termo/.test(hay)) return 'reserva_salao';
+  if(/regimento|norma/.test(hay)) return 'regimento';
+  return 'geral';
+}
+function parseCompetenceDate(text=''){
+  const raw = String(text||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const monthMap = { janeiro:'01', fevereiro:'02', marco:'03', abril:'04', maio:'05', junho:'06', julho:'07', agosto:'08', setembro:'09', outubro:'10', novembro:'11', dezembro:'12', jan:'01', fev:'02', mar:'03', abr:'04', mai:'05', jun:'06', jul:'07', ago:'08', set:'09', out:'10', nov:'11', dez:'12' };
+  let m = raw.match(/(janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro|jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[\s\/_-]*(20\d{2}|19\d{2})/);
+  if(m) return `${m[2]}-${monthMap[m[1]]||'01'}-01`;
+  m = raw.match(/(20\d{2}|19\d{2})[\s\/_-]?(0?[1-9]|1[0-2])/);
+  if(m) return `${m[1]}-${String(m[2]).padStart(2,'0')}-01`;
+  m = raw.match(/(0?[1-9]|1[0-2])[\s\/_-](20\d{2}|19\d{2})/);
+  if(m) return `${m[2]}-${String(m[1]).padStart(2,'0')}-01`;
+  return null;
+}
 function onlyDigits(v='') { return String(v||'').replace(/\D/g,''); }
 function requireFields(body, fields) { const missing = fields.filter(f => !String(body[f] ?? '').trim()); if (missing.length) { const err = new Error('Preencha: ' + missing.join(', ')); err.status = 400; throw err; } }
 function splitList(value='') { if (Array.isArray(value)) return value.filter(Boolean); return String(value||'').split(/[;,\n]/).map(x=>x.trim()).filter(Boolean); }
@@ -392,6 +413,9 @@ CREATE TABLE IF NOT EXISTS notices(
   priority TEXT DEFAULT 'normal',
   target_role TEXT DEFAULT 'todos',
   target_criteria JSONB DEFAULT '{}'::jsonb,
+  display_from TIMESTAMP,
+  expires_at TIMESTAMP,
+  notified_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT now()
 );
 CREATE TABLE IF NOT EXISTS building_news(
@@ -400,6 +424,8 @@ CREATE TABLE IF NOT EXISTS building_news(
   body TEXT NOT NULL,
   priority TEXT DEFAULT 'normal',
   photo_data TEXT,
+  display_from TIMESTAMP,
+  expires_at TIMESTAMP,
   created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
   created_at TIMESTAMP DEFAULT now(),
   updated_at TIMESTAMP DEFAULT now()
@@ -596,6 +622,23 @@ CREATE TABLE IF NOT EXISTS system_updates(
   error TEXT,
   created_at TIMESTAMP DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS documents(
+  id SERIAL PRIMARY KEY,
+  title TEXT,
+  description TEXT,
+  audience TEXT DEFAULT 'publico',
+  is_public BOOLEAN DEFAULT true,
+  document_type TEXT DEFAULT 'geral',
+  competence_date DATE,
+  reference_date DATE,
+  file_name TEXT,
+  mime_type TEXT DEFAULT 'application/octet-stream',
+  file_size INTEGER DEFAULT 0,
+  file_data BYTEA,
+  uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMP DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS manuals(
   id SERIAL PRIMARY KEY,
   title TEXT,
@@ -674,7 +717,7 @@ CREATE TABLE IF NOT EXISTS telegram_callback_events(
 
     // notices / news / invoices / notifications / incidents / emergency
     ['building_news','title TEXT'], ['building_news','body TEXT'], ['building_news',"priority TEXT DEFAULT 'normal'"], ['building_news','photo_data TEXT'], ['building_news','created_by INTEGER'], ['building_news','created_at TIMESTAMP DEFAULT now()'], ['building_news','updated_at TIMESTAMP DEFAULT now()'],
-    ['notices','title TEXT'], ['notices','body TEXT'], ['notices','channel TEXT DEFAULT \'app\''], ['notices','priority TEXT DEFAULT \'normal\''], ['notices','target_role TEXT DEFAULT \'todos\''], ['notices',"target_criteria JSONB DEFAULT '{}'::jsonb"], ['notices','created_at TIMESTAMP DEFAULT now()'],
+    ['notices','title TEXT'], ['notices','body TEXT'], ['notices','channel TEXT DEFAULT \'app\''], ['notices','priority TEXT DEFAULT \'normal\''], ['notices','target_role TEXT DEFAULT \'todos\''], ['notices',"target_criteria JSONB DEFAULT '{}'::jsonb"], ['notices','display_from TIMESTAMP'], ['notices','expires_at TIMESTAMP'], ['notices','notified_at TIMESTAMP'], ['notices','created_at TIMESTAMP DEFAULT now()'],
     ['invoices','supplier TEXT'], ['invoices','document_number TEXT'], ['invoices','access_key TEXT'], ['invoices','amount NUMERIC(12,2) DEFAULT 0'], ['invoices','issue_date DATE'], ['invoices','due_date DATE'], ['invoices','unit TEXT'], ['invoices','resident_id INTEGER'], ['invoices','category TEXT DEFAULT \'nota fiscal\''], ['invoices','status TEXT DEFAULT \'registrada\''], ['invoices','extracted_text TEXT'], ['invoices','file_name TEXT'], ['invoices','created_at TIMESTAMP DEFAULT now()'],
     ['notifications','user_id INTEGER'], ['notifications','resident_id INTEGER'], ['notifications','title TEXT'], ['notifications','body TEXT'], ['notifications','channel TEXT DEFAULT \'app\''], ['notifications','channels JSONB DEFAULT \'{}\'::jsonb'], ['notifications','status TEXT DEFAULT \'nova\''], ['notifications','action_url TEXT'], ['notifications','payload JSONB DEFAULT \'{}\'::jsonb'], ['notifications','read_at TIMESTAMP'], ['notifications','created_at TIMESTAMP DEFAULT now()'],
     ['incidents','title TEXT'], ['incidents','description TEXT'], ['incidents','unit TEXT'], ['incidents','severity TEXT DEFAULT \'normal\''], ['incidents','status TEXT DEFAULT \'aberta\''], ['incidents','created_at TIMESTAMP DEFAULT now()'], ['incidents','closed_at TIMESTAMP'],
@@ -689,7 +732,7 @@ CREATE TABLE IF NOT EXISTS telegram_callback_events(
     ['push_subscriptions','user_id INTEGER'], ['push_subscriptions','endpoint TEXT'], ['push_subscriptions','payload JSONB'], ['push_subscriptions','created_at TIMESTAMP DEFAULT now()'],
     ['system_updates','update_code TEXT'], ['system_updates','version TEXT'], ['system_updates','title TEXT'], ['system_updates','notes TEXT'], ['system_updates','from_version TEXT'], ['system_updates','to_version TEXT'], ['system_updates','status TEXT DEFAULT \'disponivel\''], ['system_updates','validation_token_hash TEXT'], ['system_updates','payload_sha256 TEXT'], ['system_updates','manifest JSONB DEFAULT \'{}\'::jsonb'], ['system_updates','package_data BYTEA'], ['system_updates','announced_at TIMESTAMP'], ['system_updates','validated_at TIMESTAMP'], ['system_updates','applied_at TIMESTAMP'], ['system_updates','created_by INTEGER'], ['system_updates','applied_by INTEGER'], ['system_updates','error TEXT'], ['system_updates','created_at TIMESTAMP DEFAULT now()'],
     ['manuals','title TEXT'], ['manuals',"audience TEXT DEFAULT 'geral'"], ['manuals','file_name TEXT'], ['manuals',"mime_type TEXT DEFAULT 'application/pdf'"], ['manuals','file_size INTEGER DEFAULT 0'], ['manuals','file_data BYTEA'], ['manuals','uploaded_by INTEGER'], ['manuals','created_at TIMESTAMP DEFAULT now()'],
-    ['documents','description TEXT'], ['documents',"audience TEXT DEFAULT 'publico'"], ['documents','is_public BOOLEAN DEFAULT true'], ['documents','file_name TEXT'], ['documents',"mime_type TEXT DEFAULT 'application/octet-stream'"], ['documents','file_size INTEGER DEFAULT 0'], ['documents','file_data BYTEA'], ['documents','uploaded_by INTEGER'], ['documents','created_at TIMESTAMP DEFAULT now()'],
+    ['documents','description TEXT'], ['documents',"audience TEXT DEFAULT 'publico'"], ['documents',"document_type TEXT DEFAULT 'geral'"], ['documents','competence_date DATE'], ['documents','reference_date DATE'], ['documents','is_public BOOLEAN DEFAULT true'], ['documents','file_name TEXT'], ['documents',"mime_type TEXT DEFAULT 'application/octet-stream'"], ['documents','file_size INTEGER DEFAULT 0'], ['documents','file_data BYTEA'], ['documents','uploaded_by INTEGER'], ['documents','created_at TIMESTAMP DEFAULT now()'],
     ['occurrence_book','title TEXT'], ['occurrence_book','description TEXT'], ['occurrence_book','unit TEXT'], ['occurrence_book',"category TEXT DEFAULT 'queixa'"], ['occurrence_book',"priority TEXT DEFAULT 'normal'"], ['occurrence_book',"status TEXT DEFAULT 'aberta'"], ['occurrence_book','created_by INTEGER'], ['occurrence_book','assigned_to INTEGER'], ['occurrence_book','response TEXT'], ['occurrence_book','created_at TIMESTAMP DEFAULT now()'], ['occurrence_book','updated_at TIMESTAMP DEFAULT now()'], ['occurrence_book','closed_at TIMESTAMP'],
     ['support_tickets','subject TEXT'], ['support_tickets','body TEXT'], ['support_tickets',"priority TEXT DEFAULT 'normal'"], ['support_tickets',"target TEXT DEFAULT 'suporte'"], ['support_tickets',"status TEXT DEFAULT 'aberto'"], ['support_tickets','created_by INTEGER'], ['support_tickets','response TEXT'], ['support_tickets','created_at TIMESTAMP DEFAULT now()'], ['support_tickets','updated_at TIMESTAMP DEFAULT now()'],
     ['faqs','question TEXT'], ['faqs','answer TEXT'], ['faqs','active BOOLEAN DEFAULT true'], ['faqs','sort_order INTEGER DEFAULT 0'], ['faqs','created_at TIMESTAMP DEFAULT now()'],
@@ -710,7 +753,7 @@ CREATE TABLE IF NOT EXISTS telegram_callback_events(
   await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_reservation_slot ON reservations(area, reserved_for, start_time, end_time) WHERE status <> 'cancelada'").catch(e => console.warn('Índice de reservas ignorado:', e.message));
 
   const defaultSettings = {
-    THEME_ACCENT: '#126b5f', THEME_TEXT_SIZE: 'comfort', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light', APP_VERSION:'Vitória Régia Pro v12.7.7',
+    THEME_ACCENT: '#126b5f', THEME_TEXT_SIZE: 'comfort', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light', APP_VERSION:'Vitória Régia Pro v12.7.8',
     CONDO_NAME: 'Condomínio Vitória Régia', DEVELOPED_BY: 'CrewCheck', CREWCHECK_SITE: 'https://www.crewcheck.online/', CREWCHECK_FOOTER: 'Desenvolvido por CrewCheck - todos os direitos reservados', CONDO_ADDRESS: '', WEATHER_CITY: 'João Pessoa', WEATHER_LAT: '-7.1195', WEATHER_LON: '-34.8450',
     ELEVATOR_OPERATOR_NAME: 'Operadora do elevador', ELEVATOR_EMERGENCY_PHONE: '', EMERGENCY_EMAILS: process.env.SENDGRID_TO_DEFAULT || '',
     EMERGENCY_APPROVAL_REQUIRED: 'true', FOOTER_MODE: 'minimal', EMAIL_PROVIDER: process.env.MAIL_PROVIDER || 'sendgrid',
@@ -718,7 +761,7 @@ CREATE TABLE IF NOT EXISTS telegram_callback_events(
     TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '', TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || DEFAULT_TELEGRAM_CHAT_ID, TELEGRAM_PORTARIA_CHAT_ID: process.env.TELEGRAM_PORTARIA_CHAT_ID || DEFAULT_TELEGRAM_CHAT_ID, TELEGRAM_PORTARIA_LABEL: process.env.TELEGRAM_PORTARIA_LABEL || 'Celular Portaria', TELEGRAM_PORTARIA_ENABLED: process.env.TELEGRAM_PORTARIA_ENABLED || 'true', TELEGRAM_PORTARIA_RECEIVE_EMERGENCY: process.env.TELEGRAM_PORTARIA_RECEIVE_EMERGENCY || 'true', TELEGRAM_PORTARIA_RECEIVE_PACKAGES: process.env.TELEGRAM_PORTARIA_RECEIVE_PACKAGES || 'true', TELEGRAM_INTERCOM_FALLBACK_ENABLED: process.env.TELEGRAM_INTERCOM_FALLBACK_ENABLED || 'true', TELEGRAM_EMERGENCY_CONFIRMATION_ENABLED: process.env.TELEGRAM_EMERGENCY_CONFIRMATION_ENABLED || 'true', PACKAGE_ELEVATOR_AUTH_ENABLED: process.env.PACKAGE_ELEVATOR_AUTH_ENABLED || 'true', PACKAGE_TELEGRAM_DECISIONS_ENABLED: process.env.PACKAGE_TELEGRAM_DECISIONS_ENABLED || 'true', KIOSK_PORTARIA_PREMIUM_ENABLED: process.env.KIOSK_PORTARIA_PREMIUM_ENABLED || 'true', KIOSK_PORTARIA_PIN: process.env.KIOSK_PORTARIA_PIN || '', KIOSK_ALLOWED_APPS: process.env.KIOSK_ALLOWED_APPS || 'Vitória Régia Portaria,Telegram,Câmera,Wi-Fi', TELEGRAM_BOT_USERNAME: process.env.TELEGRAM_BOT_USERNAME || 'vitoriaregia_bot', TELEGRAM_START_URL: process.env.TELEGRAM_START_URL || 'https://t.me/vitoriaregia_bot', TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET || '', TELEGRAM_ENABLED: process.env.TELEGRAM_ENABLED || process.env.ENABLE_TELEGRAM || 'true', TELEGRAM_PARSE_MODE: process.env.TELEGRAM_PARSE_MODE || '', WHATSAPP_PHONE_NUMBER_ID: '', WHATSAPP_ACCESS_TOKEN: '', WHATSAPP_API_VERSION: 'v19.0',
     DELIVERY_DEFAULT_CHANNELS: '{"app":true,"browser":true,"email":true,"telegram":true,"whatsapp":false}',
     ALLOW_MULTIPLE_RESIDENTS_PER_UNIT: 'false', MAX_RESIDENTS_PER_UNIT:'2', SHOW_UPDATES_TO_SINDICO: 'false',
-    RESERVATION_DEFAULT_RULES: 'Declaro que li e aceito as normas de uso do espaço comum, incluindo horários, limpeza, ruído, convidados e responsabilidade por danos.',
+    RESERVATION_DEFAULT_RULES: '/documentos/termo_aceite_reserva_salao_festas_vitoria_regia.pdf',
     RESERVATION_MAX_GUESTS_DEFAULT: '30', RESERVATION_COUNT_CHILDREN: 'true', RESERVATION_COUNT_INFANTS: 'false',
     BOLETO_PROVIDER: 'manual', APK_BASE_URL: process.env.PUBLIC_APP_URL || 'https://vitoriaregia1.onrender.com', APK_PORTARIA_URL: '', APK_SINDICO_URL: '', APK_MORADOR_URL: '',
     ENABLE_EMAIL: 'true', ENABLE_TELEGRAM: 'true', ENABLE_WHATSAPP: 'false', ENABLE_BROWSER_PUSH: 'true',
@@ -779,6 +822,7 @@ CREATE TABLE IF NOT EXISTS telegram_callback_events(
     ['Salão de festas', 250, true], ['Churrasqueira', 120, true], ['Espaço gourmet', 180, true], ['Quadra', 0, false], ['Piscina', 0, false]
   ];
   for (const [name, fee, approval] of areas) await q('INSERT INTO common_areas(name, fee_amount, requires_approval, rules_document, reservation_periods) VALUES($1,$2,$3,$4,$5) ON CONFLICT(name) DO NOTHING', [name, fee, approval, defaultSettings.RESERVATION_DEFAULT_RULES, 'dia_todo,manha,tarde,noite,horario']);
+  await q(`UPDATE common_areas SET rules_document=$1 WHERE (lower(coalesce(name,'')) LIKE '%salão%' OR lower(coalesce(name,'')) LIKE '%salao%' OR lower(coalesce(name,'')) LIKE '%festas%') AND (rules_document IS NULL OR rules_document='' OR rules_document=$2)`, ['/documentos/termo_aceite_reserva_salao_festas_vitoria_regia.pdf', 'Declaro que li e aceito as normas de uso do espaço comum, incluindo horários, limpeza, ruído, convidados e responsabilidade por danos.']).catch(()=>null);
 
   const masterEmail = process.env.BRUNO_EMAIL || process.env.MASTER_EMAIL || 'bruno@vitoriaregia.local';
   const masterPassword = process.env.BRUNO_PASSWORD || process.env.MASTER_PASSWORD || process.env.ADMIN_PASSWORD || '123456';
@@ -2211,8 +2255,8 @@ app.post('/api/reservations/:id/approve', auth, can('reservations.manage'), asyn
   const reserva=r.rows[0]; if (reserva) await notifyReservationUpdate(reserva,'confirmada').catch(()=>null);
   res.json(reserva || {});
 } catch(e){ next(e); } });
-app.post('/api/ocr/parse-package', auth, can('packages.manage'), async (req,res,next)=>{ try { const parsed=parsePackageText(req.body?.text || '', req.body?.codes || req.body?.barcodes || []); const dup = parsed.tracking && parsed.unit ? await packageDuplicate({ tracking:parsed.tracking, unit:parsed.unit }) : null; res.json({ ...parsed, duplicate:Boolean(dup), duplicate_id:dup?.id || null, validation_status: dup ? 'duplicada' : parsed.validation_status }); } catch(e){ next(e); } });
-app.post('/api/packages/validate-label', auth, can('packages.manage'), async (req,res,next)=>{ try { const parsed=parsePackageText(req.body?.text || '', req.body?.codes || req.body?.barcodes || []); const resident=await findResident({ unit:parsed.unit, recipient:parsed.recipient }); const dup = parsed.tracking && parsed.unit ? await packageDuplicate({ tracking:parsed.tracking, unit:parsed.unit }) : null; res.json({ ...parsed, resident:resident ? { id:resident.id, name:resident.name, unit:resident.unit } : null, duplicate:Boolean(dup), duplicate_id:dup?.id || null, validation_status: dup ? 'duplicada' : parsed.validation_status }); } catch(e){ next(e); } });
+app.post('/api/ocr/parse-package', auth, can('packages.view'), async (req,res,next)=>{ try { const parsed=parsePackageText(req.body?.text || '', req.body?.codes || req.body?.barcodes || []); const dup = parsed.tracking && parsed.unit ? await packageDuplicate({ tracking:parsed.tracking, unit:parsed.unit }) : null; res.json({ ...parsed, duplicate:Boolean(dup), duplicate_id:dup?.id || null, validation_status: dup ? 'duplicada' : parsed.validation_status }); } catch(e){ next(e); } });
+app.post('/api/packages/validate-label', auth, can('packages.view'), async (req,res,next)=>{ try { const parsed=parsePackageText(req.body?.text || '', req.body?.codes || req.body?.barcodes || []); const resident=await findResident({ unit:parsed.unit, recipient:parsed.recipient }); const dup = parsed.tracking && parsed.unit ? await packageDuplicate({ tracking:parsed.tracking, unit:parsed.unit }) : null; res.json({ ...parsed, resident:resident ? { id:resident.id, name:resident.name, unit:resident.unit } : null, duplicate:Boolean(dup), duplicate_id:dup?.id || null, validation_status: dup ? 'duplicada' : parsed.validation_status }); } catch(e){ next(e); } });
 app.post('/api/ocr/parse-invoice', auth, can('invoices.manage'), async (req,res,next)=>{ try { res.json(parseInvoiceText(req.body?.text || '')); } catch(e){ next(e); } });
 
 app.get('/api/reservations/:id/google', auth, can('reservations.view'), async (req,res,next)=>{ try { const r=(await q('SELECT * FROM reservations WHERE id=$1',[req.params.id])).rows[0]; if (!r) return res.status(404).json({ error:'Reserva não encontrada.' }); res.json({ url: googleCalendarUrl(r) }); } catch(e){ next(e); } });
@@ -2274,14 +2318,47 @@ app.post('/api/boletos/:id/pay', auth, can('finance.manage'), async (req,res,nex
 app.post('/api/boletos', auth, can('boletos.manage'), async (req,res,next)=>{ try { requireFields(req.body,['title','amount']); const resident=await findResident(req.body); const boleto=await createBoleto({ unit:req.body.unit, resident_id:resident?.id||null, title:req.body.title, amount:req.body.amount, due_date:req.body.due_date, bank_name:req.body.bank_name||'', digitable_line:req.body.digitable_line||'', barcode:req.body.barcode||'', pdf_url:req.body.pdf_url||'', payment_link:req.body.payment_link||'', provider:req.body.provider||'manual', source_type:req.body.source_type||'manual' }); res.json(boleto); } catch(e){ next(e); } });
 
 
+
+function normalizeDateOrNull(v){ return v ? new Date(v) : null; }
+function activePublicationSql(alias=''){ const p = alias ? alias + '.' : ''; return `(${p}display_from IS NULL OR ${p}display_from <= now()) AND (${p}expires_at IS NULL OR ${p}expires_at > now())`; }
+async function notifyNoticeAudience(notice, criteria={}){
+  const selectedKeys=Object.keys(criteria||{}).filter(k => criteria[k]);
+  const target = notice.target_role || 'todos';
+  if (target === 'morador' || target === 'todos') {
+    let residents=(await q('SELECT * FROM residents WHERE COALESCE(active,true)=true ORDER BY id DESC')).rows;
+    if (selectedKeys.length) residents=residents.filter(r => selectedKeys.every(k => parseJson(r.resident_tags, {})[k] === true));
+    for (const resident of residents) await notifyResident(resident,{ title:notice.title, body:notice.body, channels:{ app:true,browser:true,email:notice.priority==='critica',telegram:true }, action_url:'/#/comunicacao', payload:{ notice_id:notice.id, criteria:selectedKeys } }).catch(()=>null);
+  }
+  const notifyUsers = target === 'todos' || !['morador'].includes(target);
+  if(notifyUsers){
+    let where = 'COALESCE(active,true)=true';
+    const params=[];
+    if(target === 'portaria') where += " AND role='portaria'";
+    else if(target === 'sindico') where += " AND role IN ('sindico','subsindico','admin','master')";
+    const users=(await q(`SELECT * FROM users WHERE ${where} ORDER BY id DESC`, params)).rows;
+    for(const user of users) await createNotification({ user_id:user.id, title:notice.title, body:notice.body, channel:'app', channels:{ app:true,browser:true,email:notice.priority==='critica',telegram:true }, action_url:'/#/comunicacao', payload:{ notice_id:notice.id } }).catch(()=>null);
+  }
+}
+async function processScheduledNotices(){
+  try{
+    const rows=(await q(`SELECT * FROM notices WHERE notified_at IS NULL AND ${activePublicationSql()} ORDER BY id ASC LIMIT 20`)).rows;
+    for(const n of rows){
+      await notifyNoticeAudience(n, parseJson(n.target_criteria,{}));
+      await q('UPDATE notices SET notified_at=now() WHERE id=$1',[n.id]).catch(()=>null);
+    }
+  }catch(e){ console.error('processScheduledNotices:', e.message); }
+}
+
 app.get('/api/building-news', auth, can('notices.view'), async (req,res,next)=>{ try {
-  const rows=(await q('SELECT n.*, u.name created_by_name FROM building_news n LEFT JOIN users u ON u.id=n.created_by ORDER BY n.id DESC LIMIT 100')).rows;
+  const manager=['master','admin','sindico','subsindico'].includes(req.user.role);
+  const where = manager ? '1=1' : activePublicationSql('n');
+  const rows=(await q(`SELECT n.*, u.name created_by_name FROM building_news n LEFT JOIN users u ON u.id=n.created_by WHERE ${where} ORDER BY COALESCE(n.display_from,n.created_at) DESC,n.id DESC LIMIT 100`)).rows;
   res.json(rows);
 } catch(e){ next(e); } });
 app.post('/api/building-news', auth, can('notices.manage'), async (req,res,next)=>{ try {
   requireFields(req.body,['title','body']);
   if(!['master','admin','sindico','subsindico'].includes(req.user.role)) return res.status(403).json({ error:'Somente síndico, subsíndico ou administração podem publicar notícias do prédio.' });
-  const r=await q('INSERT INTO building_news(title,body,priority,photo_data,created_by) VALUES($1,$2,$3,$4,$5) RETURNING *',[req.body.title,req.body.body,req.body.priority||'normal',req.body.photo_data||'',req.user.id]);
+  const r=await q('INSERT INTO building_news(title,body,priority,photo_data,display_from,expires_at,created_by) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *',[req.body.title,req.body.body,req.body.priority||'normal',req.body.photo_data||'',req.body.display_from||null,req.body.expires_at||null,req.user.id]);
   await audit(req.user.email,'publicou notícia do prédio',req.body.title);
   res.json(r.rows[0]);
 } catch(e){ next(e); } });
@@ -2291,8 +2368,27 @@ app.delete('/api/building-news/:id', auth, can('notices.manage'), async (req,res
   await audit(req.user.email,'removeu notícia do prédio',String(req.params.id));
   res.json({ ok:true });
 } catch(e){ next(e); } });
-app.get('/api/notices', auth, can('notices.view'), async (req,res,next)=>{ try { res.json((await q("SELECT * FROM notices WHERE target_role IN ('todos',$1) OR $1 IN ('sindico','admin') ORDER BY id DESC",[req.user.role])).rows); } catch(e){ next(e); } });
-app.post('/api/notices', auth, can('notices.manage'), async (req,res,next)=>{ try { requireFields(req.body,['title','body']); const criteria=req.body.target_criteria || {}; const r=await q('INSERT INTO notices(title,body,channel,priority,target_role,target_criteria) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',[req.body.title,req.body.body,req.body.channel||'app',req.body.priority||'normal',req.body.target_role||'todos',JSON.stringify(criteria)]); await audit(req.user.email,'criou comunicado',req.body.title); const selectedKeys=Object.keys(criteria).filter(k => criteria[k]); if ((req.body.target_role || 'todos') === 'morador' || (req.body.target_role || 'todos') === 'todos') { let residents=(await q('SELECT * FROM residents WHERE COALESCE(active,true)=true ORDER BY id DESC')).rows; if (selectedKeys.length) residents=residents.filter(r => selectedKeys.every(k => parseJson(r.resident_tags, {})[k] === true)); for (const resident of residents) await notifyResident(resident,{ title:req.body.title, body:req.body.body, channels:{ app:true,browser:true,email:req.body.priority==='critica',telegram:true }, action_url:'/#/comunicacao', payload:{ notice_id:r.rows[0].id, criteria:selectedKeys } }).catch(()=>null); } res.json(r.rows[0]); } catch(e){ next(e); } });
+app.get('/api/notices', auth, can('notices.view'), async (req,res,next)=>{ try {
+  const manager=hasPermission(req.user,'notices.manage') || ['master','admin','sindico','subsindico'].includes(req.user.role);
+  const dateFilter = manager ? '1=1' : activePublicationSql();
+  res.json((await q(`SELECT * FROM notices WHERE (${dateFilter}) AND (target_role IN ('todos',$1) OR $1 IN ('sindico','subsindico','admin','master') OR target_role=$1) ORDER BY COALESCE(display_from,created_at) DESC,id DESC`,[req.user.role])).rows);
+} catch(e){ next(e); } });
+app.post('/api/notices', auth, can('notices.manage'), async (req,res,next)=>{ try {
+  requireFields(req.body,['title','body']);
+  const criteria=req.body.target_criteria || {};
+  const displayFrom=req.body.display_from||null;
+  const expiresAt=req.body.expires_at||null;
+  const dueNow=!displayFrom || new Date(displayFrom).getTime() <= Date.now();
+  const r=await q('INSERT INTO notices(title,body,channel,priority,target_role,target_criteria,display_from,expires_at,notified_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',[req.body.title,req.body.body,req.body.channel||'app',req.body.priority||'normal',req.body.target_role||'todos',JSON.stringify(criteria),displayFrom,expiresAt,dueNow?new Date():null]);
+  await audit(req.user.email,'criou comunicado',req.body.title);
+  if(dueNow) await notifyNoticeAudience(r.rows[0], criteria);
+  res.json(r.rows[0]);
+} catch(e){ next(e); } });
+app.delete('/api/notices/:id', auth, can('notices.manage'), async (req,res,next)=>{ try {
+  await q('DELETE FROM notices WHERE id=$1',[req.params.id]);
+  await audit(req.user.email,'apagou comunicado',String(req.params.id));
+  res.json({ ok:true });
+} catch(e){ next(e); } });
 app.get('/api/invoices', auth, can('invoices.view'), async (_req,res,next)=>{ try { res.json((await q('SELECT i.*, r.name resident_name FROM invoices i LEFT JOIN residents r ON r.id=i.resident_id ORDER BY i.id DESC')).rows); } catch(e){ next(e); } });
 app.post('/api/invoices', auth, can('invoices.manage'), async (req,res,next)=>{ try { requireFields(req.body,['supplier']); const resident=await findResident(req.body); const r=await q('INSERT INTO invoices(supplier,document_number,access_key,amount,issue_date,due_date,unit,resident_id,category,status,extracted_text,file_name) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',[req.body.supplier,req.body.document_number||'',req.body.access_key||'',req.body.amount||0,req.body.issue_date||null,req.body.due_date||null,req.body.unit||'',resident?.id||null,req.body.category||'nota fiscal',req.body.status||'registrada',req.body.extracted_text||'',req.body.file_name||'']); res.json(r.rows[0]); } catch(e){ next(e); } });
 app.get('/api/incidents', auth, can('incidents.view'), async (_req,res,next)=>{ try { res.json((await q('SELECT * FROM incidents ORDER BY id DESC')).rows); } catch(e){ next(e); } });
@@ -2588,23 +2684,26 @@ app.post('/api/notify/email/preview', auth, can('settings.manage'), async (req,r
 const uploadManual = multer({ storage: multer.memoryStorage(), limits:{ fileSize: 20 * 1024 * 1024 } });
 const uploadDocument = multer({ storage: multer.memoryStorage(), limits:{ fileSize: Number(process.env.DOCUMENT_UPLOAD_LIMIT_MB || 25) * 1024 * 1024 } });
 
-app.get('/api/documents', auth, async (req,res,next)=>{ try { if (req.user.role === 'sindico' || req.user.role === 'subsindico' || req.user.role === 'admin' || req.user.role === 'master') return res.json((await q('SELECT id,title,description,audience,is_public,file_name,mime_type,file_size,created_at FROM documents ORDER BY id DESC')).rows); res.json((await q('SELECT id,title,description,audience,is_public,file_name,mime_type,file_size,created_at FROM documents WHERE is_public=true ORDER BY id DESC')).rows); } catch(e){ next(e); } });
+app.get('/api/documents', auth, async (req,res,next)=>{ try { if (req.user.role === 'sindico' || req.user.role === 'subsindico' || req.user.role === 'admin' || req.user.role === 'master') return res.json((await q('SELECT id,title,description,audience,is_public,document_type,competence_date,reference_date,file_name,mime_type,file_size,created_at FROM documents ORDER BY COALESCE(competence_date, reference_date, created_at::date) DESC, id DESC')).rows); res.json((await q('SELECT id,title,description,audience,is_public,document_type,competence_date,reference_date,file_name,mime_type,file_size,created_at FROM documents WHERE is_public=true ORDER BY COALESCE(competence_date, reference_date, created_at::date) DESC, id DESC')).rows); } catch(e){ next(e); } });
 app.post('/api/documents/upload', auth, can('documents.manage'), uploadDocument.single('document'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Envie um arquivo.' });
 
     const result = await q(`
       INSERT INTO documents(
-        title, description, audience, is_public,
+        title, description, audience, is_public, document_type, competence_date, reference_date,
         file_name, mime_type, file_size, file_data, uploaded_by
       )
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
-      RETURNING id,title,description,audience,is_public,file_name,mime_type,file_size,created_at
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      RETURNING id,title,description,audience,is_public,document_type,competence_date,reference_date,file_name,mime_type,file_size,created_at
     `, [
       req.body.title || req.file.originalname,
       req.body.description || '',
       req.body.audience || 'publico',
       String(req.body.is_public) !== 'false',
+      req.body.document_type || inferDocumentType(`${req.body.title || ''} ${req.file.originalname}`),
+      req.body.competence_date || parseCompetenceDate(`${req.body.title || ''} ${req.body.description || ''} ${req.file.originalname}`),
+      req.body.reference_date || req.body.competence_date || parseCompetenceDate(`${req.body.title || ''} ${req.body.description || ''} ${req.file.originalname}`),
       req.file.originalname,
       req.file.mimetype || 'application/octet-stream',
       req.file.size,
@@ -2746,4 +2845,4 @@ app.get('/api/error-logs', auth, masterOnly, async (req,res,next)=>{ try { const
 app.delete('/api/error-logs', auth, masterOnly, async (req,res,next)=>{ try { await q('DELETE FROM error_logs'); await audit(req.user.email,'limpou logs de erro','todos'); res.json({ ok:true }); } catch(e){ next(e); } });
 
 app.use(async (err,req,res,_next)=>{ console.error(err); try { await q('INSERT INTO error_logs(actor,method,path,message,stack,payload) VALUES($1,$2,$3,$4,$5,$6)', [req.user?.email || '', req.method, req.originalUrl || req.url, err.message || 'Erro interno', err.stack || '', JSON.stringify({ body:req.body ? Object.keys(req.body).reduce((o,k)=>{ o[k]=/token|senha|password|secret|key/i.test(k)?'***':req.body[k]; return o; },{}) : {} })]); } catch(_){} res.status(err.status || 500).json({ error: err.message || 'Erro interno' }); });
-createConnectedPool().then(p=>{ pool=p; return init(); }).then(()=>app.listen(process.env.PORT || 3000,()=>console.log(`${APP_VERSION} online na porta ${process.env.PORT || 3000}`))).catch(error=>{ console.error('Falha ao iniciar:', error); process.exit(1); });
+createConnectedPool().then(p=>{ pool=p; return init(); }).then(()=>{ setInterval(processScheduledNotices, 60000); processScheduledNotices().catch(()=>null); app.listen(process.env.PORT || 3000,()=>console.log(`${APP_VERSION} online na porta ${process.env.PORT || 3000}`)); }).catch(error=>{ console.error('Falha ao iniciar:', error); process.exit(1); });
