@@ -1,4 +1,4 @@
-# Vitória Régia Pro v12.7.9
+# Vitória Régia Pro v12.8.0
 
 Atualização cumulativa com ajustes premium:
 

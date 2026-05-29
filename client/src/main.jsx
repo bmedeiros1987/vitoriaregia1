@@ -11,7 +11,7 @@ import {
 import './styles.css';
 
 const API = import.meta.env.VITE_API_URL || '';
-const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v12.7.9';
+const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v12.8.1';
 const DEFAULT_TELEGRAM_CHAT_ID = '8188648317';
 const money = (v) => Number(v || 0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
 const date = (v) => v ? new Date(String(v)).toLocaleDateString('pt-BR', { timeZone:'UTC' }) : '-';

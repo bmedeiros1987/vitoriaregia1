@@ -1,8 +1,8 @@
 {
   "name": "vitoria-regia-pro",
-  "version": "12.7.9",
+  "version": "12.8.0",
   "private": true,
-  "description": "Sistema Vitória Régia Pro v12.7.9 com aviso premium fechável, OCR autorizado e notícias/comunicados com agenda e expiração.",
+  "description": "Sistema Vitória Régia Pro v12.8.0 com correção definitiva da rolagem mobile/tablet e áreas fixas premium.",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "npm --prefix client run dev",
