@@ -6,17 +6,29 @@ import {
   Settings, ShieldCheck, UserPlus, Search, Plus, Save, Camera, ScanLine, Send, CheckCircle2, Download,
   UploadCloud, Palette, Mail, MessageCircle, Smartphone, KeyRound, Eye, EyeOff, Siren, ClipboardList,
   BadgeDollarSign, FileText, Wrench, Activity, RefreshCcw, Trash2, Edit3, MapPin, UserCheck, CloudSun,
-  AppWindow, Phone, Banknote, History, Paintbrush, PanelLeft, CheckSquare, Info, ChevronRight, Flame, ShieldAlert, Ambulance, Droplets, Zap, BellRing, FireExtinguisher, CircleAlert, Clock, CalendarClock, Repeat, UserCog, Briefcase, ArrowRightLeft, BookOpen, FileUp, HelpCircle, FileSearch, MessageSquareText, ClipboardCheck
+  AppWindow, Phone, Banknote, History, Paintbrush, PanelLeft, CheckSquare, Info, ChevronRight, Flame, ShieldAlert, Ambulance, Droplets, Zap, BellRing, FireExtinguisher, CircleAlert, Clock, CalendarClock, Repeat, UserCog, Briefcase, ArrowRightLeft, BookOpen, FileUp, HelpCircle, FileSearch, MessageSquareText, ClipboardCheck, Database
 } from 'lucide-react';
 import './styles.css';
 
 const API = import.meta.env.VITE_API_URL || '';
-const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v12.8.1';
+const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v12.8.4';
 const DEFAULT_TELEGRAM_CHAT_ID = '8188648317';
 const money = (v) => Number(v || 0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
 const date = (v) => v ? new Date(String(v)).toLocaleDateString('pt-BR', { timeZone:'UTC' }) : '-';
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const bool = (v, fallback=false) => v === undefined || v === null || v === '' ? fallback : ['1','true','sim','yes','on','ativo','liberado'].includes(String(v).trim().toLowerCase());
+function useOnlineStatus(){
+  const [online,setOnline]=useState(typeof navigator === 'undefined' ? true : navigator.onLine !== false);
+  useEffect(()=>{
+    const up=()=>setOnline(true);
+    const down=()=>setOnline(false);
+    window.addEventListener('online', up);
+    window.addEventListener('offline', down);
+    return ()=>{ window.removeEventListener('online', up); window.removeEventListener('offline', down); };
+  },[]);
+  return online;
+}
+
 const roleLabel = (role) => role === 'master' || role === 'admin' ? 'Administrador' : ({ sindico:'Síndico', subsindico:'Subsíndico', portaria:'Portaria', morador:'Morador', funcionario:'Funcionário', financeiro:'Financeiro' }[role] || role || 'Usuário');
 function firstName(value=''){ return String(value || '').trim().split(/\s+/).filter(Boolean)[0] || ''; }
 function inferGenderFromName(name=''){
@@ -112,15 +124,15 @@ const post = (path, body) => request(path, { method:'POST', body:JSON.stringify(
 const put = (path, body) => request(path, { method:'PUT', body:JSON.stringify(body) });
 const del = (path) => request(path, { method:'DELETE' });
 
-const routeDefaults = { portaria:'encomendas', reservas:'calendario', cadastros:'moradores', financeiro:'movimentos', comunicacao:'notificacoes', central:'apps', configuracoes:'aparencia' };
+const routeDefaults = { portaria:'encomendas', reservas:'calendario', cadastros:'moradores', financeiro:'movimentos', comunicacao:'notificacoes', configuracoes:'aparencia' };
 const routeAliases = {
   reservas:['reservas','calendario'], reserva:['reservas','calendario'], espacos:['reservas','espacos'],
   encomendas:['portaria','encomendas'], visitantes:['portaria','visitantes'], escalas:['portaria','escalas'], mensagens:['portaria','mensagens'], portaria:['portaria','encomendas'],
   boletos:['financeiro','boletos'], movimentos:['financeiro','movimentos'], financeiro:['financeiro','movimentos'],
   moradores:['cadastros','moradores'], usuarios:['cadastros','usuarios'], solicitacoes:['cadastros','solicitacoes'], cadastros:['cadastros','moradores'],
   notificacoes:['comunicacao','notificacoes'], comunicados:['comunicacao','comunicados'], testes:['comunicacao','testes'], comunicacao:['comunicacao','notificacoes'],
-  apps:['central','apps'], updates:['central','updates'], manuais:['central','manuais'], documentos:['central','documentos'], central:['central','apps'], ocorrencias:['ocorrencias','livro'], suporte:['suporte','faq'],
-  aparencia:['configuracoes','aparencia'], menu:['configuracoes','menu'], notificacao:['configuracoes','notificacoes'], telegram:['configuracoes','telegram'], whatsapp:['configuracoes','whatsapp'], email:['configuracoes','email'], banco:['configuracoes','banco'], auditoria:['configuracoes','auditoria'], configuracoes:['configuracoes','aparencia']
+  apps:['configuracoes','apps'], updates:['configuracoes','atualizacoes'], atualizacoes:['configuracoes','atualizacoes'], manuais:['configuracoes','manuais'], documentos:['configuracoes','documentos'], central:['configuracoes','apps'], limites:['configuracoes','limites'], ocorrencias:['ocorrencias','livro'], suporte:['suporte','faq'],
+  aparencia:['configuracoes','aparencia'], menu:['configuracoes','aparencia'], notificacao:['configuracoes','notificacoes'], telegram:['configuracoes','telegram'], whatsapp:['configuracoes','whatsapp'], email:['configuracoes','email'], banco:['configuracoes','banco'], auditoria:['configuracoes','auditoria'], condominio:['configuracoes','condominio'], configuracoes:['configuracoes','aparencia']
 };
 function routeState(raw='dashboard', explicitSub){
   const cleanRoute = String(raw || 'dashboard').replace(/^#?\/?/, '').replace(/^\//, '');
@@ -156,7 +168,7 @@ function App(){
   const initialRoute = currentRouteState();
   const [active,setActive] = useState(initialRoute.active);
   const [sub,setSub] = useState(initialRoute.sub || 'encomendas');
-  const [configTab,setConfigTab] = useState('aparencia');
+  const [configTab,setConfigTab] = useState(initialRoute.active === 'configuracoes' ? (initialRoute.sub || 'aparencia') : 'aparencia');
   const [loginMode,setLoginMode] = useState('login');
   const [menuOpen,setMenuOpen] = useState(false);
   const [menuClosed,setMenuClosed] = useState(false);
@@ -328,7 +340,7 @@ function App(){
   }
 
   if(!session) return <LoginPage forms={forms} setForm={setForm} mode={loginMode} setMode={setLoginMode} doLogin={doLogin} err={err} setShowPass={setShowPass} showPass={showPass} action={action} settings={settings} />;
-  const menuItems = [ ['dashboard','Início',Home], ['portaria','Portaria',Package], ['reservas','Reservas',CalendarDays], ['financeiro','Financeiro',WalletCards], ['cadastros','Cadastros',Users], ['comunicacao','Comunicação',Bell], ['ocorrencias','Livro de Ocorrências',BookOpen], ['emergencia','Emergência',Siren], ['suporte','Suporte',HelpCircle], ['configuracoes','Configurações',Settings], ['central','Sistema e Apps',ShieldCheck], ['updates','Atualizações',RefreshCcw] ];
+  const menuItems = [ ['dashboard','Início',Home], ['portaria','Portaria',Package], ['reservas','Reservas',CalendarDays], ['financeiro','Financeiro',WalletCards], ['cadastros','Cadastros',Users], ['comunicacao','Comunicação',Bell], ['ocorrencias','Ocorrências',BookOpen], ['emergencia','Emergência',Siren], ['suporte','Suporte',HelpCircle], ['configuracoes','Configurações',Settings] ];
   const shellClass = ['appShell', menuOpen?'mobile-open':'', menuClosed?'menu-closed':'', `menu-${settings.MENU_ORIENTATION||'vertical'}`].join(' ');
   const routeNow = currentRouteState();
   const reservasRouteLocked = active==='reservas' || routeNow.active==='reservas' || isReservasHash();
@@ -339,7 +351,7 @@ function App(){
     <aside><div className="brand brandCompact brandLogoOnly"><img src="/logo-vitoria-regia-menu.svg" className="brandLogo"/><button className="insideClose menuToggle" title={menuOpen ? 'Fechar menu' : (menuClosed?'Expandir menu':'Recolher menu')} onClick={()=>{ if(window.innerWidth < 861) setMenuOpen(false); else setMenuClosed(!menuClosed); }}>{window.innerWidth < 861 ? <X/> : (menuClosed ? <ChevronRight/> : <PanelLeft/>)}</button></div><nav>{menuItems.map(([key,label,Icon]) => <button key={key} className={visualActive===key?'active':''} aria-current={visualActive===key?'page':undefined} onClick={()=>go(key, key==='reservas'?'calendario':undefined)}><Icon /><span>{label}</span></button>)}</nav><div className="sideBottom"><button onClick={()=>go('perfil')}><UserCheck/><span>Meu perfil</span></button><button onClick={logout}><LogOut/><span>Sair</span></button></div></aside>
     {can('emergency.use') && <button className="floatingEmergency" onClick={()=>go('emergencia')}><Siren/><span>Emergência</span></button>}
     <main className="content"><Topbar session={session} settings={settings} data={data} setActive={go}/>{toast && <div className="toast">{toast}</div>}
-      {visualActive==='dashboard' && <Dashboard {...props}/>} {visualActive==='portaria' && <Portaria {...props}/>} {reservasRouteLocked && <Reservations {...props}/>} {visualActive==='financeiro' && <Financeiro {...props}/>} {visualActive==='cadastros' && <Cadastros {...props}/>} {visualActive==='comunicacao' && <Comunicacao {...props}/>} {visualActive==='ocorrencias' && <OccurrenceBook {...props}/>} {visualActive==='emergencia' && <Emergency {...props}/>} {visualActive==='suporte' && <SupportPage {...props}/>} {visualActive==='configuracoes' && <SettingsPage {...props}/>} {visualActive==='central' && <CentralPro {...props}/>} {visualActive==='updates' && <Updates {...props}/>} {visualActive==='perfil' && <Profile {...props}/>} 
+      {visualActive==='dashboard' && <Dashboard {...props}/>} {visualActive==='portaria' && <Portaria {...props}/>} {reservasRouteLocked && <Reservations {...props}/>} {visualActive==='financeiro' && <Financeiro {...props}/>} {visualActive==='cadastros' && <Cadastros {...props}/>} {visualActive==='comunicacao' && <Comunicacao {...props}/>} {visualActive==='ocorrencias' && <OccurrenceBook {...props}/>} {visualActive==='emergencia' && <Emergency {...props}/>} {visualActive==='suporte' && <SupportPage {...props}/>} {visualActive==='configuracoes' && <SettingsPage {...props}/>} {visualActive==='perfil' && <Profile {...props}/>} 
     </main><nav className="bottomNav"><button className={visualActive==='dashboard'?'active':''} onClick={()=>go('dashboard')}><Home/><span>Início</span></button><button className={visualActive==='reservas'?'active':''} onClick={()=>go('reservas','calendario')}><CalendarDays/><span>Reservas</span></button><button className={visualActive==='comunicacao'?'active':''} onClick={()=>go('comunicacao','notificacoes')}><Bell/><span>Comunicados</span></button><button className={visualActive==='perfil'?'active':''} onClick={()=>go('perfil')}><UserCheck/><span>Perfil</span></button></nav>{criticalAlert && <CriticalEmergencyOverlay alert={criticalAlert} onOpen={()=>acknowledgeCriticalAlert(true)} onDismiss={()=>acknowledgeCriticalAlert(false)} />} {cameraReader && <CameraCaptureModal type={cameraReader.type} onClose={()=>setCameraReader(null)} onCapture={async(file,type,meta)=>{ setCameraReader(null); await readImage(file,type,meta || {}); }} notify={notify}/>} {confirm && <ConfirmModal confirm={confirm} onCancel={()=>setConfirm(null)} onConfirm={confirmRun}/>}<MobileViewportHint/><Footer /></div>;
 }
 
@@ -605,7 +617,7 @@ function Dashboard({data,setActive,settings,session,forms,setForm,action,fileToD
   {key:'central',sub:'manuais',label:'Ajuda',desc:'Manuais e atendimento',Icon:Info},
   {key:'configuracoes',label:'Configurações',desc:'Sistema e preferências',Icon:Settings},
   {key:'central',label:'Central Premium',desc:'Serviços exclusivos para seu condomínio',Icon:BadgeDollarSign,premium:true}
-]; const metricItems=[{icon:<Users/>,label:'Moradores',value:m.residents||0,tab:'cadastros',sub:'moradores'},{icon:<Package/>,label:'Encomendas',value:m.pendingPackages||0,tab:'portaria',sub:'encomendas'},{icon:<CalendarDays/>,label:'Reservas',value:m.reservationsPending||0,tab:'reservas'},{icon:<UserCheck/>,label:'Visitantes hoje',value:m.visitorsToday||0,tab:'portaria',sub:'visitantes'},{icon:<Bell/>,label:'Mensagens',value:m.messagesNew||0,tab:'comunicacao',sub:'notificacoes'},{icon:<UserPlus/>,label:'Cadastros pendentes',value:m.pendingRegistrations||0,tab:'cadastros',sub:'solicitacoes'},{icon:<BadgeDollarSign/>,label:'Boletos',value:m.boletosPending||0,tab:'financeiro',sub:'boletos'}]; return <div className="dashboardRedesign"><section className="dashboardHero"><div><span className="eyebrow">Residencial Vitória Régia</span><h2>{greetingForUser(session)}</h2><p>{session?.role==='morador'?'Aqui estão seus avisos, notícias, encomendas e serviços da sua unidade.':'Gestão premium do condomínio com comunicados, notícias, serviços e alertas centralizados.'}</p></div><div className="weather"><CloudSun/><div><b>{data.weather?.temperature ?? '--'}°C</b><small>{data.weather?.city || settings.WEATHER_CITY || 'João Pessoa'} · umidade {data.weather?.humidity ?? '--'}%</small></div></div></section><BuildingFeed data={data} setActive={setActive} session={session} forms={forms} setForm={setForm} action={action} fileToData={fileToData} loadAll={loadAll}/>{!['morador'].includes(session?.role) && <section className="approvalStrip"><button onClick={()=>setActive('cadastros','solicitacoes')}><UserPlus/><b>{m.pendingRegistrations||0}</b><span>Cadastros aguardando aprovação</span></button><button onClick={()=>setActive('reservas')}><CalendarDays/><b>{m.reservationsPending||0}</b><span>Reservas aguardando análise</span></button></section>}<div className="moduleGrid">{modules.map(({key,sub,label,desc,Icon,premium})=><button key={label} type="button" className={premium?'moduleCard premium':'moduleCard'} onClick={()=>setActive(key,sub)}><span><Icon/></span><b>{label}</b><small>{desc}</small><ChevronRight/></button>)}</div><section className="permissionsCard"><div><h3><ShieldCheck/> Gerenciar perfis e permissões</h3><p>Controle quem acessa o sistema e o que cada um pode fazer.</p><ul><li>Síndicos podem ser moradores ou usuários terceirizados</li><li>Permissões personalizadas por função</li><li>Reatribuição de síndico de forma simples e segura</li><li>Histórico completo de alterações</li></ul></div><div className="permissionVisual"><Users/><ShieldCheck/><button onClick={()=>setActive('cadastros','usuarios')}>Gerenciar agora</button></div></section><section className="appsShowcase"><div><h3>Baixar aplicativos</h3><p>Acesse o sistema de onde estiver com nossos aplicativos oficiais.</p></div><div className="quickAppCards"><button onClick={()=>setActive('central','apps')}><Smartphone/><b>App do Morador</b><small>Tudo na palma da mão.</small></button><button onClick={()=>setActive('central','apps')}><UserCheck/><b>App do Síndico</b><small>Gestão completa.</small></button><button onClick={()=>setActive('central','apps')}><ShieldCheck/><b>App da Portaria (APK)</b><small>Controle de acesso.</small></button></div></section><div className="metricStrip aligned dashboardMetrics">{metricItems.map(item=><Metric key={item.label} {...item} onClick={()=>setActive(item.tab,item.sub)} />)}</div></div>; }
+]; const metricItems=[{icon:<Users/>,label:'Moradores',value:m.residents||0,tab:'cadastros',sub:'moradores'},{icon:<Package/>,label:'Encomendas',value:m.pendingPackages||0,tab:'portaria',sub:'encomendas'},{icon:<CalendarDays/>,label:'Reservas',value:m.reservationsPending||0,tab:'reservas'},{icon:<UserCheck/>,label:'Visitantes hoje',value:m.visitorsToday||0,tab:'portaria',sub:'visitantes'},{icon:<Bell/>,label:'Mensagens',value:m.messagesNew||0,tab:'comunicacao',sub:'notificacoes'},{icon:<UserPlus/>,label:'Cadastros pendentes',value:m.pendingRegistrations||0,tab:'cadastros',sub:'solicitacoes'},{icon:<BadgeDollarSign/>,label:'Boletos',value:m.boletosPending||0,tab:'financeiro',sub:'boletos'}]; return <div className="dashboardRedesign"><section className="dashboardHero"><div><span className="eyebrow">Residencial Vitória Régia</span><h2>{greetingForUser(session)}</h2><p>{session?.role==='morador'?'Aqui estão seus avisos, notícias, encomendas e serviços da sua unidade.':'Gestão premium do condomínio com comunicados, notícias, serviços e alertas centralizados.'}</p></div><div className="weather"><CloudSun/><div><b>{data.weather?.temperature ?? '--'}°C</b><small>{data.weather?.city || settings.WEATHER_CITY || 'João Pessoa'} · umidade {data.weather?.humidity ?? '--'}%</small></div></div></section><BuildingFeed data={data} setActive={setActive} session={session} forms={forms} setForm={setForm} action={action} fileToData={fileToData} loadAll={loadAll}/>{!['morador'].includes(session?.role) && <section className="approvalStrip"><button onClick={()=>setActive('cadastros','solicitacoes')}><UserPlus/><b>{m.pendingRegistrations||0}</b><span>Cadastros aguardando aprovação</span></button><button onClick={()=>setActive('reservas')}><CalendarDays/><b>{m.reservationsPending||0}</b><span>Reservas aguardando análise</span></button></section>}<div className="moduleGrid">{modules.map(({key,sub,label,desc,Icon,premium})=><button key={label} type="button" className={premium?'moduleCard premium':'moduleCard'} onClick={()=>setActive(key,sub)}><span><Icon/></span><b>{label}</b><small>{desc}</small><ChevronRight/></button>)}</div><section className="permissionsCard"><div><h3><ShieldCheck/> Gerenciar perfis e permissões</h3><p>Controle quem acessa o sistema e o que cada um pode fazer.</p><ul><li>Síndicos podem ser moradores ou usuários terceirizados</li><li>Permissões personalizadas por função</li><li>Reatribuição de síndico de forma simples e segura</li><li>Histórico completo de alterações</li></ul></div><div className="permissionVisual"><Users/><ShieldCheck/><button onClick={()=>setActive('cadastros','usuarios')}>Gerenciar agora</button></div></section><section className="appsShowcase"><div><h3>Baixar aplicativos</h3><p>Acesse o sistema de onde estiver com nossos aplicativos oficiais.</p></div><div className="quickAppCards"><button onClick={()=>setActive('configuracoes','apps')}><Smartphone/><b>App do Morador</b><small>Tudo na palma da mão.</small></button><button onClick={()=>setActive('configuracoes','apps')}><UserCheck/><b>App do Síndico</b><small>Gestão completa.</small></button><button onClick={()=>setActive('configuracoes','apps')}><ShieldCheck/><b>App da Portaria (APK)</b><small>Controle de acesso.</small></button></div></section><div className="metricStrip aligned dashboardMetrics">{metricItems.map(item=><Metric key={item.label} {...item} onClick={()=>setActive(item.tab,item.sub)} />)}</div></div>; }
 function Portaria(props){ return <Panel title="Portaria" subtitle="Encomendas, visitantes, reservas e atendimento rápido." icon={<Package/>}><SubTabs value={props.sub} setValue={props.setSub} tabs={[['encomendas','Encomendas'],['leitor','Leitor Premium'],['visitantes','Visitantes'],['escalas','Escalas'],['mensagens','Mensagens']]} />{props.sub==='encomendas'&&<Packages {...props}/>} {props.sub==='leitor'&&<PackageScannerPremium {...props}/>} {props.sub==='visitantes'&&<Visitors {...props}/>} {props.sub==='escalas'&&<Shifts {...props}/>} {props.sub==='mensagens'&&<Messages {...props}/>}</Panel>; }
 function UnitLookupBox({result,onRegister}){ if(!result) return null; const arr=result.residents || []; return <div className={arr.length?'noticeBox ok':'noticeBox warn'}>{arr.length ? <><b>Morador encontrado</b><small>{arr.map(r=>`${r.name} · ${r.email || r.whatsapp_phone || r.phone || 'sem contato'}`).join(' | ')}</small></> : <><b>Nenhum morador cadastrado nesta unidade.</b><small>Recomende o cadastro antes de confirmar, principalmente para notificação automática.</small>{onRegister && <button type="button" className="buttonlike secondary" onClick={onRegister}><UserPlus/> Abrir cadastro pré-preenchido</button>}</>}</div>; }
 
@@ -1022,7 +1034,7 @@ function competenceLabel(d={}){
   return Number.isNaN(dt.getTime()) ? 'Sem competência informada' : dt.toLocaleDateString('pt-BR',{month:'long', year:'numeric'});
 }
 function documentTypeLabel(t=''){
-  return ({balancete:'Balancete', demonstrativo:'Demonstrativo', prestacao_contas:'Prestação de contas', reserva_salao:'Reserva do salão', regimento:'Regimento', geral:'Documento'}[String(t||'').toLowerCase()] || 'Documento');
+  return ({balancete:'Balancete', demonstrativo:'Demonstrativo', prestacao_contas:'Prestação de contas', reserva_salao:'Reserva do salão', regimento:'Regimento', apk:'APK Android', android_apk:'APK Android', geral:'Documento'}[String(t||'').toLowerCase()] || 'Documento');
 }
 function sortDocumentsByCompetence(list=[]){
   return [...list].sort((a,b)=>String(parseCompetenceFromDocument(b)||'').localeCompare(String(parseCompetenceFromDocument(a)||'')) || Number(b.id||0)-Number(a.id||0));
@@ -1234,19 +1246,20 @@ function normalizeEmergencyLocationInput(location, session={}){
   if(!raw || raw.toLowerCase() === 'login') return role === 'portaria' ? 'Portaria' : (role === 'funcionario' ? userDefaultEmergencyLocation(session) : 'Minha unidade');
   return raw;
 }
-function Emergency({data,forms,setForm,action,openConfirm,settings,session}){
+function Emergency({data,forms,setForm,action,openConfirm,settings,session,notify}){
   const types=Array.isArray(data.emergencyTypes) && data.emergencyTypes.length ? data.emergencyTypes : defaultEmergencyTypes;
   const f=forms.emergency;
   const selected=types.find(t=>t.code===f.type) || types[0] || {code:'elevador',label:'Elevador',instructions:'Solicite atendimento da portaria.'};
+  const online = useOnlineStatus();
   const loginLocal=userDefaultEmergencyLocation(session);
   const location=normalizeEmergencyLocationInput(f.occurrence_location, session);
   const finalLocal= location==='Minha unidade' ? (loginLocal || f.unit || '') : location==='Vizinho' ? `Vizinho - unidade ${f.neighbor_unit || 'não informada'}` : location==='Corredor' ? `Corredor - andar ${f.floor || 'não informado'}` : location;
   const elevatorWhats = String(settings.ELEVATOR_MAINTENANCE_WHATSAPP || '').replace(/\D/g,'');
   const msgElevator = encodeURIComponent(`Olá, equipe de manutenção. Há uma ocorrência no elevador do Condomínio Vitória Régia. Local: ${finalLocal || 'a confirmar'}. Solicitante: ${session?.name || session?.email || 'usuário do sistema'}.`);
   const groups = [['pendente','Aguardando aprovação'], ['aprovada','Aprovadas'], ['rejeitada','Não aprovadas']];
-  return <Panel title="Emergência" subtitle="Informe a situação. A portaria/síndico avaliam antes de avisar moradores." icon={<Siren/>}>
-    <div className="emergencyGrid compactEmergencyGrid">{types.map(t=><button type="button" className={'emergency compact '+(f.type===t.code?'selected':'')} key={t.code} onClick={()=>setForm('emergency',{type:t.code,unit:loginLocal})}><span className="emergencyIcon"><EmergencyIcon code={t.code} label={t.label}/></span><b>{t.label}</b><small>{t.instructions}</small></button>)}</div>
-    <form className="formGrid emergencyForm cleanEmergencyForm" onSubmit={e=>{e.preventDefault(); openConfirm('Confirmar solicitação de emergência',{Tipo:selected?.label||f.type,Local:finalLocal||'Área comum'},()=>action('/api/emergency',{...f, unit:loginLocal, occurrence_location:location, location_type:location, neighbor_unit:f.neighbor_unit, floor:f.floor},'Emergência enviada para avaliação'));}}>
+  return <Panel title="Emergência" subtitle="Emergência exige internet ativa: este botão fica bloqueado no APK offline." icon={<Siren/>}>
+    {!online && <div className="noticeBox warn offlineEmergencyLock"><b>Modo offline detectado</b><small>Por segurança, o botão de emergência não funciona offline. Reconecte à internet para acionar portaria/síndico e canais como Telegram.</small></div>}<div className="emergencyGrid compactEmergencyGrid">{types.map(t=><button type="button" className={'emergency compact '+(f.type===t.code?'selected':'')} key={t.code} onClick={()=>setForm('emergency',{type:t.code,unit:loginLocal})}><span className="emergencyIcon"><EmergencyIcon code={t.code} label={t.label}/></span><b>{t.label}</b><small>{t.instructions}</small></button>)}</div>
+    <form className="formGrid emergencyForm cleanEmergencyForm" onSubmit={e=>{e.preventDefault(); if(!online){ notify?.('Emergência bloqueada offline. Reconecte à internet para enviar.', true); return; } openConfirm('Confirmar solicitação de emergência',{Tipo:selected?.label||f.type,Local:finalLocal||'Área comum'},()=>action('/api/emergency',{...f, unit:loginLocal, occurrence_location:location, location_type:location, neighbor_unit:f.neighbor_unit, floor:f.floor},'Emergência enviada para avaliação'));}}>
       <label>Tipo<select value={f.type} onChange={e=>setForm('emergency',{type:e.target.value})}>{types.map(t=><option value={t.code} key={t.code}>{t.label}</option>)}</select></label>
       <label>Onde é a ocorrência?<select value={location} onChange={e=>setForm('emergency',{occurrence_location:e.target.value, location_type:e.target.value})}>{emergencyLocationOptions(settings).map(opt=><option key={opt}>{opt}</option>)}</select></label>
       {location==='Vizinho' && <label>Unidade do vizinho<input required placeholder="Ex.: 502" value={f.neighbor_unit} onChange={e=>setForm('emergency',{neighbor_unit:e.target.value})}/></label>}
@@ -1254,7 +1267,7 @@ function Emergency({data,forms,setForm,action,openConfirm,settings,session}){
       <label>Local do solicitante<input value={loginLocal} readOnly placeholder="Unidade, portaria, zeladoria ou limpeza"/></label>
       <textarea placeholder="Descreva rapidamente o que está acontecendo" value={f.message} onChange={e=>setForm('emergency',{message:e.target.value})}/>
       {String(f.type).includes('elev') && <div className="noticeBox ok elevatorContact"><b>Manutenção do elevador</b><small>{elevatorWhats?'WhatsApp cadastrado nas configurações.':'Cadastre o WhatsApp da manutenção em Configurações → Emergência.'}</small>{elevatorWhats && <a className="buttonlike" target="_blank" href={`https://wa.me/${elevatorWhats.startsWith('55')?elevatorWhats:'55'+elevatorWhats}?text=${msgElevator}`}><MessageCircle/> Chamar manutenção</a>}</div>}
-      <button><Siren/> Enviar solicitação</button>
+      <button disabled={!online} className={!online?'disabled offlineEmergencyButton':''}><Siren/> {online?'Enviar solicitação':'Emergência indisponível offline'}</button>
     </form>
     <div className="emergencyStatusColumns">{groups.map(([key,label])=>{ const rows=(data.emergencyRequests||[]).filter(r=> key==='pendente' ? !['aprovada','rejeitada','recusada'].includes(String(r.status||'pendente')) : key==='aprovada' ? String(r.status)==='aprovada' : ['rejeitada','recusada'].includes(String(r.status||''))); return <div className="subpanel" key={key}><h3>{label}</h3><Table rows={rows} render={r=><><td><b>{r.type_label}</b><small>{r.occurrence_location || r.unit} · {r.message}</small></td><td><Status ok={r.status==='aprovada'}>{emergencyStatusText(r.status)}</Status></td><td className="actions"><button className="confirmAction" onClick={()=>action(`/api/emergency-requests/${r.id}/approve`,{note:'Aprovado'},'Emergência aprovada')}>Aprovar</button><button className="dangerAction" onClick={()=>action(`/api/emergency-requests/${r.id}/reject`,{note:'Rejeitada'},'Emergência rejeitada')}>Rejeitar</button></td></>}/></div>})}</div>
   </Panel>;
@@ -1286,20 +1299,61 @@ function ErrorLogs({action,isAdminReserved}){
 }
 
 function SettingsPage(props){
-  const tabs=[['aparencia','Aparência'],['notificacoes','Notificações'],['email','E-mail'],['telegram','Telegram'],['whatsapp','WhatsApp'],['banco','Banco'],['emergencia','Emergência'],['condominio','Condomínio'],['areas','Áreas'],['apps','Apps'],['documentos','Documentos'],['atualizacoes','Atualizações'],['auditoria','Auditoria']];
+  const tabs=[['aparencia','Aparência'],['condominio','Condomínio'],['limites','Limites e Regras'],['areas','Áreas e Reservas'],['notificacoes','Notificações'],['email','E-mail'],['telegram','Telegram'],['whatsapp','WhatsApp'],['apps','Apps/APKs'],['documentos','Documentos'],['manuais','Manuais'],['atualizacoes','Atualizações'],['banco','Banco'],['auditoria','Auditoria']];
   const tabKeys=tabs.map(([k])=>k);
   const activeTab=tabKeys.includes(props.sub) ? props.sub : (tabKeys.includes(props.configTab) ? props.configTab : 'aparencia');
   const changeTab=(next)=>{ props.setConfigTab(next); props.setSub?.(next); if(window.location.hash !== `#/configuracoes/${next}`) window.location.hash=`#/configuracoes/${next}`; };
-  return <Panel title="Configurações" subtitle="Tudo em subgrupos simples e objetivos." icon={<Settings/>}><SubTabs value={activeTab} setValue={changeTab} tabs={tabs}/>{activeTab==='aparencia'&&<AppearanceSettings {...props}/>} {activeTab==='notificacoes'&&<NotificationSettings {...props}/>} {activeTab==='email'&&<ProviderSettings {...props} type="email"/>} {activeTab==='telegram'&&<ProviderSettings {...props} type="telegram"/>} {activeTab==='whatsapp'&&<ProviderSettings {...props} type="whatsapp"/>} {activeTab==='banco'&&<BankSettings {...props}/>} {activeTab==='emergencia'&&<EmergencySettings {...props}/>} {activeTab==='condominio'&&<CondoSettings {...props}/>} {activeTab==='areas'&&<AreasSettings {...props}/>} {activeTab==='apps'&&<AppsSettings {...props}/>} {activeTab==='documentos'&&<DocumentsSettings {...props}/>} {activeTab==='atualizacoes'&&<UpdateSettings {...props}/>} {activeTab==='auditoria'&&<AuditPage {...props}/>}</Panel>;
+  return <Panel title="Configurações" subtitle="Central única para aparência, condomínio, limites, aplicativos, atualizações, banco, documentos e auditoria." icon={<Settings/>}>
+    <div className="noticeBox ok settingsCentralNotice"><b>Menu limpo e centralizado</b><small>Itens administrativos como Atualizações, Apps, APKs, Manuais, Documentos, Banco e limites do sistema ficam concentrados aqui em abas, mantendo o menu lateral somente com áreas operacionais.</small></div>
+    <SubTabs value={activeTab} setValue={changeTab} tabs={tabs}/>
+    {activeTab==='aparencia'&&<AppearanceSettings {...props}/>} {activeTab==='condominio'&&<CondoSettings {...props}/>} {activeTab==='limites'&&<LimitsSettings {...props}/>} {activeTab==='areas'&&<AreasSettings {...props}/>} {activeTab==='notificacoes'&&<NotificationSettings {...props}/>} {activeTab==='email'&&<ProviderSettings {...props} type="email"/>} {activeTab==='telegram'&&<ProviderSettings {...props} type="telegram"/>} {activeTab==='whatsapp'&&<ProviderSettings {...props} type="whatsapp"/>} {activeTab==='apps'&&<AppsCenterSettings {...props}/>} {activeTab==='documentos'&&<DocumentsSettings {...props}/>} {activeTab==='manuais'&&<Manuals {...props}/>} {activeTab==='atualizacoes'&&<UpdateSettings {...props}/>} {activeTab==='banco'&&<BankSettings {...props}/>} {activeTab==='auditoria'&&<AuditPage {...props}/>} 
+  </Panel>;
 }
 function saveSettings(forms, action){ const payload={...forms.settings}; for(const k of Object.keys(payload)){ if(sensitive.has(k) && (!payload[k] || String(payload[k]).includes('***'))) delete payload[k]; } return action('/api/settings', payload, 'Configurações salvas'); }
+
+function LimitsSettings({forms,setForm,action,settings}){
+  const s=forms.settings || {};
+  const val=(key,fallback='')=>s[key] ?? settings?.[key] ?? fallback;
+  return <div className="stack limitsSettings">
+    <SettingCard title="Limites de cadastros e unidades" icon={<ShieldCheck/>}>
+      <div className="noticeBox ok"><b>Controle central de limites</b><small>Defina aqui regras administrativas como limite de moradores por unidade, visitantes, documentos, upload e retenção. Essas opções ficam fora do menu principal para manter o sistema limpo.</small></div>
+      <div className="formGrid">
+        <label className="check"><input type="checkbox" checked={bool(val('ALLOW_MULTIPLE_RESIDENTS_PER_UNIT','false'), false)} onChange={e=>setForm('settings',{ALLOW_MULTIPLE_RESIDENTS_PER_UNIT:String(e.target.checked)})}/>Permitir mais de um morador por unidade</label>
+        <label>Limite de moradores por unidade<input type="number" min="1" value={val('MAX_RESIDENTS_PER_UNIT','2')} onChange={e=>setForm('settings',{MAX_RESIDENTS_PER_UNIT:e.target.value})}/><small>Usado no cadastro externo e na solicitação de morador adicional.</small></label>
+        <label>Reservas por unidade/mês<input type="number" min="1" value={val('MAX_RESERVATIONS_PER_UNIT_MONTH','4')} onChange={e=>setForm('settings',{MAX_RESERVATIONS_PER_UNIT_MONTH:e.target.value})}/><small>Regra administrativa para controle de uso das áreas comuns.</small></label>
+        <label>Visitantes por dia<input type="number" min="1" value={val('VISITOR_MAX_PER_DAY','50')} onChange={e=>setForm('settings',{VISITOR_MAX_PER_DAY:e.target.value})}/><small>Referência operacional para portaria e relatórios.</small></label>
+      </div>
+    </SettingCard>
+    <SettingCard title="Limites de reservas e convidados" icon={<CalendarDays/>}>
+      <div className="formGrid">
+        <label>Convidados por reserva<input type="number" min="1" value={val('RESERVATION_MAX_GUESTS_DEFAULT','30')} onChange={e=>setForm('settings',{RESERVATION_MAX_GUESTS_DEFAULT:e.target.value,MAX_VISITORS_PER_RESERVATION:e.target.value})}/></label>
+        <label className="check"><input type="checkbox" checked={bool(val('RESERVATION_COUNT_CHILDREN','true'), true)} onChange={e=>setForm('settings',{RESERVATION_COUNT_CHILDREN:String(e.target.checked)})}/>Crianças contam no limite</label>
+        <label className="check"><input type="checkbox" checked={bool(val('RESERVATION_COUNT_INFANTS','false'), false)} onChange={e=>setForm('settings',{RESERVATION_COUNT_INFANTS:String(e.target.checked)})}/>Bebês de colo contam no limite</label>
+      </div>
+    </SettingCard>
+    <SettingCard title="Limites técnicos de dados e arquivos" icon={<Database/>}>
+      <div className="formGrid">
+        <label>Upload de documentos/APKs (MB)<input type="number" min="5" value={val('DOCUMENT_UPLOAD_LIMIT_MB','150')} onChange={e=>setForm('settings',{DOCUMENT_UPLOAD_LIMIT_MB:e.target.value})}/></label>
+        <label>Upload de atualização (MB)<input type="number" min="5" value={val('UPDATE_UPLOAD_LIMIT_MB','30')} onChange={e=>setForm('settings',{UPDATE_UPLOAD_LIMIT_MB:e.target.value})}/><small>No Render, esta opção também pode depender da variável UPDATE_UPLOAD_LIMIT_MB.</small></label>
+        <label>Retenção de encomendas entregues (dias)<input type="number" min="1" value={val('PACKAGE_RETENTION_DAYS','365')} onChange={e=>setForm('settings',{PACKAGE_RETENTION_DAYS:e.target.value})}/></label>
+        <button type="button" onClick={()=>saveSettings(forms,action)}><Save/> Salvar limites</button>
+      </div>
+    </SettingCard>
+  </div>;
+}
+function AppsCenterSettings(props){
+  return <div className="stack appsCentralSettings">
+    <AppsSettings {...props}/>
+    <SettingCard title="Central Premium de APKs" icon={<Smartphone/>}><AppsDownload {...props}/></SettingCard>
+  </div>;
+}
 function AppearanceSettings({forms,setForm,action,settings}){ const s=forms.settings; return <SettingCard title="Aparência" icon={<Palette/>}><div className="themePreview"><img src="/logo-vitoria-regia.svg"/><div><b>Prévia do Vitória Régia</b><small>A cor muda ao selecionar; clique em salvar para manter para todos.</small></div></div><div className="formGrid"><label>Cor principal do sistema<input type="color" value={s.THEME_ACCENT || settings.THEME_ACCENT || '#126b5f'} onChange={e=>setForm('settings',{THEME_ACCENT:e.target.value})}/></label><label>Cor de apoio<input type="color" value={s.THEME_ACCENT_2 || settings.THEME_ACCENT_2 || '#35b5a2'} onChange={e=>setForm('settings',{THEME_ACCENT_2:e.target.value})}/></label><label>Modo<select value={s.APPEARANCE||settings.APPEARANCE||'light'} onChange={e=>{document.body.dataset.appearance=e.target.value; setForm('settings',{APPEARANCE:e.target.value});}}><option value="light">Claro</option><option value="dark">Escuro</option></select></label><label>Orientação do menu<select value={s.MENU_ORIENTATION||settings.MENU_ORIENTATION||'vertical'} onChange={e=>setForm('settings',{MENU_ORIENTATION:e.target.value})}><option value="vertical">Lateral</option><option value="top">Superior</option><option value="floating">Compacto</option></select></label><label>Tamanho do texto<select value={s.THEME_TEXT_SIZE||s.UI_DENSITY||settings.THEME_TEXT_SIZE||settings.UI_DENSITY||'comfort'} onChange={e=>setForm('settings',{THEME_TEXT_SIZE:e.target.value,UI_DENSITY:e.target.value})}><option value="compact">Menor</option><option value="comfort">Normal</option><option value="spacious">Maior</option></select></label><button onClick={()=>saveSettings(forms,action)}><Save/> Salvar aparência</button></div></SettingCard>; }
 function NotificationSettings(props){ const {forms,setForm,action}=props; const s=forms.settings; const telegramChat=s.TELEGRAM_CHAT_ID||DEFAULT_TELEGRAM_CHAT_ID; const portariaChat=s.TELEGRAM_PORTARIA_CHAT_ID||telegramChat||DEFAULT_TELEGRAM_CHAT_ID; return <div className="stack"><SettingCard title="Canais liberados" icon={<Bell/>}><div className="channels"><label><input type="checkbox" checked={bool(s.ENABLE_EMAIL,true)} onChange={e=>setForm('settings',{ENABLE_EMAIL:String(e.target.checked)})}/>E-mail</label><label><input type="checkbox" checked={bool(s.ENABLE_WHATSAPP,false)} onChange={e=>setForm('settings',{ENABLE_WHATSAPP:String(e.target.checked)})}/>WhatsApp</label><label><input type="checkbox" checked={bool(s.ENABLE_TELEGRAM,false)||bool(s.TELEGRAM_ENABLED,false)} onChange={e=>setForm('settings',{ENABLE_TELEGRAM:String(e.target.checked),TELEGRAM_ENABLED:String(e.target.checked)})}/>Telegram</label><label><input type="checkbox" checked={bool(s.ENABLE_BROWSER_PUSH,true)} onChange={e=>setForm('settings',{ENABLE_BROWSER_PUSH:String(e.target.checked)})}/>Navegador</label></div><div className="formGrid"><label>Chat ID padrão do condomínio<input value={telegramChat} onChange={e=>setForm('settings',{TELEGRAM_CHAT_ID:e.target.value,TELEGRAM_TEST_CHAT_ID:e.target.value})} placeholder={DEFAULT_TELEGRAM_CHAT_ID}/><small>Destino global administrativo. Usado quando um morador ou usuário não possui Chat ID próprio.</small></label></div><button className="saveConfig" onClick={()=>saveSettings(forms,action)}><Save/> Salvar canais e Chat ID</button></SettingCard><SettingCard title="Telegram Portaria Premium" icon={<MessageCircle/>}><div className="noticeBox ok premiumTelegramBox"><b>Celular da portaria dedicado</b><small>Use este Chat ID para o aparelho Telegram da portaria receber emergências, decisões de encomendas, falha de interfone e avisos operacionais. O APK kiosk pode permanecer no leitor automático, e o Telegram recebe as mensagens em paralelo.</small></div><div className="channels"><label><input type="checkbox" checked={bool(s.TELEGRAM_PORTARIA_ENABLED,true)} onChange={e=>setForm('settings',{TELEGRAM_PORTARIA_ENABLED:String(e.target.checked)})}/>Ativar Telegram Portaria</label><label><input type="checkbox" checked={bool(s.TELEGRAM_PORTARIA_RECEIVE_EMERGENCY,true)} onChange={e=>setForm('settings',{TELEGRAM_PORTARIA_RECEIVE_EMERGENCY:String(e.target.checked)})}/>Receber emergências</label><label><input type="checkbox" checked={bool(s.TELEGRAM_PORTARIA_RECEIVE_PACKAGES,true)} onChange={e=>setForm('settings',{TELEGRAM_PORTARIA_RECEIVE_PACKAGES:String(e.target.checked)})}/>Receber encomendas</label><label><input type="checkbox" checked={bool(s.TELEGRAM_INTERCOM_FALLBACK_ENABLED,true)} onChange={e=>setForm('settings',{TELEGRAM_INTERCOM_FALLBACK_ENABLED:String(e.target.checked)})}/>Usar Telegram quando interfone não atender</label></div><div className="formGrid"><label>Nome do dispositivo<input value={s.TELEGRAM_PORTARIA_LABEL||'Celular Portaria'} onChange={e=>setForm('settings',{TELEGRAM_PORTARIA_LABEL:e.target.value})}/></label><label>Chat ID Telegram da portaria<input value={portariaChat} onChange={e=>setForm('settings',{TELEGRAM_PORTARIA_CHAT_ID:e.target.value})} placeholder={DEFAULT_TELEGRAM_CHAT_ID}/><small>Ex.: 8188648317. Pode ser o Telegram instalado no celular da portaria.</small></label><label className="check"><input type="checkbox" checked={bool(s.PACKAGE_ELEVATOR_AUTH_ENABLED,true)} onChange={e=>setForm('settings',{PACKAGE_ELEVATOR_AUTH_ENABLED:String(e.target.checked)})}/>Permitir autorização de envio pelo elevador</label><label className="check"><input type="checkbox" checked={bool(s.PACKAGE_TELEGRAM_DECISIONS_ENABLED,true)} onChange={e=>setForm('settings',{PACKAGE_TELEGRAM_DECISIONS_ENABLED:String(e.target.checked)})}/>Usar botões de decisão nas encomendas</label><label className="check"><input type="checkbox" checked={bool(s.KIOSK_PORTARIA_PREMIUM_ENABLED,true)} onChange={e=>setForm('settings',{KIOSK_PORTARIA_PREMIUM_ENABLED:String(e.target.checked)})}/>Modo kiosk premium da portaria</label><label>PIN para sair/trocar app no APK kiosk<input type="password" value={s.KIOSK_PORTARIA_PIN||''} onChange={e=>setForm('settings',{KIOSK_PORTARIA_PIN:e.target.value})} placeholder="Definir no APK"/></label><label className="full">Apps liberados no kiosk<textarea value={s.KIOSK_ALLOWED_APPS||'Vitória Régia Portaria,Telegram,Câmera,Wi-Fi'} onChange={e=>setForm('settings',{KIOSK_ALLOWED_APPS:e.target.value})}/></label><button onClick={()=>saveSettings(forms,action)}><Save/> Salvar Portaria Premium</button><button type="button" className="secondaryAction" onClick={()=>action('/api/telegram/test',{chat_id:portariaChat,message:'Teste do Telegram Portaria Premium - Sistema Vitória Régia'},'Teste enviado para a portaria')}><Send/> Testar Telegram da portaria</button></div></SettingCard><NotifyTests {...props}/></div>; }
 function ProviderSettings({forms,setForm,action,type,data}){ const s=forms.settings; const maps={email:[['MAIL_PROVIDER','Provedor principal'],['EMAIL_PROVIDER','Provedor de e-mail'],['SENDGRID_API_KEY','SendGrid API Key'],['SENDGRID_FROM_EMAIL','E-mail remetente'],['SENDGRID_FROM_NAME','Nome do remetente'],['SENDGRID_REPLY_TO','Responder para'],['SENDGRID_TO_DEFAULT','E-mail padrão de teste'],['MAIL_FROM','Remetente SMTP'],['SMTP_HOST','SMTP servidor'],['SMTP_PORT','SMTP porta'],['SMTP_USER','SMTP usuário'],['SMTP_PASS','SMTP senha'],['PUBLIC_APP_URL','URL pública do sistema']],telegram:[['TELEGRAM_ENABLED','Telegram ativo'],['ENABLE_TELEGRAM','Canal Telegram liberado'],['TELEGRAM_START_URL','Link de início do bot'],['TELEGRAM_BOT_USERNAME','Usuário do bot'],['TELEGRAM_BOT_TOKEN','Token do bot'],['TELEGRAM_WEBHOOK_SECRET','Segredo do webhook'],['TELEGRAM_PARSE_MODE','Modo de texto'],['TELEGRAM_API_BASE_URL','Base da API'],['TELEGRAM_WEBHOOK_URL','URL do webhook'],['TELEGRAM_ALLOWED_UPDATES','Eventos permitidos'],['PUBLIC_APP_URL','URL pública do sistema']],whatsapp:[['ENABLE_WHATSAPP','Canal WhatsApp liberado'],['WHATSAPP_API_VERSION','Versão da API'],['WHATSAPP_API_BASE_URL','Base da API'],['WHATSAPP_PHONE_NUMBER_ID','Phone Number ID'],['WHATSAPP_BUSINESS_ACCOUNT_ID','Business Account ID'],['WHATSAPP_ACCESS_TOKEN','Token de acesso'],['WHATSAPP_API_TOKEN','Token alternativo'],['WHATSAPP_TEMPLATE_PACKAGE','Template de encomenda'],['WHATSAPP_TEMPLATE_RESERVATION','Template de reserva'],['WHATSAPP_TO_DEFAULT','WhatsApp padrão de teste']]}; const title=type==='email'?'E-mail / SendGrid / SMTP':type==='telegram'?'Telegram':'WhatsApp'; const icon=type==='email'?<Mail/>:type==='telegram'?<MessageCircle/>:<Smartphone/>; const isBool=(k)=>/^ENABLE_|_ENABLED$/.test(k) || ['TELEGRAM_ENABLED'].includes(k); const testPayload= type==='email'?{channel:'email',to:s.SENDGRID_TO_DEFAULT || data.notifyConfig?.email?.sendgridFromEmail || '',subject:'Teste Vitória Régia',message:'Teste de e-mail do Sistema Vitória Régia.'}: type==='telegram'?{channel:'telegram',to:s.TELEGRAM_CHAT_ID || DEFAULT_TELEGRAM_CHAT_ID,message:'Teste do Telegram - Sistema Vitória Régia.'}:{channel:'whatsapp',to:s.WHATSAPP_TO_DEFAULT || '',message:'Teste de WhatsApp - Sistema Vitória Régia.'}; return <SettingCard title={title} icon={icon}><div className="noticeBox ok"><b>Variáveis de comunicação</b><small>Os campos abaixo substituem as variáveis do Render quando salvos no sistema. Tokens, senhas e chaves aparecem mascarados e nunca são enviados ao GitHub.</small></div><div className="formGrid providerGrid">{maps[type].map(([k,l])=> isBool(k) ? <label className="check" key={k}><input type="checkbox" checked={bool(s[k], false)} onChange={e=>setForm('settings',{[k]:String(e.target.checked), ...(k==='TELEGRAM_ENABLED'?{ENABLE_TELEGRAM:String(e.target.checked)}:{})})}/>{l}</label> : <label key={k}>{l}<input type={sensitive.has(k)?'password':'text'} placeholder={sensitive.has(k)?maskValue(s[k]):''} value={sensitive.has(k) && String(s[k]||'').includes('***')?'':(s[k]||'')} onChange={e=>setForm('settings',{[k]:e.target.value})}/></label>)}<button onClick={()=>saveSettings(forms,action)}><Save/> Salvar {title}</button><button type="button" className="secondaryAction" onClick={()=>action('/api/notify/test', testPayload, 'Teste enviado/processado') }><Send/> Testar {type==='email'?'e-mail':type==='telegram'?'Telegram':'WhatsApp'}</button>{type==='telegram'&&<><button type="button" className="secondaryAction" onClick={()=>action('/api/telegram/get-me',{},'Telegram testado') }><MessageCircle/> Verificar bot</button><button type="button" className="secondaryAction" onClick={()=>action('/api/telegram/set-webhook',{base_url:s.PUBLIC_APP_URL||window.location.origin},'Webhook configurado') }><RefreshCcw/> Configurar webhook</button><button type="button" className="secondaryAction" onClick={()=>action('/api/telegram/webhook-info',{},'Webhook verificado') }><Activity/> Ver webhook</button></>}</div><NotifyTests forms={forms} setForm={setForm} action={action} data={data}/></SettingCard>; }
 function BankSettings({forms,setForm,action}){ const s=forms.settings; const keys=[['BANK_PROVIDER','Banco/gateway'],['BANK_API_BASE_URL','URL da API'],['BANK_CLIENT_ID','Client ID'],['BANK_CLIENT_SECRET','Client secret'],['BANK_API_TOKEN','Token API'],['BANK_ACCOUNT','Conta'],['BANK_AGENCY','Agência'],['BANK_WALLET','Carteira'],['BANK_CONTRACT','Convênio/contrato'],['BANK_PIX_KEY','Chave Pix']]; return <SettingCard title="Banco e boletos" icon={<Banknote/>}><div className="formGrid">{keys.map(([k,l])=><label key={k}>{l}<input type={sensitive.has(k)?'password':'text'} placeholder={sensitive.has(k)?maskValue(s[k]):''} value={sensitive.has(k) && String(s[k]||'').includes('***')?'':(s[k]||'')} onChange={e=>setForm('settings',{[k]:e.target.value})}/></label>)}<label className="check"><input type="checkbox" checked={bool(s.BOLETO_AUTO_GENERATE,false)} onChange={e=>setForm('settings',{BOLETO_AUTO_GENERATE:String(e.target.checked)})}/>Gerar boletos automaticamente quando houver API configurada</label><button onClick={()=>saveSettings(forms,action)}><Save/> Salvar banco</button></div></SettingCard>; }
 function CondoSettings({forms,setForm,action}){ const s=forms.settings; return <SettingCard title="Condomínio" icon={<Building2/>}><div className="formGrid"><label>Nome<input value={s.CONDO_NAME||''} onChange={e=>setForm('settings',{CONDO_NAME:e.target.value})}/></label><label>Endereço<input value={s.CONDO_ADDRESS||''} onChange={e=>setForm('settings',{CONDO_ADDRESS:e.target.value})}/></label><label>Operadora do elevador<input value={s.ELEVATOR_OPERATOR_NAME||''} onChange={e=>setForm('settings',{ELEVATOR_OPERATOR_NAME:e.target.value})}/></label><label>Telefone emergência elevador<input value={s.ELEVATOR_EMERGENCY_PHONE||''} onChange={e=>setForm('settings',{ELEVATOR_EMERGENCY_PHONE:e.target.value})}/></label><label className="check"><input type="checkbox" checked={bool(s.ALLOW_MULTIPLE_RESIDENTS_PER_UNIT,false)} onChange={e=>setForm('settings',{ALLOW_MULTIPLE_RESIDENTS_PER_UNIT:String(e.target.checked)})}/>Autorizar cadastro de moradores adicionais por unidade</label><label>Quantidade máxima de moradores por unidade<input type="number" min="1" value={s.MAX_RESIDENTS_PER_UNIT||''} onChange={e=>setForm('settings',{MAX_RESIDENTS_PER_UNIT:e.target.value})}/></label><button onClick={()=>saveSettings(forms,action)}><Save/> Salvar condomínio</button></div></SettingCard>; }
 function AreasSettings({data,forms,setForm,action}){ const f=forms.commonArea; return <SettingCard title="Áreas de lazer e períodos de reserva" icon={<CalendarDays/>}><form className="formGrid" onSubmit={e=>{e.preventDefault(); action('/api/common-areas',f,'Área de lazer salva');}}><label>Nome da área<input required value={f.name} onChange={e=>setForm('commonArea',{name:e.target.value})}/></label><label>Taxa de reserva<input type="number" value={f.fee_amount} onChange={e=>setForm('commonArea',{fee_amount:e.target.value})}/></label><label>Limite de convidados<input type="number" value={f.max_guests} onChange={e=>setForm('commonArea',{max_guests:e.target.value})}/></label><label>Períodos permitidos<textarea placeholder="Um por linha: dia_todo, manha, tarde, noite, horario" value={(f.reservation_periods||'').replace(/,/g,'\n')} onChange={e=>setForm('commonArea',{reservation_periods:e.target.value.split('\n').map(x=>x.trim()).filter(Boolean).join(',')})}/></label><label className="check"><input type="checkbox" checked={f.count_children!==false} onChange={e=>setForm('commonArea',{count_children:e.target.checked})}/>Crianças contam no limite</label><label className="check"><input type="checkbox" checked={f.count_infants===true} onChange={e=>setForm('commonArea',{count_infants:e.target.checked})}/>Bebês de colo contam no limite</label><label>Documento/regras da reserva<textarea placeholder="Cole o link do PDF ou escreva as regras. Se houver documento enviado com título 'reserva salão de festas', ele também aparecerá automaticamente." value={f.rules_document} onChange={e=>setForm('commonArea',{rules_document:e.target.value})}/></label><button><Save/> Salvar área</button></form><Table rows={data.commonAreas} render={a=><><td><b>{a.name}</b><small>Períodos: {reservationPeriodsForArea(a).map(reservationPeriodLabel).join(', ')}</small></td><td>{money(a.fee_amount)}</td><td>{a.max_guests} convidados</td><td>{/^https?:\/\//i.test(String(a.rules_document||''))?<a className="buttonlike" href={a.rules_document} target="_blank" rel="noreferrer"><FileText/> Abrir regras</a>:<small>{a.rules_document?'Regras em texto':'Sem documento vinculado'}</small>}</td></>}/></SettingCard>; }
-function AppsSettings({forms,setForm,action}){ const s=forms.settings; return <SettingCard title="Aplicativos" icon={<AppWindow/>}><div className="channels"><label><input type="checkbox" checked={bool(s.ENABLE_APP_PORTARIA,true)} onChange={e=>setForm('settings',{ENABLE_APP_PORTARIA:String(e.target.checked)})}/>Portaria</label><label><input type="checkbox" checked={bool(s.ENABLE_APP_SINDICO,true)} onChange={e=>setForm('settings',{ENABLE_APP_SINDICO:String(e.target.checked)})}/>Síndico</label><label><input type="checkbox" checked={bool(s.ENABLE_APP_MORADOR,true)} onChange={e=>setForm('settings',{ENABLE_APP_MORADOR:String(e.target.checked)})}/>Morador</label></div><div className="formGrid"><label>URL APK Portaria<input value={s.APK_PORTARIA_URL||''} onChange={e=>setForm('settings',{APK_PORTARIA_URL:e.target.value})}/></label><label>URL APK Síndico<input value={s.APK_SINDICO_URL||''} onChange={e=>setForm('settings',{APK_SINDICO_URL:e.target.value})}/></label><label>URL APK Morador<input value={s.APK_MORADOR_URL||''} onChange={e=>setForm('settings',{APK_MORADOR_URL:e.target.value})}/></label><label className="check"><input type="checkbox" checked={bool(s.KIOSK_PORTARIA_PREMIUM_ENABLED,true)} onChange={e=>setForm('settings',{KIOSK_PORTARIA_PREMIUM_ENABLED:String(e.target.checked)})}/>APK Portaria em modo kiosk premium</label><label>Apps liberados para troca controlada<input value={s.KIOSK_ALLOWED_APPS||'Vitória Régia Portaria,Telegram,Câmera,Wi-Fi'} onChange={e=>setForm('settings',{KIOSK_ALLOWED_APPS:e.target.value})}/></label><button onClick={()=>saveSettings(forms,action)}><Save/> Salvar apps</button></div></SettingCard>; }
+function AppsSettings({forms,setForm,action}){ const s=forms.settings; return <SettingCard title="Aplicativos" icon={<AppWindow/>}><div className="channels"><label><input type="checkbox" checked={bool(s.ENABLE_APP_PORTARIA,true)} onChange={e=>setForm('settings',{ENABLE_APP_PORTARIA:String(e.target.checked)})}/>Portaria</label><label><input type="checkbox" checked={bool(s.ENABLE_APP_SINDICO,true)} onChange={e=>setForm('settings',{ENABLE_APP_SINDICO:String(e.target.checked)})}/>Síndico</label><label><input type="checkbox" checked={bool(s.ENABLE_APP_MORADOR,true)} onChange={e=>setForm('settings',{ENABLE_APP_MORADOR:String(e.target.checked)})}/>Morador</label></div><div className="formGrid"><label>URL APK Portaria<input value={s.APK_PORTARIA_URL||''} onChange={e=>setForm('settings',{APK_PORTARIA_URL:e.target.value})}/></label><label>URL APK Síndico<input value={s.APK_SINDICO_URL||''} onChange={e=>setForm('settings',{APK_SINDICO_URL:e.target.value})}/></label><label>URL APK Morador<input value={s.APK_MORADOR_URL||''} onChange={e=>setForm('settings',{APK_MORADOR_URL:e.target.value})}/></label><label>Versão atual dos APKs<input value={s.APK_CURRENT_VERSION||'Vitória Régia Pro v12.8.4'} onChange={e=>setForm('settings',{APK_CURRENT_VERSION:e.target.value})}/></label><label className="check"><input type="checkbox" checked={bool(s.APK_OFFLINE_FIRST_ENABLED,true)} onChange={e=>setForm('settings',{APK_OFFLINE_FIRST_ENABLED:String(e.target.checked)})}/>Habilitar modo offline-first nos APKs</label><label className="check"><input type="checkbox" disabled checked={false}/>Emergência offline bloqueada por segurança</label><label className="check"><input type="checkbox" checked={bool(s.KIOSK_PORTARIA_PREMIUM_ENABLED,true)} onChange={e=>setForm('settings',{KIOSK_PORTARIA_PREMIUM_ENABLED:String(e.target.checked)})}/>APK Portaria em modo kiosk premium</label><label>Apps liberados para troca controlada<input value={s.KIOSK_ALLOWED_APPS||'Vitória Régia Portaria,Telegram,Câmera,Wi-Fi'} onChange={e=>setForm('settings',{KIOSK_ALLOWED_APPS:e.target.value})}/></label><button onClick={()=>saveSettings(forms,action)}><Save/> Salvar apps</button></div></SettingCard>; }
 function UpdateSettings({forms,setForm,action,settings,isAdminReserved}){
   const [testMsg,setTestMsg]=useState('');
   async function testGithub(){
@@ -1356,7 +1410,137 @@ function AuditPage({data,action,loadAll,isAdminReserved}){
   </div>;
 }
 function CentralPro(props){ const showUpdates=props.isAdminReserved || bool(props.settings.SHOW_UPDATES_TO_SINDICO,false); return <Panel title="Sistema e Apps" subtitle="Aplicativos, manuais e atualizações do sistema." icon={<ShieldCheck/>}><SubTabs value={props.sub} setValue={props.setSub} tabs={[['apps','Aplicativos'], ...(showUpdates?[['updates','Atualizações']]:[]), ['manuais','Manuais'], ['documentos','Documentos']]} />{props.sub==='updates'&&showUpdates?<Updates {...props}/>:props.sub==='manuais'?<Manuals {...props}/>:props.sub==='documentos'?<Documents {...props}/>:<AppsDownload {...props}/>}</Panel>; }
-function AppsDownload({settings}){ const apps=[['Portaria','APK_PORTARIA_URL','ENABLE_APP_PORTARIA','#/portaria'],['Síndico','APK_SINDICO_URL','ENABLE_APP_SINDICO','#/dashboard'],['Morador','APK_MORADOR_URL','ENABLE_APP_MORADOR','#/perfil']]; return <div className="appCards downloadApps">{apps.filter(([,u,e])=>bool(settings[e],true)).map(([name,key,,hash])=><article key={name}><Smartphone/><h3>Aplicativo {name}</h3><p>Use como PWA no celular ou baixe o APK quando ele estiver publicado.</p><div className="appActions"><a className="buttonlike" href={window.location.origin+'/'+hash}><AppWindow/> Abrir versão web/app</a>{settings[key]?<a className="buttonlike secondary" href={settings[key]} target="_blank" rel="noreferrer"><Download/> Baixar APK</a>:<button className="buttonlike disabled" type="button" disabled><Download/> APK não publicado</button>}</div></article>)}</div>; }
+
+function AppsDownload({settings,data,session,can,notify,loadAll}){
+  const [uploading,setUploading]=useState('');
+  const apkDocs = (data?.documents || []).filter(d => String(d.document_type || '').toLowerCase() === 'apk' || /\.apk$/i.test(String(d.file_name || d.title || '')));
+  const apps=[
+    {name:'Portaria', key:'portaria', urlKey:'APK_PORTARIA_URL', enabledKey:'ENABLE_APP_PORTARIA', hash:'#/portaria', tagline:'Leitura de encomendas, visitantes, OCR, câmera e rotina da portaria.', fileHint:'vitoria-regia-portaria.apk'},
+    {name:'Síndico', key:'sindico', urlKey:'APK_SINDICO_URL', enabledKey:'ENABLE_APP_SINDICO', hash:'#/dashboard', tagline:'Gestão premium do condomínio, comunicados, aprovações, financeiro e auditoria.', fileHint:'vitoria-regia-sindico.apk'},
+    {name:'Morador', key:'morador', urlKey:'APK_MORADOR_URL', enabledKey:'ENABLE_APP_MORADOR', hash:'#/perfil', tagline:'Área do morador com notificações, documentos, reservas e acompanhamento.', fileHint:'vitoria-regia-morador.apk'}
+  ].filter(app=>bool(settings?.[app.enabledKey],true));
+  const canUpload = typeof can === 'function' ? can('documents.manage') : ['sindico','subsindico','admin','master'].includes(session?.role);
+
+  function localApkFor(app){
+    const key = app.key.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    return apkDocs.find(d => {
+      const hay = `${d.title || ''} ${d.description || ''} ${d.file_name || ''}`.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+      return hay.includes(key);
+    });
+  }
+  async function baixarDocumento(doc, fallbackName='vitoria-regia.apk'){
+    try{
+      const blob = await request(`/api/documents/${doc.id}/download`, { blob:true });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = doc.file_name || fallbackName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url), 1200);
+    }catch(e){
+      notify?.(e.message || 'Não foi possível baixar o APK.', true);
+    }
+  }
+  async function uploadApk(app,file){
+    if(!file) return;
+    if(!canUpload) return notify?.('Apenas perfis com permissão de documentos podem publicar APKs.', true);
+    if(!/\.apk$/i.test(file.name)) return notify?.('Envie um arquivo .apk válido.', true);
+    const fd = new FormData();
+    fd.append('document',file);
+    fd.append('title',`APK Vitória Régia ${app.name} v12.8.4`);
+    fd.append('description',`${app.tagline} Arquivo publicado na central premium de aplicativos.`);
+    fd.append('audience','publico');
+    fd.append('is_public','true');
+    fd.append('document_type','apk');
+    try{
+      setUploading(app.key);
+      await request('/api/documents/upload',{ method:'POST', body:fd, raw:true });
+      notify?.(`APK ${app.name} publicado na central premium.`);
+      await loadAll?.();
+    }catch(e){
+      notify?.(e.message || 'Não foi possível publicar o APK.', true);
+    }finally{
+      setUploading('');
+    }
+  }
+  return <div className="premiumAppsHub">
+    <section className="apkHero">
+      <div className="apkHeroLogo"><img src="/logo-vitoria-regia-menu.svg" alt="Vitória Régia"/></div>
+      <div>
+        <span className="eyebrow">Central Premium de Aplicativos</span>
+        <h3>APKs do Condomínio Vitória Régia</h3>
+        <p>Disponibilize os aplicativos Android de Portaria, Síndico e Morador em uma área oficial do sistema, com logo, descrição, download autenticado e orientação para publicação na Google Play.</p>
+      </div>
+      <Status ok>Premium</Status>
+    </section>
+
+    <div className="apkCards">
+      {apps.map(app => {
+        const doc = localApkFor(app);
+        const externalUrl = settings?.[app.urlKey] || '';
+        return <article className="apkCard" key={app.key}>
+          <div className="apkIcon"><img src="/logo-vitoria-regia.svg" alt="Logo Vitória Régia"/></div>
+          <div className="apkCardBody">
+            <span className="apkBadge">APK Android</span>
+            <h3>Vitória Régia {app.name}</h3>
+            <p>{app.tagline}</p>
+            <small>Nome sugerido: {app.fileHint}</small>
+            <div className="apkStatusLine">
+              {doc ? <Status ok>Publicado no sistema</Status> : externalUrl ? <Status ok>Link externo configurado</Status> : <Status>Não publicado</Status>}
+              {doc?.file_size ? <small>{(Number(doc.file_size)/1024/1024).toFixed(1)} MB</small> : null}
+            </div>
+          </div>
+          <div className="appActions apkActions">
+            <a className="buttonlike" href={window.location.origin+'/'+app.hash}><AppWindow/> Abrir web/app</a>
+            {doc ? <button className="buttonlike secondary" type="button" onClick={()=>baixarDocumento(doc, app.fileHint)}><Download/> Baixar APK</button> : externalUrl ? <a className="buttonlike secondary" href={externalUrl} target="_blank" rel="noreferrer"><Download/> Baixar APK</a> : <button className="buttonlike disabled" type="button" disabled><Download/> Aguardando APK</button>}
+            {canUpload && <label className="buttonlike apkUploadButton"><FileUp/> {uploading===app.key?'Enviando...':'Enviar APK'}<input type="file" accept=".apk,application/vnd.android.package-archive" onChange={e=>uploadApk(app,e.target.files?.[0])}/></label>}
+          </div>
+        </article>;
+      })}
+    </div>
+
+    <section className="offlineApkGuide">
+      <article className="offlineCard">
+        <h3><Smartphone/> APK Offline First</h3>
+        <p>O APK pode usar banco local no aparelho para consulta e lançamento de dados sem internet, sincronizando depois com o sistema quando a conexão voltar.</p>
+        <ul className="offlineRuleList">
+          <li><CheckCircle2/><span>Cadastros usam <b>client_offline_id</b> e deduplicação no servidor.<small>Evita duplicidade por ID local, e-mail, documento, telefone, Telegram, unidade e nome.</small></span></li>
+          <li><CheckCircle2/><span>Fila offline para cadastros, visitantes, encomendas e observações.<small>Ao sincronizar, o servidor devolve a solicitação existente se já houver cadastro pendente.</small></span></li>
+          <li><AlertTriangle/><span>Emergência bloqueada offline.<small>Por segurança, emergência não fica em fila: precisa internet para acionar portaria, síndico, Telegram e demais canais.</small></span></li>
+        </ul>
+      </article>
+      <article className="offlineCard">
+        <h3><RefreshCcw/> Atualização dos APKs</h3>
+        <p>As telas web do APK acompanham o sistema quando o app carrega o endereço online. Já mudanças nativas do APK, como ícone, permissões e estrutura Android, precisam de nova versão instalada ou atualização pela Play Store.</p>
+        <ul className="offlineRuleList">
+          <li><CheckCircle2/><span>Logo padrão Vitória Régia.<small>O app usa os mesmos arquivos <b>logo-vitoria-regia.svg</b> e <b>logo-vitoria-regia-menu.svg</b>.</small></span></li>
+          <li><CheckCircle2/><span>Manifest de versão em <code>/api/apps/manifest</code>.<small>O APK consulta esse endpoint para saber versão do sistema, política offline e links de atualização.</small></span></li>
+          <li><CheckCircle2/><span>Atualizações do sistema refletidas nos APKs.<small>Para WebView/PWA, as telas atualizam junto com o deploy. Para APK nativo, publique novo APK/AAB.</small></span></li>
+        </ul>
+      </article>
+      <div className="apkUpdatePolicy"><b>Política premium recomendada:</b><small>Use o APK como casca oficial com logo padrão e sincronização offline. O conteúdo do sistema atualiza automaticamente pelo servidor. Quando mudar recurso nativo, câmera, permissões ou ícone, gere nova versão e publique nesta central ou na Play Store.</small></div>
+    </section>
+
+    <section className="playStoreGuide">
+      <div>
+        <span className="eyebrow">Google Play</span>
+        <h3>Como publicar na Play Store</h3>
+        <p>Para publicar oficialmente, o ideal é gerar um <b>Android App Bundle (.aab)</b> assinado para cada aplicativo. A Play Store usa o App Bundle para entregar APKs otimizados por dispositivo.</p>
+      </div>
+      <ol>
+        <li>Crie ou acesse sua conta no <b>Google Play Console</b> e conclua a verificação do desenvolvedor.</li>
+        <li>Crie um app para cada perfil ou um app único com perfis internos: <b>Morador</b>, <b>Síndico</b> e <b>Portaria</b>.</li>
+        <li>Prepare nome, descrição curta, descrição completa, categoria, ícone, screenshots, política de privacidade e dados de segurança.</li>
+        <li>Gere versão assinada em <b>.aab</b>. O APK é ótimo para instalação direta/teste, mas a Play Store normalmente trabalha com App Bundle.</li>
+        <li>Configure a Assinatura de apps do Google Play e mantenha a chave de upload em local seguro.</li>
+        <li>Se a conta for pessoal nova, faça teste fechado com os testadores exigidos pelo Google antes de solicitar produção.</li>
+        <li>Após aprovação, publique em produção e configure os links oficiais nos campos <b>APK_PORTARIA_URL</b>, <b>APK_SINDICO_URL</b> e <b>APK_MORADOR_URL</b>, se desejar.</li>
+      </ol>
+      <div className="noticeBox ok"><b>Recomendação premium</b><small>Mantenha nesta central os APKs internos para testes e use a Play Store para distribuição pública/gerenciada. Assim você tem controle imediato para condomínio e distribuição formal para Android.</small></div>
+    </section>
+  </div>; }
 function Updates({data,forms,setForm,notify,loadAll,isAdminReserved}){
   const [progress,setProgress]=useState(0);
   const [progressText,setProgressText]=useState('');
@@ -1406,6 +1590,7 @@ function Updates({data,forms,setForm,notify,loadAll,isAdminReserved}){
 
 function inferDocumentTypeFromText(text=''){
   const hay=normalizeTextForSearch(text);
+  if(/\.apk|apk|android|app/.test(hay)) return 'apk';
   if(/balancete|balanco|balan[cç]o/.test(hay)) return 'balancete';
   if(/demonstrativo/.test(hay)) return 'demonstrativo';
   if(/prestacao|presta[cç][aã]o/.test(hay)) return 'prestacao_contas';

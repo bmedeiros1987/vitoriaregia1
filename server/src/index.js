@@ -17,7 +17,7 @@ import { randomBytes, createHash, verify as cryptoVerify } from 'node:crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v12.8.1';
+const APP_VERSION = process.env.APP_VERSION || 'Vitória Régia Pro v12.8.4';
 const DEFAULT_TELEGRAM_CHAT_ID = '8188648317';
 const JWT_SECRET = process.env.JWT_SECRET || 'troque-este-segredo-em-producao';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/vitoriaregia';
@@ -727,7 +727,7 @@ CREATE TABLE IF NOT EXISTS telegram_callback_events(
     // settings / workflows / updates / audit
     ['settings','value TEXT'], ['settings','updated_at TIMESTAMP DEFAULT now()'],
     ['emergency_types','label TEXT'], ['emergency_types','phone TEXT'], ['emergency_types','supplier TEXT'], ['emergency_types','instructions TEXT'], ['emergency_types','notify_all BOOLEAN DEFAULT false'], ['emergency_types','active BOOLEAN DEFAULT true'], ['emergency_types','sort_order INTEGER DEFAULT 0'], ['emergency_types','updated_at TIMESTAMP DEFAULT now()'],
-    ['registration_requests','name TEXT'], ['registration_requests','email TEXT'], ['registration_requests','phone TEXT'], ['registration_requests','whatsapp_phone TEXT'], ['registration_requests','telegram_chat_id TEXT'], ['registration_requests','telegram_username TEXT'], ['registration_requests','telegram_link_token TEXT'], ['registration_requests','telegram_linked_at TIMESTAMP'], ['registration_requests',"gender TEXT DEFAULT 'nao_informado'"], ['registration_requests',"gender TEXT DEFAULT 'nao_informado'"], ['registration_requests','preferred_channels JSONB DEFAULT \'{"email":true,"whatsapp":false,"telegram":false}\'::jsonb'], ['registration_requests','unit TEXT'], ['registration_requests','document TEXT'], ['registration_requests','role TEXT DEFAULT \'morador\''], ['registration_requests','status TEXT DEFAULT \'pendente\''], ['registration_requests','notes TEXT'], ['registration_requests','created_at TIMESTAMP DEFAULT now()'], ['registration_requests','approved_by INTEGER'], ['registration_requests','approved_at TIMESTAMP'],
+    ['registration_requests','name TEXT'], ['registration_requests','email TEXT'], ['registration_requests','phone TEXT'], ['registration_requests','whatsapp_phone TEXT'], ['registration_requests','telegram_chat_id TEXT'], ['registration_requests','telegram_username TEXT'], ['registration_requests','telegram_link_token TEXT'], ['registration_requests','telegram_linked_at TIMESTAMP'], ['registration_requests',"gender TEXT DEFAULT 'nao_informado'"], ['registration_requests',"gender TEXT DEFAULT 'nao_informado'"], ['registration_requests','preferred_channels JSONB DEFAULT \'{"email":true,"whatsapp":false,"telegram":false}\'::jsonb'], ['registration_requests','unit TEXT'], ['registration_requests','document TEXT'], ['registration_requests','role TEXT DEFAULT \'morador\''], ['registration_requests','status TEXT DEFAULT \'pendente\''], ['registration_requests','notes TEXT'], ['registration_requests','created_at TIMESTAMP DEFAULT now()'], ['registration_requests','approved_by INTEGER'], ['registration_requests','approved_at TIMESTAMP'], ['registration_requests','client_offline_id TEXT'],
     ['password_resets','user_id INTEGER'], ['password_resets','token TEXT'], ['password_resets','temp_password TEXT'], ['password_resets','used BOOLEAN DEFAULT false'], ['password_resets','expires_at TIMESTAMP'], ['password_resets','created_at TIMESTAMP DEFAULT now()'],
     ['push_subscriptions','user_id INTEGER'], ['push_subscriptions','endpoint TEXT'], ['push_subscriptions','payload JSONB'], ['push_subscriptions','created_at TIMESTAMP DEFAULT now()'],
     ['system_updates','update_code TEXT'], ['system_updates','version TEXT'], ['system_updates','title TEXT'], ['system_updates','notes TEXT'], ['system_updates','from_version TEXT'], ['system_updates','to_version TEXT'], ['system_updates','status TEXT DEFAULT \'disponivel\''], ['system_updates','validation_token_hash TEXT'], ['system_updates','payload_sha256 TEXT'], ['system_updates','manifest JSONB DEFAULT \'{}\'::jsonb'], ['system_updates','package_data BYTEA'], ['system_updates','announced_at TIMESTAMP'], ['system_updates','validated_at TIMESTAMP'], ['system_updates','applied_at TIMESTAMP'], ['system_updates','created_by INTEGER'], ['system_updates','applied_by INTEGER'], ['system_updates','error TEXT'], ['system_updates','created_at TIMESTAMP DEFAULT now()'],
@@ -746,6 +746,8 @@ CREATE TABLE IF NOT EXISTS telegram_callback_events(
   await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email) WHERE email IS NOT NULL").catch(e => console.warn('Índice único de usuários ignorado:', e.message));
   await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_settings_key_unique ON settings(key) WHERE key IS NOT NULL").catch(e => console.warn('Índice de configurações ignorado:', e.message));
   await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_emergency_types_code_unique ON emergency_types(code) WHERE code IS NOT NULL").catch(e => console.warn('Índice de emergências ignorado:', e.message));
+  await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_registration_requests_client_offline_id ON registration_requests(client_offline_id) WHERE client_offline_id IS NOT NULL AND client_offline_id <> ''").catch(e => console.warn('Índice offline de cadastros ignorado:', e.message));
+  await q("CREATE INDEX IF NOT EXISTS idx_registration_requests_dedup_contacts ON registration_requests(lower(coalesce(email,'')), regexp_replace(coalesce(document,''),'\\D','','g'), regexp_replace(coalesce(whatsapp_phone, phone, ''),'\\D','','g'), status)").catch(e => console.warn('Índice de deduplicação de cadastros ignorado:', e.message));
   await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_common_areas_name_unique ON common_areas(name) WHERE name IS NOT NULL").catch(e => console.warn('Índice de áreas comuns ignorado:', e.message));
   await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_system_updates_code_unique ON system_updates(update_code) WHERE update_code IS NOT NULL").catch(e => console.warn('Índice de atualizações ignorado:', e.message));
   await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_push_subscriptions_endpoint_unique ON push_subscriptions(endpoint) WHERE endpoint IS NOT NULL").catch(e => console.warn('Índice de push ignorado:', e.message));
@@ -753,17 +755,17 @@ CREATE TABLE IF NOT EXISTS telegram_callback_events(
   await q("CREATE UNIQUE INDEX IF NOT EXISTS idx_reservation_slot ON reservations(area, reserved_for, start_time, end_time) WHERE status <> 'cancelada'").catch(e => console.warn('Índice de reservas ignorado:', e.message));
 
   const defaultSettings = {
-    THEME_ACCENT: '#126b5f', THEME_TEXT_SIZE: 'comfort', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light', APP_VERSION:'Vitória Régia Pro v12.8.1',
+    THEME_ACCENT: '#126b5f', THEME_TEXT_SIZE: 'comfort', MENU_ORIENTATION: 'vertical', UI_DENSITY: 'comfort', APPEARANCE: 'light', APP_VERSION:'Vitória Régia Pro v12.8.4',
     CONDO_NAME: 'Condomínio Vitória Régia', DEVELOPED_BY: 'CrewCheck', CREWCHECK_SITE: 'https://www.crewcheck.online/', CREWCHECK_FOOTER: 'Desenvolvido por CrewCheck - todos os direitos reservados', CONDO_ADDRESS: '', WEATHER_CITY: 'João Pessoa', WEATHER_LAT: '-7.1195', WEATHER_LON: '-34.8450',
     ELEVATOR_OPERATOR_NAME: 'Operadora do elevador', ELEVATOR_EMERGENCY_PHONE: '', EMERGENCY_EMAILS: process.env.SENDGRID_TO_DEFAULT || '',
     EMERGENCY_APPROVAL_REQUIRED: 'true', FOOTER_MODE: 'minimal', EMAIL_PROVIDER: process.env.MAIL_PROVIDER || 'sendgrid',
     SENDGRID_FROM_EMAIL: process.env.SENDGRID_FROM_EMAIL || '', SENDGRID_FROM_NAME: process.env.SENDGRID_FROM_NAME || 'Condomínio Vitória Régia', SENDGRID_REPLY_TO: process.env.SENDGRID_REPLY_TO || '', EMAIL_SIGNATURE: 'Condomínio Vitória Régia',
     TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '', TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || DEFAULT_TELEGRAM_CHAT_ID, TELEGRAM_PORTARIA_CHAT_ID: process.env.TELEGRAM_PORTARIA_CHAT_ID || DEFAULT_TELEGRAM_CHAT_ID, TELEGRAM_PORTARIA_LABEL: process.env.TELEGRAM_PORTARIA_LABEL || 'Celular Portaria', TELEGRAM_PORTARIA_ENABLED: process.env.TELEGRAM_PORTARIA_ENABLED || 'true', TELEGRAM_PORTARIA_RECEIVE_EMERGENCY: process.env.TELEGRAM_PORTARIA_RECEIVE_EMERGENCY || 'true', TELEGRAM_PORTARIA_RECEIVE_PACKAGES: process.env.TELEGRAM_PORTARIA_RECEIVE_PACKAGES || 'true', TELEGRAM_INTERCOM_FALLBACK_ENABLED: process.env.TELEGRAM_INTERCOM_FALLBACK_ENABLED || 'true', TELEGRAM_EMERGENCY_CONFIRMATION_ENABLED: process.env.TELEGRAM_EMERGENCY_CONFIRMATION_ENABLED || 'true', PACKAGE_ELEVATOR_AUTH_ENABLED: process.env.PACKAGE_ELEVATOR_AUTH_ENABLED || 'true', PACKAGE_TELEGRAM_DECISIONS_ENABLED: process.env.PACKAGE_TELEGRAM_DECISIONS_ENABLED || 'true', KIOSK_PORTARIA_PREMIUM_ENABLED: process.env.KIOSK_PORTARIA_PREMIUM_ENABLED || 'true', KIOSK_PORTARIA_PIN: process.env.KIOSK_PORTARIA_PIN || '', KIOSK_ALLOWED_APPS: process.env.KIOSK_ALLOWED_APPS || 'Vitória Régia Portaria,Telegram,Câmera,Wi-Fi', TELEGRAM_BOT_USERNAME: process.env.TELEGRAM_BOT_USERNAME || 'vitoriaregia_bot', TELEGRAM_START_URL: process.env.TELEGRAM_START_URL || 'https://t.me/vitoriaregia_bot', TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET || '', TELEGRAM_ENABLED: process.env.TELEGRAM_ENABLED || process.env.ENABLE_TELEGRAM || 'true', TELEGRAM_PARSE_MODE: process.env.TELEGRAM_PARSE_MODE || '', WHATSAPP_PHONE_NUMBER_ID: '', WHATSAPP_ACCESS_TOKEN: '', WHATSAPP_API_VERSION: 'v19.0',
     DELIVERY_DEFAULT_CHANNELS: '{"app":true,"browser":true,"email":true,"telegram":true,"whatsapp":false}',
-    ALLOW_MULTIPLE_RESIDENTS_PER_UNIT: 'false', MAX_RESIDENTS_PER_UNIT:'2', SHOW_UPDATES_TO_SINDICO: 'false',
+    ALLOW_MULTIPLE_RESIDENTS_PER_UNIT: 'false', MAX_RESIDENTS_PER_UNIT:'2', VISITOR_MAX_PER_DAY:'50', PACKAGE_RETENTION_DAYS:'365', DOCUMENT_UPLOAD_LIMIT_MB:'150', UPDATE_UPLOAD_LIMIT_MB: process.env.UPDATE_UPLOAD_LIMIT_MB || '30', MAX_RESERVATIONS_PER_UNIT_MONTH:'4', MAX_VISITORS_PER_RESERVATION:'30', SHOW_UPDATES_TO_SINDICO: 'false',
     RESERVATION_DEFAULT_RULES: '/documentos/termo_aceite_reserva_salao_festas_vitoria_regia.pdf',
     RESERVATION_MAX_GUESTS_DEFAULT: '30', RESERVATION_COUNT_CHILDREN: 'true', RESERVATION_COUNT_INFANTS: 'false',
-    BOLETO_PROVIDER: 'manual', APK_BASE_URL: process.env.PUBLIC_APP_URL || 'https://vitoriaregia1.onrender.com', APK_PORTARIA_URL: '', APK_SINDICO_URL: '', APK_MORADOR_URL: '',
+    BOLETO_PROVIDER: 'manual', APK_BASE_URL: process.env.PUBLIC_APP_URL || 'https://vitoriaregia1.onrender.com', APK_PORTARIA_URL: '', APK_SINDICO_URL: '', APK_MORADOR_URL: '', APK_OFFLINE_FIRST_ENABLED: 'true', APK_CURRENT_VERSION: 'Vitória Régia Pro v12.8.4', APK_EMERGENCY_OFFLINE_ENABLED: 'false',
     ENABLE_EMAIL: 'true', ENABLE_TELEGRAM: 'true', ENABLE_WHATSAPP: 'false', ENABLE_BROWSER_PUSH: 'true',
     ENABLE_APP_PORTARIA: 'true', ENABLE_APP_SINDICO: 'true', ENABLE_APP_MORADOR: 'true',
     REGISTRATION_REQUIRE_EMAIL: 'true', REGISTRATION_REQUIRE_WHATSAPP: 'false', REGISTRATION_REQUIRE_TELEGRAM: 'false',
@@ -985,11 +987,11 @@ async function filterChannelsByPlan(channels={}) {
   out.browser = Boolean(out.browser) && await featureEnabled('browser');
   return out;
 }
-const PLATFORM_SETTING_KEYS = new Set(['ENABLE_EMAIL','ENABLE_TELEGRAM','ENABLE_WHATSAPP','ENABLE_BROWSER_PUSH','ENABLE_APP_PORTARIA','ENABLE_APP_SINDICO','ENABLE_APP_MORADOR','REGISTRATION_REQUIRE_EMAIL','REGISTRATION_REQUIRE_WHATSAPP','REGISTRATION_REQUIRE_TELEGRAM','BANK_PROVIDER','BANK_API_BASE_URL','BANK_CLIENT_ID','BANK_ACCOUNT','BANK_AGENCY','BANK_WALLET','BANK_CONTRACT','BANK_PIX_KEY','BOLETO_AUTO_GENERATE','BOLETO_PROVIDER','ENABLE_SYSTEM_UPDATES','UPDATE_CHANNEL','UPDATE_FEED_URL','UPDATE_APPLY_MODE','UPDATE_GITHUB_REPO','UPDATE_GITHUB_BRANCH','APK_PORTARIA_URL','APK_SINDICO_URL','APK_MORADOR_URL','RESERVATION_MAX_GUESTS_DEFAULT','RESERVATION_COUNT_CHILDREN','RESERVATION_COUNT_INFANTS','RESIDENT_CRITERIA','EMERGENCY_CRITICAL_ALERTS','ALLOW_MULTIPLE_RESIDENTS_PER_UNIT','MAX_RESIDENTS_PER_UNIT','SHOW_UPDATES_TO_SINDICO','EMAIL_PROVIDER','SENDGRID_FROM_EMAIL','SENDGRID_FROM_NAME','SENDGRID_REPLY_TO','SENDGRID_TO_DEFAULT','SENDGRID_DATA_RESIDENCY','SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','SMTP_SECURE','MAIL_FROM','TELEGRAM_ENABLED','TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID','TELEGRAM_PORTARIA_CHAT_ID','TELEGRAM_PORTARIA_LABEL','TELEGRAM_PORTARIA_ENABLED','TELEGRAM_PORTARIA_RECEIVE_EMERGENCY','TELEGRAM_PORTARIA_RECEIVE_PACKAGES','TELEGRAM_INTERCOM_FALLBACK_ENABLED','TELEGRAM_EMERGENCY_CONFIRMATION_ENABLED','PACKAGE_ELEVATOR_AUTH_ENABLED','PACKAGE_TELEGRAM_DECISIONS_ENABLED','KIOSK_PORTARIA_PREMIUM_ENABLED','KIOSK_PORTARIA_PIN','KIOSK_ALLOWED_APPS','TELEGRAM_WEBHOOK_SECRET','TELEGRAM_BOT_USERNAME','TELEGRAM_START_URL','TELEGRAM_PARSE_MODE','WHATSAPP_API_VERSION','WHATSAPP_PHONE_NUMBER_ID','WHATSAPP_BUSINESS_ACCOUNT_ID','WHATSAPP_ACCESS_TOKEN','WHATSAPP_TEMPLATE_PACKAGE','WHATSAPP_TEMPLATE_RESERVATION','VAPID_PUBLIC_KEY','VAPID_PRIVATE_KEY','VAPID_SUBJECT']);
+const PLATFORM_SETTING_KEYS = new Set(['ENABLE_EMAIL','ENABLE_TELEGRAM','ENABLE_WHATSAPP','ENABLE_BROWSER_PUSH','ENABLE_APP_PORTARIA','ENABLE_APP_SINDICO','ENABLE_APP_MORADOR','REGISTRATION_REQUIRE_EMAIL','REGISTRATION_REQUIRE_WHATSAPP','REGISTRATION_REQUIRE_TELEGRAM','BANK_PROVIDER','BANK_API_BASE_URL','BANK_CLIENT_ID','BANK_ACCOUNT','BANK_AGENCY','BANK_WALLET','BANK_CONTRACT','BANK_PIX_KEY','BOLETO_AUTO_GENERATE','BOLETO_PROVIDER','ENABLE_SYSTEM_UPDATES','UPDATE_CHANNEL','UPDATE_FEED_URL','UPDATE_APPLY_MODE','UPDATE_GITHUB_REPO','UPDATE_GITHUB_BRANCH','APK_PORTARIA_URL','APK_SINDICO_URL','APK_MORADOR_URL','APK_OFFLINE_FIRST_ENABLED','APK_CURRENT_VERSION','APK_EMERGENCY_OFFLINE_ENABLED','RESERVATION_MAX_GUESTS_DEFAULT','RESERVATION_COUNT_CHILDREN','RESERVATION_COUNT_INFANTS','RESIDENT_CRITERIA','EMERGENCY_CRITICAL_ALERTS','ALLOW_MULTIPLE_RESIDENTS_PER_UNIT','MAX_RESIDENTS_PER_UNIT','SHOW_UPDATES_TO_SINDICO','EMAIL_PROVIDER','SENDGRID_FROM_EMAIL','SENDGRID_FROM_NAME','SENDGRID_REPLY_TO','SENDGRID_TO_DEFAULT','SENDGRID_DATA_RESIDENCY','SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','SMTP_SECURE','MAIL_FROM','TELEGRAM_ENABLED','TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID','TELEGRAM_PORTARIA_CHAT_ID','TELEGRAM_PORTARIA_LABEL','TELEGRAM_PORTARIA_ENABLED','TELEGRAM_PORTARIA_RECEIVE_EMERGENCY','TELEGRAM_PORTARIA_RECEIVE_PACKAGES','TELEGRAM_INTERCOM_FALLBACK_ENABLED','TELEGRAM_EMERGENCY_CONFIRMATION_ENABLED','PACKAGE_ELEVATOR_AUTH_ENABLED','PACKAGE_TELEGRAM_DECISIONS_ENABLED','KIOSK_PORTARIA_PREMIUM_ENABLED','KIOSK_PORTARIA_PIN','KIOSK_ALLOWED_APPS','TELEGRAM_WEBHOOK_SECRET','TELEGRAM_BOT_USERNAME','TELEGRAM_START_URL','TELEGRAM_PARSE_MODE','WHATSAPP_API_VERSION','WHATSAPP_PHONE_NUMBER_ID','WHATSAPP_BUSINESS_ACCOUNT_ID','WHATSAPP_ACCESS_TOKEN','WHATSAPP_TEMPLATE_PACKAGE','WHATSAPP_TEMPLATE_RESERVATION','VISITOR_MAX_PER_DAY','PACKAGE_RETENTION_DAYS','DOCUMENT_UPLOAD_LIMIT_MB','UPDATE_UPLOAD_LIMIT_MB','MAX_RESERVATIONS_PER_UNIT_MONTH','MAX_VISITORS_PER_RESERVATION','VAPID_PUBLIC_KEY','VAPID_PRIVATE_KEY','VAPID_SUBJECT']);
 function containsProtectedSettings(body={}) { return Object.keys(body || {}).some(k => PLATFORM_SETTING_KEYS.has(k)); }
 async function publicSettingsObject() {
   const s = await getSettingsObject();
-  const keys = ['CONDO_NAME','APPEARANCE','THEME_ACCENT','ENABLE_EMAIL','ENABLE_TELEGRAM','ENABLE_WHATSAPP','ENABLE_BROWSER_PUSH','ENABLE_APP_PORTARIA','ENABLE_APP_SINDICO','ENABLE_APP_MORADOR','REGISTRATION_REQUIRE_EMAIL','REGISTRATION_REQUIRE_WHATSAPP','REGISTRATION_REQUIRE_TELEGRAM','APK_PORTARIA_URL','APK_SINDICO_URL','APK_MORADOR_URL','RESERVATION_MAX_GUESTS_DEFAULT','RESERVATION_COUNT_CHILDREN','RESERVATION_COUNT_INFANTS','RESIDENT_CRITERIA','EMERGENCY_CRITICAL_ALERTS','ALLOW_MULTIPLE_RESIDENTS_PER_UNIT','MAX_RESIDENTS_PER_UNIT','SHOW_UPDATES_TO_SINDICO','CREWCHECK_SITE','DEVELOPED_BY','THEME_TEXT_SIZE','TELEGRAM_BOT_USERNAME','TELEGRAM_START_URL'];
+  const keys = ['CONDO_NAME','APPEARANCE','THEME_ACCENT','ENABLE_EMAIL','ENABLE_TELEGRAM','ENABLE_WHATSAPP','ENABLE_BROWSER_PUSH','ENABLE_APP_PORTARIA','ENABLE_APP_SINDICO','ENABLE_APP_MORADOR','REGISTRATION_REQUIRE_EMAIL','REGISTRATION_REQUIRE_WHATSAPP','REGISTRATION_REQUIRE_TELEGRAM','APK_PORTARIA_URL','APK_SINDICO_URL','APK_MORADOR_URL','APK_OFFLINE_FIRST_ENABLED','APK_CURRENT_VERSION','APK_EMERGENCY_OFFLINE_ENABLED','RESERVATION_MAX_GUESTS_DEFAULT','RESERVATION_COUNT_CHILDREN','RESERVATION_COUNT_INFANTS','RESIDENT_CRITERIA','EMERGENCY_CRITICAL_ALERTS','ALLOW_MULTIPLE_RESIDENTS_PER_UNIT','MAX_RESIDENTS_PER_UNIT','VISITOR_MAX_PER_DAY','PACKAGE_RETENTION_DAYS','DOCUMENT_UPLOAD_LIMIT_MB','UPDATE_UPLOAD_LIMIT_MB','MAX_RESERVATIONS_PER_UNIT_MONTH','MAX_VISITORS_PER_RESERVATION','SHOW_UPDATES_TO_SINDICO','CREWCHECK_SITE','DEVELOPED_BY','THEME_TEXT_SIZE','TELEGRAM_BOT_USERNAME','TELEGRAM_START_URL'];
   return Object.fromEntries(keys.map(k => [k, s[k] ?? '']));
 }
 function loginEmailFromChannels(body={}) {
@@ -1001,6 +1003,26 @@ function loginEmailFromChannels(body={}) {
 }
 
 function normalizeUnit(unit='') { return String(unit || '').trim().replace(/\s+/g,'').toUpperCase(); }
+function offlineClientIdFrom(body={}){ return String(body.client_offline_id || body.offline_id || body.local_id || '').trim().slice(0,120); }
+async function findDuplicateRegistrationRequest(body={}, unitOverride=''){
+  const email=String(body.email||'').trim();
+  const doc=onlyDigits(body.document||'');
+  const phone=onlyDigits(body.whatsapp_phone || body.phone || '');
+  const chat=String(body.telegram_chat_id||'').trim();
+  const clientId=offlineClientIdFrom(body);
+  const unit=normalizeUnit(unitOverride || body.unit || '');
+  const name=String(body.name||'').trim().toLowerCase();
+  const checks=[];
+  if(clientId) checks.push(q("SELECT * FROM registration_requests WHERE client_offline_id=$1 LIMIT 1",[clientId]));
+  if(email) checks.push(q("SELECT * FROM registration_requests WHERE lower(email)=lower($1) AND status IN ('pendente','aprovada') LIMIT 1",[email]));
+  if(doc) checks.push(q("SELECT * FROM registration_requests WHERE regexp_replace(coalesce(document,''),'\\D','','g')=$1 AND status IN ('pendente','aprovada') LIMIT 1",[doc]));
+  if(phone) checks.push(q("SELECT * FROM registration_requests WHERE regexp_replace(coalesce(whatsapp_phone, phone, ''),'\\D','','g')=$1 AND status IN ('pendente','aprovada') LIMIT 1",[phone]));
+  if(chat) checks.push(q("SELECT * FROM registration_requests WHERE telegram_chat_id=$1 AND status IN ('pendente','aprovada') LIMIT 1",[chat]));
+  if(unit && name) checks.push(q("SELECT * FROM registration_requests WHERE upper(replace(coalesce(unit,''),' ',''))=$1 AND lower(trim(coalesce(name,'')))=$2 AND status IN ('pendente','aprovada') LIMIT 1",[unit,name]));
+  for(const promise of checks){ const r=await promise.catch(()=>({rows:[]})); if(r.rows?.[0]) return r.rows[0]; }
+  return null;
+}
+
 function normalizeEmail(email='') { return String(email || '').trim().toLowerCase(); }
 function hasDuplicateMessage(kind) { return `${kind} já cadastrado. Confira o cadastro existente antes de gravar novamente.`; }
 function formatDeliveryPreference(v='') { const key=String(v||'').toLowerCase(); return ({ receber_elevador:'Autorizou envio pelo elevador', elevador:'Autorizou envio pelo elevador', retirar_portaria:'Vai retirar na portaria', buscar_portaria:'Vai retirar na portaria', retirar_mais_tarde:'Vai retirar mais tarde', retirar_agora:'Está indo retirar agora', chamar_interfone:'Pediu contato/interfone antes', nao_reconhece:'Não reconhece esta encomenda', portaria:'Vai retirar na portaria', nao_informado:'Aguardando escolha do morador' }[key] || 'Aguardando escolha do morador'); }
@@ -1966,14 +1988,15 @@ app.post('/api/register', async (req,res,next)=>{ try {
   if (boolValue(await getSetting('REGISTRATION_REQUIRE_EMAIL','true'), true) && emailEnabled && !hasEmail) { const err=new Error('Informe o e-mail para solicitar cadastro.'); err.status=400; throw err; }
   if (!hasEmail && !hasWhats && !hasTelegram) { const err=new Error('Informe ao menos um contato liberado: e-mail, WhatsApp ou Telegram.'); err.status=400; throw err; }
   if (hasEmail) await requireNoDuplicate('Usuário', (await q('SELECT id,email FROM users WHERE lower(email)=lower($1) AND COALESCE(active,true)=true LIMIT 1',[req.body.email])).rows[0]);
-  if (hasEmail) await requireNoDuplicate('Solicitação de cadastro', (await q("SELECT id,email,status FROM registration_requests WHERE lower(email)=lower($1) AND status='pendente' LIMIT 1",[req.body.email])).rows[0]);
   if (req.body.document) await requireNoDuplicate('Morador', (await q("SELECT id,name,unit FROM residents WHERE regexp_replace(coalesce(document,''),'\D','','g')=$1 AND COALESCE(active,true)=true LIMIT 1",[onlyDigits(req.body.document)])).rows[0]);
+  const duplicateRequest = await findDuplicateRegistrationRequest(req.body, req.body.unit || '');
+  if (duplicateRequest) return res.status(200).json({ ok:true, duplicate:true, message:'Solicitação já existente encontrada. Para evitar cadastro duplicado, mantivemos a solicitação original para análise.', request:duplicateRequest });
   if (hasWhats && !whatsappEnabled) { const err=new Error('Cadastro por WhatsApp ainda não está liberado neste condomínio.'); err.status=400; throw err; }
   if (hasTelegram && !telegramEnabled) { const err=new Error('Cadastro por Telegram ainda não está liberado neste condomínio.'); err.status=400; throw err; }
   const channels = await filterChannelsByPlan({ email:hasEmail, whatsapp:hasWhats, telegram:hasTelegram, app:true, browser:true });
   const telegramLinkToken = telegramEnabled ? newTelegramLinkToken('cadastro') : '';
   const cleanTelegramUsername = normalizeTelegramUsername(req.body.telegram_username || '');
-  const r=await q('INSERT INTO registration_requests(name,email,phone,whatsapp_phone,telegram_chat_id,telegram_username,telegram_link_token,preferred_channels,unit,document,role,notes,gender) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *', [req.body.name, req.body.email || '', req.body.phone || req.body.whatsapp_phone || '', req.body.whatsapp_phone || req.body.phone || '', req.body.telegram_chat_id || '', cleanTelegramUsername, telegramLinkToken, JSON.stringify(channels), requiresUnit ? (req.body.unit || '') : (req.body.unit || ''), req.body.document || '', requestedRole, req.body.notes || '', req.body.gender || 'nao_informado']);
+  const r=await q('INSERT INTO registration_requests(name,email,phone,whatsapp_phone,telegram_chat_id,telegram_username,telegram_link_token,preferred_channels,unit,document,role,notes,gender,client_offline_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *', [req.body.name, req.body.email || '', req.body.phone || req.body.whatsapp_phone || '', req.body.whatsapp_phone || req.body.phone || '', req.body.telegram_chat_id || '', cleanTelegramUsername, telegramLinkToken, JSON.stringify(channels), requiresUnit ? (req.body.unit || '') : (req.body.unit || ''), req.body.document || '', requestedRole, req.body.notes || '', req.body.gender || 'nao_informado', offlineClientIdFrom(req.body) || null]);
   const savedRequest = r.rows[0];
   const telegramLinkUrl = telegramLinkToken ? await telegramStartLink(telegramLinkToken).catch(()=> '') : '';
   const emailAck = hasEmail ? await sendRegistrationAcknowledgement(savedRequest).catch(e => ({ ok:false, error:e.message })) : { ok:false, skipped:true, reason:'E-mail não informado.' };
@@ -1993,10 +2016,11 @@ app.post('/api/residents/request-same-unit', auth, async (req,res,next)=>{ try {
   requireFields(req.body,['name']);
   if (!req.body.email && !req.body.whatsapp_phone && !req.body.telegram_chat_id && !req.body.telegram_username) return res.status(400).json({ error:'Informe e-mail, WhatsApp ou Telegram do morador adicional.' });
   if (req.body.email) await requireNoDuplicate('Usuário', (await q('SELECT id,email FROM users WHERE lower(email)=lower($1) AND COALESCE(active,true)=true LIMIT 1',[req.body.email])).rows[0]);
-  if (req.body.email) await requireNoDuplicate('Solicitação de cadastro', (await q("SELECT id,email,status FROM registration_requests WHERE lower(email)=lower($1) AND status='pendente' LIMIT 1",[req.body.email])).rows[0]);
+  const duplicateRequest = await findDuplicateRegistrationRequest(req.body, unit);
+  if (duplicateRequest) return res.status(200).json({ ok:true, duplicate:true, message:'Solicitação já existente encontrada. Para evitar cadastro duplicado, mantivemos a solicitação original para análise.', request:duplicateRequest });
   const channels = await filterChannelsByPlan({ app:true, browser:true, email:Boolean(req.body.email), whatsapp:Boolean(req.body.whatsapp_phone || req.body.phone), telegram:true });
   const telegramLinkToken = newTelegramLinkToken('cadastro');
-  const r=await q('INSERT INTO registration_requests(name,email,phone,whatsapp_phone,telegram_chat_id,telegram_username,telegram_link_token,preferred_channels,unit,document,role,notes,gender) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',[req.body.name,req.body.email||'',req.body.phone||req.body.whatsapp_phone||'',req.body.whatsapp_phone||req.body.phone||'',req.body.telegram_chat_id||'',normalizeTelegramUsername(req.body.telegram_username||''),telegramLinkToken,JSON.stringify(channels),unit,req.body.document||'','morador',`Solicitação interna feita por usuário da unidade ${unit}.`,req.body.gender||'nao_informado']);
+  const r=await q('INSERT INTO registration_requests(name,email,phone,whatsapp_phone,telegram_chat_id,telegram_username,telegram_link_token,preferred_channels,unit,document,role,notes,gender,client_offline_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',[req.body.name,req.body.email||'',req.body.phone||req.body.whatsapp_phone||'',req.body.whatsapp_phone||req.body.phone||'',req.body.telegram_chat_id||'',normalizeTelegramUsername(req.body.telegram_username||''),telegramLinkToken,JSON.stringify(channels),unit,req.body.document||'','morador',`Solicitação interna feita por usuário da unidade ${unit}.`,req.body.gender||'nao_informado', offlineClientIdFrom(req.body) || null]);
   if (req.body.email) await sendRegistrationAcknowledgement(r.rows[0]).catch(()=>null);
   await audit(req.user.email,'solicitou morador adicional',`${req.body.name} - unidade ${unit}`);
   res.json({ ok:true, message:'Solicitação enviada ao síndico para aprovação. Se aprovada, o novo usuário receberá senha temporária nos canais cadastrados.', request:r.rows[0] });
@@ -2548,6 +2572,32 @@ app.get('/api/apps/download/:kind', auth, async (req,res,next)=>{ try {
   res.download(file, `vitoria-regia-${kind}.apk`);
 } catch(e){ next(e); } });
 
+app.get('/api/apps/manifest', auth, async (_req,res,next)=>{ try {
+  const publicUrl = await getSetting('PUBLIC_APP_URL', process.env.PUBLIC_APP_URL || '');
+  const base = (publicUrl || '').replace(/\/$/, '');
+  res.json({
+    ok:true,
+    appName:'Vitória Régia',
+    systemVersion:APP_VERSION,
+    logoUrl: base ? `${base}/logo-vitoria-regia.png` : '/logo-vitoria-regia.png',
+    menuLogoUrl: base ? `${base}/logo-vitoria-regia-menu.svg` : '/logo-vitoria-regia-menu.svg',
+    apkVersion: await getSetting('APK_CURRENT_VERSION', APP_VERSION),
+    offlineFirst: boolValue(await getSetting('APK_OFFLINE_FIRST_ENABLED','true'), true),
+    emergencyOfflineEnabled:false,
+    duplicatePolicy:'server_dedup_by_client_offline_id_email_document_phone_telegram_unit_name',
+    updatePolicy:{
+      webContentAutoUpdates:true,
+      nativeApkRequiresPlayStoreOrManualInstall:true,
+      updateCheckUrl: base ? `${base}/api/apps/manifest` : '/api/apps/manifest'
+    },
+    apps:{
+      portaria:{ enabled:boolValue(await getSetting('ENABLE_APP_PORTARIA','true'), true), url:await getSetting('APK_PORTARIA_URL','') },
+      sindico:{ enabled:boolValue(await getSetting('ENABLE_APP_SINDICO','true'), true), url:await getSetting('APK_SINDICO_URL','') },
+      morador:{ enabled:boolValue(await getSetting('ENABLE_APP_MORADOR','true'), true), url:await getSetting('APK_MORADOR_URL','') }
+    }
+  });
+} catch(e){ next(e); } });
+
 app.get('/api/settings', auth, async (_req,res,next)=>{ try { res.json(await getSettingsObject({ maskSecrets:true })); } catch(e){ next(e); } });
 app.post('/api/settings', auth, can('settings.manage'), async (req,res,next)=>{ try {
   if (containsProtectedSettings(req.body) && !isMaster(req.user)) return res.status(403).json({ error:'Funcionalidades liberadas, apps e banco exigem acesso reservado.' });
@@ -2682,7 +2732,7 @@ app.post('/api/notify/email/preview', auth, can('settings.manage'), async (req,r
   res.send(html);
 } catch(e){ next(e); } });
 const uploadManual = multer({ storage: multer.memoryStorage(), limits:{ fileSize: 20 * 1024 * 1024 } });
-const uploadDocument = multer({ storage: multer.memoryStorage(), limits:{ fileSize: Number(process.env.DOCUMENT_UPLOAD_LIMIT_MB || 25) * 1024 * 1024 } });
+const uploadDocument = multer({ storage: multer.memoryStorage(), limits:{ fileSize: Number(process.env.DOCUMENT_UPLOAD_LIMIT_MB || 150) * 1024 * 1024 } });
 
 app.get('/api/documents', auth, async (req,res,next)=>{ try { if (req.user.role === 'sindico' || req.user.role === 'subsindico' || req.user.role === 'admin' || req.user.role === 'master') return res.json((await q('SELECT id,title,description,audience,is_public,document_type,competence_date,reference_date,file_name,mime_type,file_size,created_at FROM documents ORDER BY COALESCE(competence_date, reference_date, created_at::date) DESC, id DESC')).rows); res.json((await q('SELECT id,title,description,audience,is_public,document_type,competence_date,reference_date,file_name,mime_type,file_size,created_at FROM documents WHERE is_public=true ORDER BY COALESCE(competence_date, reference_date, created_at::date) DESC, id DESC')).rows); } catch(e){ next(e); } });
 app.post('/api/documents/upload', auth, can('documents.manage'), uploadDocument.single('document'), async (req, res, next) => {
