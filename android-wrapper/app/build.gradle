@@ -1,0 +1,43 @@
+plugins { id 'com.android.application' }
+
+def releaseKeystorePath = System.getenv('ANDROID_KEYSTORE_FILE')
+def hasReleaseSigning = releaseKeystorePath && file(releaseKeystorePath).exists()
+
+android {
+    namespace 'com.crewcheck.app'
+    compileSdk 35
+
+    signingConfigs {
+        release {
+            def keystoreFile = releaseKeystorePath
+            if (keystoreFile && file(keystoreFile).exists()) {
+                storeFile file(keystoreFile)
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+            }
+        }
+    }
+
+    defaultConfig {
+        applicationId 'com.crewcheck.app'
+        minSdk 23
+        targetSdk 35
+        versionCode 10411
+        versionName '10.4.12'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            debuggable false
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
+        }
+        debug {
+            applicationIdSuffix '.debug'
+            versionNameSuffix '-debug'
+        }
+    }
+}

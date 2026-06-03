@@ -1,24 +1,24 @@
 services:
   - type: web
-    name: vitoria-regia-pro
-    env: node
-    plan: starter
-    buildCommand: npm install --no-audit --no-fund && npm run build
-    startCommand: npm start
+    name: crewcheck-premium
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: node server.mjs
     envVars:
       - key: NODE_VERSION
-        value: 20.19.0
-      - key: NODE_ENV
-        value: production
-      - key: APP_VERSION
-        value: Vitória Régia Pro v12.6.1
-      - key: DATABASE_SSL
-        value: auto
-      - key: DATABASE_SSL_MODE
-        value: auto
-      - key: NPM_CONFIG_AUDIT
-        value: false
-      - key: NPM_CONFIG_FUND
-        value: false
-      - key: NPM_CONFIG_UPDATE_NOTIFIER
-        value: false
+        value: 22.13.0
+      - key: DATABASE_URL
+        sync: false
+      - key: MYSQL_SSL_MODE
+        value: REQUIRED
+      - key: CREWCHECK_AUTO_MIGRATE
+        value: true
+      - key: CREWCHECK_AUTH_REQUIRED
+        value: true
+      - key: MAILERSEND_API_KEY
+        sync: false
+      - key: MAILERSEND_FROM
+        sync: false
+      - key: EMAIL_FROM_NAME
+        value: CrewCheck
