@@ -23,7 +23,8 @@ export function normalizeRosterSchedule(roster: CrewRoster): CrewRoster {
   const activitiesMergedIntoFlights = mergeActivityRowsIntoFlights(withoutEmptyDuplicates);
   const mergedTimedActivities = mergeTimedActivityRows(activitiesMergedIntoFlights);
   const dedupedDays = dropDisplayDuplicates(dropAllDayDuplicates(mergedTimedActivities));
-  const finalDays = stabilizeSameDaySequentialWindows(dedupedDays).sort(compareRosterDays);
+  const flightWindowsFixed = normalizeSuspiciousFlightWindows(dedupedDays);
+  const finalDays = stabilizeSameDaySequentialWindows(flightWindowsFixed).sort(compareRosterDays);
 
   return { ...roster, days: finalDays };
 }
@@ -237,6 +238,9 @@ function mergeActivityRowsIntoFlights(days: RosterDay[]): RosterDay[] {
         if (consumed.has(activity) || !isMergeableActivity(activity)) continue;
         const activityCode = primaryActivityCode(activity);
         if (!activityCode) continue;
+        // C32F/check A32F deve ficar separado do voo. Mesclar o check na janela
+        // do voo gerava jornadas visuais enormes (ex.: 22h) quando havia voo após check.
+        if (/^C\d{2,3}F$/i.test(activityCode)) continue;
         const mentionedInFlight = flightActivityCodes.includes(activityCode);
         const overlaps = windowsOverlapOrTouch(activity, flight, 180);
         if (mentionedInFlight || overlaps) {
@@ -261,6 +265,34 @@ function mergeActivityRowsIntoFlights(days: RosterDay[]): RosterDay[] {
   return output;
 }
 
+function normalizeSuspiciousFlightWindows(days: RosterDay[]): RosterDay[] {
+  return days.map((day) => {
+    const cloned = cloneDay(day);
+    if (!isFlightDay(cloned) || !cloned.legs.length) return cloned;
+
+    const first = cloned.legs[0];
+    const last = cloned.legs[cloned.legs.length - 1];
+    const hasCheckOrTrainingInText = /\b(C\d{2,3}F|CRM|CBF|EMER)\b/i.test(`${cloned.pairingCode || ''} ${cloned.rawText || ''}`);
+    const dutyHours = cloned.dutyReport && cloned.dutyDebrief ? diffHours(cloned.dutyReport, cloned.dutyDebrief, Boolean(cloned.isNextDay)) : null;
+    const reportToFirstDeparture = cloned.dutyReport ? minutesBetween(cloned.dutyReport, first.departureTime) : 0;
+    const clearlyMergedWithTraining = hasCheckOrTrainingInText && (
+      (typeof dutyHours === 'number' && dutyHours > 16) ||
+      reportToFirstDeparture > 360 ||
+      reportToFirstDeparture < -720
+    );
+
+    if (clearlyMergedWithTraining) {
+      cloned.dutyReport = first.departureTime;
+      cloned.dutyDebrief = last.arrivalTime;
+      cloned.isNextDay = Boolean(cloned.legs.some((leg) => leg.isNextDay) || timeToMinutes(last.arrivalTime) < timeToMinutes(first.departureTime));
+      cloned.dutyHours = round2(diffHours(cloned.dutyReport, cloned.dutyDebrief, cloned.isNextDay));
+      cloned.flyingHours = round2(cloned.legs.reduce((sum, leg) => sum + (leg.duration || diffHours(leg.departureTime, leg.arrivalTime, Boolean(leg.isNextDay))), 0));
+      cloned.rawText = joinRaw(cloned.rawText, 'CrewCheck: voo pós-check exibido com janela própria do voo para evitar jornada visual falsa.');
+    }
+    return cloned;
+  });
+}
+
 function mergeTimedActivityRows(days: RosterDay[]): RosterDay[] {
   const output: RosterDay[] = [];
   const byKey = groupBy(days.filter((day) => !isFlightDay(day)), (day) => `${day.date}|${primaryComparableCode(day)}`);
@@ -268,7 +300,7 @@ function mergeTimedActivityRows(days: RosterDay[]): RosterDay[] {
 
   for (const group of byKey.values()) {
     const code = primaryComparableCode(group[0]);
-    if (!code || !MERGEABLE_ACTIVITY_RE.test(code)) continue;
+    if (!code || !(MERGEABLE_ACTIVITY_RE.test(code) || STANDBY_RE.test(code))) continue;
     const timed = group.filter((day) => day.dutyReport && day.dutyDebrief).sort(compareRosterDays);
     const untimed = group.filter((day) => !day.dutyReport || !day.dutyDebrief);
     if (timed.length <= 1) continue;
@@ -276,7 +308,7 @@ function mergeTimedActivityRows(days: RosterDay[]): RosterDay[] {
     const mergedGroups: RosterDay[] = [];
     for (const day of timed) {
       const last = mergedGroups[mergedGroups.length - 1];
-      if (last && windowsOverlapOrTouch(last, day, 15)) {
+      if (last && windowsOverlapOrTouch(last, day, STANDBY_RE.test(code) ? 90 : 15)) {
         last.dutyReport = minTime(last.dutyReport, day.dutyReport) || last.dutyReport;
         last.dutyDebrief = maxTime(last.dutyReport, last.dutyDebrief, day.dutyDebrief) || last.dutyDebrief;
         last.rawText = joinRaw(last.rawText, day.rawText);

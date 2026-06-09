@@ -345,7 +345,7 @@ function getDutySummary(day: RosterDay): string {
 }
 
 function isRestDay(day: RosterDay): boolean {
-  return ['OFF', 'DO', 'DOF', 'DR', 'LAYOVER'].includes(day.type);
+  return ['OFF', 'DO', 'DOF', 'DR', 'LAYOVER'].includes(day.type) || getRosterCodeDefinition(day.pairingCode || '')?.category === 'DAY_OFF';
 }
 
 function shouldExportFlights(mode: CalendarExportMode): boolean {

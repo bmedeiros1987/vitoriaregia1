@@ -168,7 +168,14 @@ function findLocalRoster(id: string): LocalHistoryItem | null {
 }
 
 function getLocalRosterSummaries(limit: number): SavedRosterSummary[] {
-  return readLocalHistory().slice(0, limit).map((item) => ({
+  const seen = new Set<string>();
+  const unique = readLocalHistory().filter((item) => {
+    const key = periodHistoryKey(item);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, limit);
+  return unique.map((item) => ({
     id: item.id,
     createdAt: item.createdAt,
     crewName: item.roster.crewName || null,
@@ -187,8 +194,19 @@ function getLocalRosterSummaries(limit: number): SavedRosterSummary[] {
   }));
 }
 
+function periodHistoryKey(item: LocalHistoryItem): string {
+  return `${item.roster.crewId || item.roster.crewName || 'crew'}:${item.roster.year || '0000'}:${item.roster.month || '00'}`;
+}
+
 function buildLocalStoredStats(): StoredStatsResponse {
-  const periods = readLocalHistory().map((item) => {
+  const seenPeriods = new Set<string>();
+  const historyByPeriod = readLocalHistory().filter((item) => {
+    const key = periodHistoryKey(item);
+    if (seenPeriods.has(key)) return false;
+    seenPeriods.add(key);
+    return true;
+  });
+  const periods = historyByPeriod.map((item) => {
     const roster = item.roster;
     const compliance = item.compliance;
     const gym = item.gym || [];
@@ -203,7 +221,7 @@ function buildLocalStoredStats(): StoredStatsResponse {
       month,
       daysAnalyzed: days.length,
       flightSegments: days.reduce((sum, day) => sum + (day.legs?.length || 0), 0),
-      daysOff: days.filter((day) => ['DO', 'DR', 'DOF'].includes(day.type)).length,
+      daysOff: days.filter((day) => ['DO', 'DR', 'DOF'].includes(day.type) || ['DOP', 'DOPR', 'VC', 'FOLGA'].includes(String(day.pairingCode || '').toUpperCase())).length,
       layovers: days.filter((day) => day.type === 'LAYOVER').length,
       standby: days.filter((day) => day.type === 'HSB' || day.type === 'HSBE').length,
       reserve: days.filter((day) => day.type === 'ASB' || day.type === 'RES').length,

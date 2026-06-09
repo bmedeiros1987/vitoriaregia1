@@ -8,6 +8,40 @@ import Results from "./pages/Results";
 import NotFound from "./pages/NotFound";
 import InfoPage from "./pages/InfoPage";
 import { getMe, isAuthenticated } from "./lib/authClient";
+import { applyDocumentLanguage, installGlobalStaticTranslations } from "./lib/i18n";
+
+type CrewThemeMode = 'light' | 'dark' | 'system';
+
+function loadCrewThemeMode(): CrewThemeMode {
+  try {
+    const saved = window.localStorage.getItem('crewcheck_theme_mode');
+    return saved === 'light' || saved === 'dark' || saved === 'system' ? saved : 'system';
+  } catch {
+    return 'system';
+  }
+}
+
+function getEffectiveCrewTheme(mode: CrewThemeMode): 'light' | 'dark' {
+  if (mode === 'light') return 'light';
+  if (mode === 'dark') return 'dark';
+  try {
+    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  } catch {
+    return 'light';
+  }
+}
+
+function applyCrewThemeMode(mode: CrewThemeMode) {
+  try {
+    const effective = getEffectiveCrewTheme(mode);
+    document.documentElement.dataset.crewThemeMode = mode;
+    document.documentElement.dataset.crewTheme = effective;
+    document.documentElement.classList.toggle('dark', effective === 'dark');
+    document.documentElement.style.colorScheme = effective;
+  } catch {
+    // Mantém tema padrão quando o navegador não permite acesso ao storage.
+  }
+}
 
 function Protected({ children }: { children: ReactNode }) {
   const [, setLocation] = useLocation();
@@ -53,6 +87,7 @@ function Router() {
       <Route path="/download">{() => <Protected><InfoPage page="download" /></Protected>}</Route>
       <Route path="/disclaimer">{() => <InfoPage page="disclaimer" />}</Route>
       <Route path="/privacy">{() => <InfoPage page="privacy" />}</Route>
+      <Route path="/delete-account">{() => <InfoPage page="deleteAccount" />}</Route>
       <Route path="/terms">{() => <InfoPage page="terms" />}</Route>
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
@@ -61,13 +96,62 @@ function Router() {
 }
 
 export default function App() {
+  const [appMode, setAppMode] = useState(false);
+
+  useEffect(() => {
+    const applySavedTheme = () => applyCrewThemeMode(loadCrewThemeMode());
+    applyDocumentLanguage();
+    installGlobalStaticTranslations();
+    applySavedTheme();
+
+    try {
+      window.localStorage.setItem('crewcheck_last_loaded_version', '10.8.1');
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations()
+          .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+          .catch(() => undefined);
+      }
+      if ('caches' in window) {
+        caches.keys()
+          .then((names) => Promise.all(names.filter((name) => /crewcheck|workbox|vite/i.test(name)).map((name) => caches.delete(name))))
+          .catch(() => undefined);
+      }
+    } catch {
+      // Navegador sem storage/service worker; segue normalmente.
+    }
+
+    const media = window.matchMedia?.('(prefers-color-scheme: dark)');
+    const handleSystemTheme = () => {
+      if (loadCrewThemeMode() === 'system') applySavedTheme();
+    };
+    media?.addEventListener?.('change', handleSystemTheme);
+    window.addEventListener('crewcheck:theme-change', applySavedTheme);
+    window.addEventListener('storage', applySavedTheme);
+
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const enabled = params.get('app') === '1' || params.get('android') === '1' || window.localStorage.getItem('crewcheck_app_mode') === '1';
+      if (enabled) {
+        window.localStorage.setItem('crewcheck_app_mode', '1');
+        document.documentElement.classList.add('crewcheck-android');
+        document.body.classList.add('crewcheck-android-body');
+      }
+      setAppMode(enabled);
+    } catch {
+      setAppMode(false);
+    }
+
+    return () => {
+      media?.removeEventListener?.('change', handleSystemTheme);
+      window.removeEventListener('crewcheck:theme-change', applySavedTheme);
+      window.removeEventListener('storage', applySavedTheme);
+    };
+  }, []);
+
   return (
     <ErrorBoundary>
-      <Toaster richColors position="top-right" />
+      <Toaster richColors position={appMode ? "top-center" : "top-right"} />
       <Router />
-      <div className="fixed bottom-2 right-2 z-[9999] rounded-full border border-slate-300/40 bg-white/85 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 shadow-lg backdrop-blur-md dark:border-white/10 dark:bg-slate-950/75 dark:text-slate-300">
-        CrewCheck v10.4.12 · Calendar + voo noturno
-      </div>
     </ErrorBoundary>
   );
 }

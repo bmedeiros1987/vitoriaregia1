@@ -67,6 +67,7 @@ import {
   saveGoogleCalendarSettings,
   saveGoogleClientIdOverride,
   syncRosterToGoogleCalendar,
+  getCalendarFeedInfo,
   type GoogleCalendarOption,
   type GoogleCalendarSettings,
   type GoogleCalendarSyncMode,
@@ -86,12 +87,25 @@ import {
   type RoutineSuggestion,
 } from "@/lib/routinePlanner";
 
-type ViewKey = "roster" | "irregularities" | "gym" | "fatigue" | "statistics" | "settings" | "manual";
+type ViewKey = "summary" | "roster" | "alerts" | "irregularities" | "gym" | "fatigue" | "metrics" | "glossary" | "statistics" | "settings" | "manual";
+type CrewThemeMode = "system" | "light" | "dark";
+
+function loadInitialResultsView(): ViewKey {
+  try {
+    const stored = sessionStorage.getItem("crewcheck_initial_view") as ViewKey | null;
+    sessionStorage.removeItem("crewcheck_initial_view");
+    const allowed: ViewKey[] = ["summary", "roster", "alerts", "irregularities", "gym", "fatigue", "metrics", "glossary", "statistics", "settings", "manual"];
+    return stored && allowed.includes(stored) ? stored : "summary";
+  } catch {
+    return "summary";
+  }
+}
 
 type RosterEvent = {
   id: string;
   day: RosterDay;
   leg?: FlightLeg;
+  legs?: FlightLeg[];
   date: Date;
   dateLabel: string;
   weekday: string;
@@ -127,18 +141,22 @@ export default function Results() {
   const [gym, setGym] = useState<GymRecommendation[]>([]);
   const [query, setQuery] = useState("");
   const [dutyType, setDutyType] = useState("Todos");
-  const [activeView, setActiveView] = useState<ViewKey>("roster");
+  const [activeView, setActiveView] = useState<ViewKey>(() => loadInitialResultsView());
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState<ComplianceResult["alerts"][number] | null>(null);
+  const [ignoredAlertKeys, setIgnoredAlertKeys] = useState<string[]>(() => loadIgnoredAlertKeys());
   const [dbStatus, setDbStatus] = useState<DatabaseStatus | null>(null);
   const [savedRosters, setSavedRosters] = useState<SavedRosterSummary[]>([]);
   const [isSavingDb, setIsSavingDb] = useState(false);
   const [pendingOffline, setPendingOffline] = useState(getPendingOfflineCount());
   const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [themeMode, setThemeMode] = useState<CrewThemeMode>(() => loadCrewThemeMode());
   const [storedStats, setStoredStats] = useState<StoredStatsResponse | null>(null);
   const autoDbSaveStartedRef = useRef(false);
 
   const switchView = (view: ViewKey) => {
     setSelectedAlert(null);
+    setMobileMenuOpen(false);
     setActiveView(view);
   };
 
@@ -150,6 +168,16 @@ export default function Results() {
     setSelectedAlert(null);
     setActiveView("roster");
   };
+
+  useEffect(() => {
+    applyCrewThemeMode(themeMode);
+    saveCrewThemeMode(themeMode);
+    if (themeMode !== "system") return;
+    const media = window.matchMedia?.("(prefers-color-scheme: dark)");
+    const update = () => applyCrewThemeMode("system");
+    media?.addEventListener?.("change", update);
+    return () => media?.removeEventListener?.("change", update);
+  }, [themeMode]);
 
   useEffect(() => {
     const rosterData = sessionStorage.getItem("crewcheck_roster");
@@ -205,12 +233,12 @@ export default function Results() {
       return;
     }
     if (!isGoogleCalendarConfigured()) {
-      toast.warning("Sincronização Google Calendar configurada como automática, mas falta VITE_GOOGLE_CLIENT_ID.");
+      toast.warning("Agenda automática automático ativo, mas falta o Client ID do Google nas configurações do administrador/Render.");
       sessionStorage.removeItem("crewcheck_auto_sync_pending");
       return;
     }
     if (!hasGoogleCalendarToken()) {
-      toast.info("Google Calendar automático está ativo. Abra Configurações e conecte o Google para sincronizar esta escala.");
+      toast.info("Agenda automática automático está ativo. Abra Configurações e conecte o Google para sincronizar esta escala.");
       return;
     }
     let cancelled = false;
@@ -218,16 +246,16 @@ export default function Results() {
       .then((result) => {
         if (cancelled) return;
         sessionStorage.removeItem("crewcheck_auto_sync_pending");
-        toast.success(`Google Calendar atualizado: ${result.created} novo(s), ${result.updated} atualizado(s), ${result.deleted} removido(s).`);
+        toast.success(`Agenda automática atualizado: ${result.created} novo(s), ${result.updated} atualizado(s), ${result.deleted} removido(s).`);
       })
       .catch((error) => {
-        if (!cancelled) toast.error(error instanceof Error ? error.message : "Falha ao sincronizar Google Calendar.");
+        if (!cancelled) toast.error(error instanceof Error ? error.message : "Falha ao sincronizar Agenda automática.");
       });
     return () => { cancelled = true; };
   }, [roster]);
 
   const events = useMemo(() => (roster ? buildRosterEvents(roster) : []), [roster]);
-  const firstEventId = undefined;
+  const firstEventId = useMemo(() => getUpcomingRosterEvents(events, 1)[0]?.id, [events]);
 
   const filteredEvents = useMemo(() => {
     const normalizedQuery = normalize(query);
@@ -239,6 +267,14 @@ export default function Results() {
   }, [events, query, dutyType]);
 
   const filteredDayGroups = useMemo(() => buildDailyRosterGroups(filteredEvents), [filteredEvents]);
+
+  const loadAnalysis = useMemo<LoadAnalysis>(() => {
+    if (compliance?.loadAnalysis) return compliance.loadAnalysis;
+    if (roster) return buildFallbackLoadAnalysis(roster);
+    return buildEmptyLoadAnalysis();
+  }, [compliance, roster]);
+
+  const routineSuggestions = useMemo(() => buildRoutineSuggestions(loadAnalysis.days, loadRoutineActivities()), [loadAnalysis]);
 
   const refreshSavedRosters = async () => {
     try {
@@ -299,18 +335,30 @@ export default function Results() {
   if (!roster || !compliance) return null;
 
   const storedUser = getStoredUser();
+  const isAdminUser = isCrewCheckAdmin(storedUser);
+  const appMode = isCrewCheckAppMode();
+  const visibleCompliance = getUserFacingCompliance(compliance, isAdminUser, ignoredAlertKeys);
   const displayCrewName = resolvedCrewName(roster, storedUser);
 
-  const stats = getStats(roster, compliance, events);
-  const status = getComplianceStatus(compliance);
+  const stats = getStats(roster, visibleCompliance, events);
+  const status = getComplianceStatus(visibleCompliance);
   const uniqueTypes = ["Todos", ...Array.from(new Set(events.map((event) => event.typeLabel)))];
   const StatusIcon = status.icon;
-  const loadAnalysis = compliance.loadAnalysis ?? buildFallbackLoadAnalysis(roster);
-  const errors = compliance.alerts.filter((alert) => alert.severity === "error");
-  const warnings = compliance.alerts.filter((alert) => alert.severity === "warning");
+  const errors = visibleCompliance.alerts.filter((alert) => alert.severity === "error");
+  const warnings = visibleCompliance.alerts.filter((alert) => alert.severity === "warning");
+
+  const handleSuppressFalsePositive = (alert: ComplianceResult["alerts"][number]) => {
+    if (!isAdminUser) return;
+    const key = alertLearningKey(alert);
+    const next = Array.from(new Set([...ignoredAlertKeys, key]));
+    setIgnoredAlertKeys(next);
+    saveIgnoredAlertKeys(next);
+    setSelectedAlert(null);
+    toast.success("Falso positivo aprendido. Este tipo de alerta será ocultado para esta leitura e próximas análises locais.");
+  };
 
   const handleExportPdf = () => {
-    exportReport(roster, compliance, gym);
+    exportReport(roster, visibleCompliance, gym);
     toast.success("Relatório PDF gerado.");
   };
 
@@ -331,7 +379,7 @@ export default function Results() {
   };
 
     const handleCopy = async () => {
-    const ok = await copyToClipboard(roster, compliance);
+    const ok = await copyToClipboard(roster, visibleCompliance);
     toast[ok ? "success" : "error"](ok ? "Resumo copiado." : "Não foi possível copiar.");
   };
 
@@ -401,14 +449,16 @@ export default function Results() {
     }
   };
 
+  const effectiveDark = getEffectiveCrewTheme(themeMode) === "dark";
+
   return (
-    <div className="min-h-screen bg-[#eef5f8] text-[#06213d]">
-      <DesktopSidebar activeView={activeView} onChange={switchView} onNewRoster={() => setLocation("/")} onPowerOff={handlePowerOff} />
-      <div className="lg:pl-72">
-        <header className="sticky top-0 z-40 border-b border-white/10 bg-[#092846] text-white shadow-[0_10px_30px_rgba(7,26,51,0.18)]">
-          <div className="flex h-16 items-center justify-between px-4 lg:px-7">
+    <div className={appMode ? "min-h-screen bg-[#020817] text-slate-50 android-premium-shell" : effectiveDark ? "min-h-screen bg-[#08111f] text-slate-50 crewcheck-dark-shell" : "min-h-screen bg-[#eef5f8] text-[#06213d]"}>
+      {!appMode && <DesktopSidebar activeView={activeView} onChange={switchView} onNewRoster={() => setLocation("/")} onPowerOff={handlePowerOff} />}
+      <div className={appMode ? "" : "lg:pl-72"}>
+        <header className={`sticky top-0 z-40 border-b text-white shadow-[0_10px_30px_rgba(7,26,51,0.18)] ${appMode ? "border-cyan-300/10 bg-[#061424]/92 backdrop-blur-xl" : "border-white/10 bg-[#092846]"}`}>
+          <div className={appMode ? "flex h-14 items-center justify-between px-3 sm:px-4 lg:px-7" : "flex h-16 items-center justify-between px-4 lg:px-7"}>
             <div className="flex items-center gap-3">
-              <button onClick={() => switchView("roster")} className="rounded-xl p-2 text-white/85 transition hover:bg-white/10" aria-label="Voltar para escala">
+              <button onClick={() => setMobileMenuOpen(true)} className="rounded-xl p-2 text-white/85 transition hover:bg-white/10" aria-label="Abrir menu lateral">
                 <Menu className="h-5 w-5" />
               </button>
               <button onClick={() => setLocation("/")} className="hidden items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold text-white/85 transition hover:bg-white/10 lg:inline-flex" aria-label="Carregar nova escala">
@@ -416,22 +466,22 @@ export default function Results() {
               </button>
             </div>
             <div className="text-center">
-              <p className="text-xs uppercase tracking-[0.28em] text-cyan-100/60">CrewCheck Premium</p>
-              <h1 className="text-sm font-black tracking-[0.18em] md:text-base">{viewTitle(activeView).toUpperCase()}</h1>
+              {!appMode && <p className="text-xs uppercase tracking-[0.28em] text-cyan-100/60">CrewCheck Premium</p>}
+              <h1 className={appMode ? "text-base font-black tracking-tight md:text-lg" : "text-sm font-black tracking-[0.18em] md:text-base"}>{appMode ? viewTitle(activeView) : viewTitle(activeView).toUpperCase()}</h1>
             </div>
             <div className="flex items-center gap-3">
               <button className="relative hidden rounded-xl p-2 text-white/85 transition hover:bg-white/10 sm:inline-flex" aria-label="Notificações">
                 <Bell className="h-5 w-5" />
                 <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-[10px] font-bold">{errors.length + warnings.length}</span>
               </button>
-              <div className="hidden items-center gap-3 md:flex">
+              <button onClick={() => switchView("settings")} className="hidden items-center gap-3 rounded-2xl px-2 py-1 text-left transition hover:bg-white/10 md:flex" aria-label="Abrir configurações de perfil e conta">
                 <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-sm font-black">{initials(displayCrewName)}</div>
                 <div className="leading-tight">
                   <p className="text-sm font-bold">{titleCase(displayCrewName)}</p>
-                  <p className="text-xs text-cyan-100/70">{roster.rank || "Flight Crew"} · {roster.base}</p>
+                  <p className="text-xs text-cyan-100/70">Perfil e conta · {roster.base}</p>
                 </div>
                 <ChevronDown className="h-4 w-4 text-white/65" />
-              </div>
+              </button>
               <button onClick={handlePowerOff} className="rounded-xl p-2 text-white/85 transition hover:bg-white/10" aria-label="Desligar e sair do sistema">
                 <LogOut className="h-5 w-5" />
               </button>
@@ -439,20 +489,25 @@ export default function Results() {
           </div>
         </header>
 
-        <main className="px-4 py-6 md:px-7 lg:py-8">
+        <MobileSideDrawer open={mobileMenuOpen} activeView={activeView} displayName={displayCrewName} rank={roster.rank || "Flight Crew"} base={roster.base} errors={errors.length} onClose={() => setMobileMenuOpen(false)} onChange={switchView} onNewRoster={() => setLocation("/")} onPowerOff={handlePowerOff} />
+        <main className={appMode ? "px-2.5 pb-24 pt-3 sm:px-4 md:px-5 android-premium-main" : "px-4 py-6 md:px-7 lg:py-8"}>
           <div className="mx-auto max-w-[1540px]">
-            <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-[#0b4f7a]/20 pb-3">
-              <div className="text-sm font-medium text-sky-500">
-                HOME <span className="mx-2 text-[#6d8397]">/</span> <span className="font-black text-[#092846]">{viewTitle(activeView)}</span>
+            {!appMode && (
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-[#0b4f7a]/20 pb-3">
+                <div className="text-sm font-medium text-sky-500">
+                  HOME <span className="mx-2 text-[#6d8397]">/</span> <span className="font-black text-[#092846]">{viewTitle(activeView)}</span>
+                </div>
+                <Badge className="rounded-full border-0 px-3 py-1 text-xs font-bold" style={{ backgroundColor: status.bg, color: status.fg }}>
+                  <StatusIcon className="h-3.5 w-3.5" /> {status.label}
+                </Badge>
               </div>
-              <Badge className="rounded-full border-0 px-3 py-1 text-xs font-bold" style={{ backgroundColor: status.bg, color: status.fg }}>
-                <StatusIcon className="h-3.5 w-3.5" /> {status.label}
-              </Badge>
-            </div>
+            )}
 
-            <MobileViewTabs activeView={activeView} onChange={switchView} errors={errors.length} />
+            {appMode
+              ? <AndroidFeatureShortcuts activeView={activeView} onChange={switchView} errors={errors.length} onNewRoster={() => setLocation("/")} onPowerOff={handlePowerOff} />
+              : <MobileViewTabs activeView={activeView} onChange={switchView} errors={errors.length} />}
 
-            <section className="mb-4 overflow-hidden rounded-[1.4rem] border border-white bg-white shadow-[0_18px_55px_rgba(20,54,84,0.08)]">
+            {!appMode && <section className="mb-4 overflow-hidden rounded-[1.4rem] border border-white bg-white shadow-[0_18px_55px_rgba(20,54,84,0.08)]">
               <div className="relative flex min-h-[7.2rem] items-center justify-between gap-6 overflow-hidden px-5 py-5 md:px-7">
                 <div className="absolute inset-y-0 right-0 hidden w-[42%] bg-[radial-gradient(circle_at_70%_50%,rgba(72,190,255,0.28),transparent_34%),linear-gradient(90deg,transparent,#eaf7ff)] md:block" />
                 <div className="relative z-10 flex items-center gap-4">
@@ -469,32 +524,264 @@ export default function Results() {
                   <div className="-ml-8 h-16 w-40 skew-x-[-24deg] rounded-tl-[3rem] rounded-br-2xl bg-gradient-to-br from-[#1d6f9d] to-[#063153] shadow-lg" />
                 </div>
               </div>
-            </section>
+            </section>}
 
-            <ViewKpis activeView={activeView} stats={stats} load={loadAnalysis} errors={errors.length} warnings={warnings.length} gym={gym} roster={roster} />
+            {!appMode && activeView === "summary" && <ViewKpis activeView={activeView} stats={stats} load={loadAnalysis} errors={errors.length} warnings={warnings.length} gym={gym} roster={roster} />}
 
-            {(activeView === "roster" || activeView === "irregularities") && <LegalProfileBanner profile={compliance.legalProfile} />}
-            <PrivacyTrustBanner />
+            {!appMode && (activeView === "roster" || activeView === "irregularities") && <LegalProfileBanner profile={visibleCompliance.legalProfile} />}
+            
+
+
+            {activeView === "summary" && <SummaryPanel roster={roster} stats={stats} load={loadAnalysis} compliance={visibleCompliance} events={events} onOpenRoster={() => switchView("roster")} onOpenAlerts={() => switchView("alerts")} onOpenMetrics={() => switchView("metrics")} />}
+            {activeView === "alerts" && (selectedAlert ? <IrregularityDetailPage alert={selectedAlert} onBack={() => setSelectedAlert(null)} onOpenDay={() => openAlertDay(selectedAlert.date)} isAdminUser={isAdminUser} onSuppressFalsePositive={() => handleSuppressFalsePositive(selectedAlert)} /> : <AlertsPanel compliance={visibleCompliance} errors={errors} warnings={warnings} onOpenAlert={setSelectedAlert} onOpenMetrics={() => switchView("metrics")} onOpenRoster={() => switchView("roster")} />)}
+            {activeView === "metrics" && <MetricsPanel compliance={visibleCompliance} load={loadAnalysis} stats={stats} roster={roster} />}
+            {activeView === "glossary" && <GlossaryPanel />}
 
             {activeView === "roster" && (
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_21.5rem]">
-                <section className="space-y-4">
-                  <RosterFilters roster={roster} query={query} setQuery={setQuery} dutyType={dutyType} setDutyType={setDutyType} uniqueTypes={uniqueTypes} />
-                  <DesktopRosterTable groups={filteredDayGroups} todayId={firstEventId} />
-                  <MobileRosterList groups={filteredDayGroups} todayId={firstEventId} roster={roster} />
-                </section>
-                <RightActions roster={roster} gym={gym} events={events} stats={stats} load={loadAnalysis} dbStatus={dbStatus} savedRosters={savedRosters} isSavingDb={isSavingDb} pendingOffline={pendingOffline} isSendingEmail={isSendingEmail} handleSyncOffline={handleSyncOffline} handleEmailReport={handleEmailReport} handleSaveDatabase={handleSaveDatabase} handleExportCalendar={handleExportCalendar} handleExportPdf={handleExportPdf} handleCopy={handleCopy} setLocation={setLocation} onOpenSettings={() => switchView("settings")} />
-              </div>
+              <section className="space-y-4">
+                <RosterQuickToolbar onOpenSummary={() => switchView("summary")} onOpenFilters={() => { const box = document.getElementById("crewcheck-roster-filters"); box?.classList.toggle("hidden"); }} />
+                <div id="crewcheck-roster-filters" className="hidden"><RosterFilters roster={roster} query={query} setQuery={setQuery} dutyType={dutyType} setDutyType={setDutyType} uniqueTypes={uniqueTypes} /></div>
+                <DesktopRosterTable groups={filteredDayGroups} todayId={firstEventId} routineSuggestions={routineSuggestions} />
+                <MobileRosterList groups={filteredDayGroups} todayId={firstEventId} roster={roster} routineSuggestions={routineSuggestions} />
+              </section>
             )}
 
-            {activeView === "irregularities" && (selectedAlert ? <IrregularityDetailPage alert={selectedAlert} onBack={() => setSelectedAlert(null)} onOpenDay={() => openAlertDay(selectedAlert.date)} /> : <IrregularitiesPanel compliance={compliance} errors={errors} warnings={warnings} onOpenAlert={setSelectedAlert} />)}
+            {activeView === "irregularities" && (selectedAlert ? <IrregularityDetailPage alert={selectedAlert} onBack={() => setSelectedAlert(null)} onOpenDay={() => openAlertDay(selectedAlert.date)} isAdminUser={isAdminUser} onSuppressFalsePositive={() => handleSuppressFalsePositive(selectedAlert)} /> : <IrregularitiesPanel compliance={visibleCompliance} errors={errors} warnings={warnings} onOpenAlert={setSelectedAlert} />)}
             {activeView === "gym" && <RoutinePanel gym={gym} load={loadAnalysis} />}
-            {activeView === "fatigue" && <FatiguePanel load={loadAnalysis} compliance={compliance} />}
+            {activeView === "fatigue" && <FatiguePanel load={loadAnalysis} compliance={visibleCompliance} />}
             {activeView === "statistics" && <StatisticsPanel storedStats={storedStats} savedRosters={savedRosters} />}
-            {activeView === "settings" && <SettingsPanel roster={roster} gym={gym} load={loadAnalysis} />}
+            {activeView === "settings" && <SettingsPanel roster={roster} gym={gym} load={loadAnalysis} themeMode={themeMode} onThemeModeChange={setThemeMode} ignoredAlertKeys={ignoredAlertKeys} onClearIgnoredAlerts={() => { setIgnoredAlertKeys([]); saveIgnoredAlertKeys([]); toast.success("Aprendizado de falsos positivos limpo."); }} handleExportCalendar={handleExportCalendar} handleExportPdf={handleExportPdf} handleCopy={handleCopy} handleEmailReport={handleEmailReport} isSendingEmail={isSendingEmail} />}
             {activeView === "manual" && <ManualPanel />}
+            <div className="mt-5"><PrivacyTrustBanner /></div>
           </div>
         </main>
+      </div>
+    </div>
+  );
+}
+
+
+
+function RosterQuickToolbar({ onOpenSummary, onOpenFilters }: { onOpenSummary: () => void; onOpenFilters: () => void }) {
+  return (
+    <div className="rounded-[1.1rem] border border-white bg-white p-3 shadow-[0_14px_45px_rgba(20,54,84,0.07)]">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h3 className="text-lg font-black text-[#092846]">Escala</h3>
+          <p className="text-xs font-semibold text-[#60758a]">Cards limpos. Toque para abrir detalhes.</p>
+        </div>
+        <div className="flex gap-2">
+          <Button onClick={onOpenSummary} variant="outline" className="rounded-xl border-[#d8e4ee] text-[#092846]"><LayoutDashboard className="h-4 w-4" /> Resumo</Button>
+          <Button onClick={onOpenFilters} variant="outline" className="rounded-xl border-blue-200 text-blue-600"><Search className="h-4 w-4" /> Filtro</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SummaryPanel({ roster, stats, load, compliance, events, onOpenRoster, onOpenAlerts, onOpenMetrics }: { roster: CrewRoster; stats: ReturnType<typeof getStats>; load: LoadAnalysis; compliance: ComplianceResult; events: RosterEvent[]; onOpenRoster: () => void; onOpenAlerts: () => void; onOpenMetrics: () => void }) {
+  const layovers = roster.days.filter((day) => day.type === 'LAYOVER' || day.hotel).length;
+  const alerts = compliance.alerts.length;
+  const upcoming = getUpcomingRosterEvents(events, 5);
+  const heroEvent = upcoming[0];
+  return (
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <section className="space-y-4">
+        {heroEvent && <PremiumNextProgramHero event={heroEvent} onOpenRoster={onOpenRoster} />}
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <CleanMetric icon={House} label="Folgas" value={stats.daysOff} tone="#15963a" />
+          <CleanMetric icon={BedDouble} label="Pernoites" value={layovers} tone="#e0a000" />
+          <CleanMetric icon={CalendarDays} label="Eventos" value={events.length} tone="#2f80ed" />
+          <CleanMetric icon={Bell} label="Alertas" value={alerts} tone={alerts ? '#dc2626' : '#15963a'} />
+        </div>
+        <div className="rounded-[1.25rem] border border-white bg-white p-5 shadow-[0_14px_45px_rgba(20,54,84,0.07)]">
+          <div className="flex items-center justify-between gap-3">
+            <div><h3 className="text-xl font-black text-[#092846]">Próximas programações</h3><p className="text-sm text-[#60758a]">A partir do dia vigente, sem voltar para o início do mês.</p></div>
+            <Button onClick={onOpenRoster} className="rounded-xl bg-[#092846] text-white">Abrir escala</Button>
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+            {upcoming.map((event) => <CompactEventRow key={event.id} event={event} />)}
+            {!upcoming.length && <p className="rounded-2xl border border-[#e5edf5] bg-[#f8fbfd] p-4 text-sm font-semibold text-[#60758a]">Nenhuma programação futura encontrada nesta escala.</p>}
+          </div>
+        </div>
+      </section>
+      <aside className="space-y-4">
+        <button onClick={onOpenAlerts} className="w-full rounded-[1.25rem] border border-white bg-white p-5 text-left shadow-[0_14px_45px_rgba(20,54,84,0.07)]">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-red-500">alertas</p>
+          <p className="mt-1 text-3xl font-black text-[#092846]">{alerts}</p>
+          <p className="text-sm text-[#60758a]">Clique para revisar irregularidades e atenções.</p>
+        </button>
+        <button onClick={onOpenMetrics} className="w-full rounded-[1.25rem] border border-white bg-white p-5 text-left shadow-[0_14px_45px_rgba(20,54,84,0.07)]">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">conformidade</p>
+          <p className="mt-1 text-3xl font-black text-[#092846]">{compliance.score}/100</p>
+          <p className="text-sm text-[#60758a]">Veja as métricas usadas para calcular a nota.</p>
+        </button>
+        <div className="rounded-[1.25rem] border border-white bg-white p-5 shadow-[0_14px_45px_rgba(20,54,84,0.07)]">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-orange-600">carga da escala</p>
+          <p className="mt-1 text-3xl font-black text-[#092846]">{load.intensityScore}/100</p>
+          <p className="text-sm text-[#60758a]">{load.grade}</p>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function AlertsPanel({ compliance, errors, warnings, onOpenAlert, onOpenMetrics, onOpenRoster }: { compliance: ComplianceResult; errors: ComplianceResult['alerts']; warnings: ComplianceResult['alerts']; onOpenAlert: (alert: ComplianceResult['alerts'][number]) => void; onOpenMetrics: () => void; onOpenRoster: () => void }) {
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 md:grid-cols-4">
+        <button onClick={onOpenMetrics}><ScoreCard title="Conformidade" value={`${compliance.score}/100`} icon={ShieldCheck} tone={errors.length ? '#dc2626' : '#15963a'} description="Clique para ver métricas." /></button>
+        <button onClick={() => errors[0] && onOpenAlert(errors[0])}><ScoreCard title="Irregularidades" value={String(errors.length)} icon={AlertTriangle} tone="#dc2626" description="Clique para abrir." /></button>
+        <button onClick={() => warnings[0] && onOpenAlert(warnings[0])}><ScoreCard title="Alertas" value={String(warnings.length)} icon={Bell} tone="#f97316" description="Pontos de atenção." /></button>
+        <button onClick={onOpenRoster}><ScoreCard title="Dias carregados" value={String(compliance.metrics.daysOff + compliance.metrics.reserveCount + compliance.metrics.totalStandby)} icon={CalendarDays} tone="#2f80ed" description="Abrir escala." /></button>
+      </div>
+      <IrregularitiesPanel compliance={compliance} errors={errors} warnings={warnings} onOpenAlert={onOpenAlert} />
+    </div>
+  );
+}
+
+function MetricsPanel({ compliance, load, stats, roster }: { compliance: ComplianceResult; load: LoadAnalysis; stats: ReturnType<typeof getStats>; roster: CrewRoster }) {
+  const rows = [
+    ['Nota de conformidade', `${compliance.score}/100`, 'Baseada em irregularidades confirmadas e alertas relevantes.'],
+    ['Repouso médio', `${compliance.metrics.averageTurnaround.toFixed(1)}h`, 'Entre jornadas. Acionamento/alteração pode usar regra de 12h.'],
+    ['Horas de voo', `${stats.flightHours.toFixed(1)}h`, 'Soma dos trechos lidos.'],
+    ['Horas de jornada', `${stats.dutyHours.toFixed(1)}h`, 'Apresentação até corte/fim de jornada.'],
+    ['Folgas', String(stats.daysOff), 'Inclui DO, DR, DOF, DOP, DOPR e VC quando classificados como folga.'],
+    ['Reserva/Sobreaviso', String(stats.reserveDays), 'ASB/HSB/HSBE agrupados e deduplicados.'],
+    ['Carga da escala', `${load.intensityScore}/100`, load.summary],
+    ['Dias carregados', String(roster.days.length), 'Quantidade de dias interpretados pelo parser.'],
+  ];
+  return <section className="rounded-[1.25rem] border border-white bg-white p-5 shadow-[0_14px_45px_rgba(20,54,84,0.07)]"><h3 className="text-2xl font-black text-[#092846]">Métricas do CrewCheck</h3><div className="mt-4 divide-y divide-[#edf3f8]">{rows.map(([a,b,c]) => <div key={a} className="grid gap-2 py-3 md:grid-cols-[14rem_8rem_minmax(0,1fr)]"><b className="text-[#092846]">{a}</b><span className="font-black text-blue-600">{b}</span><p className="text-sm text-[#60758a]">{c}</p></div>)}</div></section>;
+}
+
+function GlossaryPanel() {
+  const terms = [
+    ['DO / DR / DOF', 'Folgas formais publicadas na escala.'],
+    ['DOP / DOPR', 'Período oposto; tratado como folga para contagem e alertas.'],
+    ['OFF', 'Extensão de repouso, não necessariamente folga formal.'],
+    ['HSB / HSBE', 'Sobreaviso em casa.'],
+    ['ASB', 'Reserva/Airport Stand By.'],
+    ['PS', 'Voo extra; ícone de voo em cinza.'],
+    ['C32F', 'Check A32F; fica separado de voo extra.'],
+    ['Inativo/Pernoite', 'Dia em branco após programação ou hotel/localidade.'],
+  ];
+  return <section className="rounded-[1.25rem] border border-white bg-white p-5 shadow-[0_14px_45px_rgba(20,54,84,0.07)]"><h3 className="text-2xl font-black text-[#092846]">Glossário</h3><div className="mt-4 grid gap-3 md:grid-cols-2">{terms.map(([code, text]) => <div key={code} className="rounded-2xl border border-[#e5edf5] bg-[#f8fbfd] p-4"><b className="text-[#092846]">{code}</b><p className="mt-1 text-sm text-[#60758a]">{text}</p></div>)}</div></section>;
+}
+
+function CleanMetric({ icon: Icon, label, value, tone }: { icon: LucideIcon; label: string; value: number | string; tone: string }) {
+  return <div className="rounded-[1.1rem] border border-white bg-white p-4 shadow-[0_14px_45px_rgba(20,54,84,0.07)]"><Icon className="h-6 w-6" style={{ color: tone }} /><p className="mt-2 text-xs font-black uppercase tracking-[0.14em] text-[#71869b]">{label}</p><p className="text-3xl font-black text-[#092846]">{value}</p></div>;
+}
+
+
+function PremiumNextProgramHero({ event, onOpenRoster }: { event: RosterEvent; onOpenRoster: () => void }) {
+  const flight = useFlightStatus(event);
+  const isFlight = event.typeLabel === 'Flight' && Boolean(event.leg);
+  const style = getEventStyle(event);
+  const route = isFlight && event.leg ? `${event.leg.origin} → ${event.leg.destination}` : event.activity;
+  const countdown = countdownFromEvent(event);
+  return (
+    <div className="cc-next-program-hero overflow-hidden rounded-[1.45rem] border border-white bg-white shadow-[0_18px_55px_rgba(20,54,84,0.08)]">
+      <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <div className="relative overflow-hidden p-5 md:p-6">
+          <div className="absolute -right-12 top-3 h-40 w-40 rounded-full bg-blue-100/70 blur-2xl" />
+          <div className="relative z-10 flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-[0.68rem] font-black uppercase tracking-[0.24em] text-sky-600">próxima programação</p>
+              <h3 className="mt-2 break-words text-2xl font-black tracking-tight text-[#092846] md:text-4xl">{route}</h3>
+              <p className="mt-1 text-sm font-semibold text-[#60758a]">{event.dateLabel} · {event.time} · {event.activity}</p>
+            </div>
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-lg" style={{ backgroundColor: style.solid }}>
+              <Plane className="h-7 w-7" />
+            </div>
+          </div>
+          <div className="relative z-10 mt-5 grid grid-cols-2 gap-2 md:grid-cols-4">
+            <FlightMiniPill label="Status" value={isFlight ? (flight.status || event.status || 'Scheduled') : event.status} />
+            <FlightMiniPill label="Portão" value={isFlight ? (flight.gate || '—') : '—'} />
+            <FlightMiniPill label="Terminal" value={isFlight ? (flight.terminal || '—') : '—'} />
+            <FlightMiniPill label="Código" value={event.code || event.leg?.flightNumber || '—'} />
+          </div>
+          <p className="relative z-10 mt-3 text-xs font-semibold text-[#60758a]">Dados de voo aparecem quando houver provedor/API configurado. Sem isso, o CrewCheck mostra a informação publicada na escala e mantém o usuário protegido.</p>
+        </div>
+        <div className="flex flex-col justify-between border-t border-[#e5edf5] bg-[#f8fbfd] p-5 lg:border-l lg:border-t-0">
+          <div>
+            <p className="text-[0.65rem] font-black uppercase tracking-[0.22em] text-[#71869b]">tempo até apresentar</p>
+            <p className="mt-2 text-4xl font-black text-[#092846]">{countdown}</p>
+            <p className="mt-2 text-sm leading-6 text-[#60758a]">Rotina, descanso e alertas ficam dentro dos detalhes do dia.</p>
+          </div>
+          <button onClick={onOpenRoster} className="mt-4 rounded-2xl bg-[#092846] px-4 py-3 text-sm font-black text-white shadow-lg transition active:scale-95">Abrir escala completa</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function countdownFromEvent(event: RosterEvent): string {
+  const [h, m] = String(event.time || '').split('–')[0].trim().split(':').map((part) => Number(part));
+  const target = new Date(event.date);
+  if (Number.isFinite(h)) target.setHours(h, Number.isFinite(m) ? m : 0, 0, 0);
+  const diff = target.getTime() - Date.now();
+  if (diff <= 0) return 'agora';
+  const totalMinutes = Math.floor(diff / 60000);
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  return days > 0 ? `${days}d ${hours}h` : `${hours}h ${String(minutes).padStart(2, '0')}m`;
+}
+
+function CompactEventRow({ event }: { event: RosterEvent }) {
+  const [open, setOpen] = useState(false);
+  const style = getEventStyle(event);
+  const Icon = style.icon;
+  const flight = useFlightStatus(event);
+  const isFlight = event.typeLabel === 'Flight' && Boolean(event.leg);
+  return (
+    <div className="cc-next-program-card overflow-hidden rounded-2xl border border-[#e5edf5] bg-[#f8fbfd] shadow-[0_10px_30px_rgba(20,54,84,0.05)]">
+      <button type="button" onClick={() => setOpen((value) => !value)} className="grid w-full min-w-0 grid-cols-[2.75rem_minmax(0,1fr)_auto] items-start gap-3 p-3 text-left transition hover:bg-white/70">
+        <span className="flex h-11 w-11 items-center justify-center rounded-xl text-white shadow-sm" style={{ backgroundColor: style.solid }}><Icon className="h-5 w-5" /></span>
+        <div className="min-w-0">
+          <p className="break-words font-black leading-tight text-[#092846]">{event.dateLabel} · {event.time}</p>
+          <p className="mt-0.5 break-words text-sm leading-5 text-[#60758a]">{event.activity} · {event.subtitle}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <span className="max-w-[7.5rem] truncate rounded-full bg-white px-2.5 py-1 text-[11px] font-black text-[#60758a] shadow-sm">{event.code || '—'}</span>
+          <ChevronDown className={`h-4 w-4 text-[#60758a] transition ${open ? 'rotate-180' : ''}`} />
+        </div>
+      </button>
+      {isFlight && (
+        <div className="grid grid-cols-3 gap-2 px-3 pb-3 text-[11px] font-black">
+          <FlightMiniPill label="Status" value={flight.status || event.status || 'Scheduled'} />
+          <FlightMiniPill label="Portão" value={flight.gate || '—'} />
+          <FlightMiniPill label="Terminal" value={flight.terminal || '—'} />
+        </div>
+      )}
+      {open && <div className="border-t border-[#e5edf5] px-3 pb-3"><MobileRosterEventDetails event={event} routineSuggestions={[]} /></div>}
+    </div>
+  );
+}
+
+function FlightMiniPill({ label, value }: { label: string; value: string }) {
+  return <div className="min-w-0 rounded-xl border border-[#e5edf5] bg-white px-2.5 py-2"><p className="truncate text-[9px] uppercase tracking-[0.12em] text-[#71869b]">{label}</p><p className="mt-0.5 truncate text-[#092846]">{value}</p></div>;
+}
+
+function LanguageSettingsCard({ themeMode, onThemeModeChange }: { themeMode: CrewThemeMode; onThemeModeChange: (mode: CrewThemeMode) => void }) {
+  const [language, setLanguage] = useState(() => localStorage.getItem('crewcheck_language') || 'system');
+  function saveLanguage(value: string) { const normalized = value === 'system' || value === 'pt-BR' ? 'pt' : value; setLanguage(normalized); localStorage.setItem('crewcheck_language', normalized); window.dispatchEvent(new CustomEvent('crewcheck:language-change', { detail: { language: normalized } })); toast.success('Preferência de idioma salva.'); }
+  return (
+    <div className="rounded-[1.25rem] border border-white bg-white p-5 shadow-[0_14px_45px_rgba(20,54,84,0.07)]">
+      <p className="text-xs font-black uppercase tracking-[0.18em] text-sky-600">aparência</p>
+      <h3 className="text-xl font-black text-[#092846]">Tema, idioma e região</h3>
+      <p className="mt-1 text-sm text-[#60758a]">O CrewCheck pode seguir automaticamente o tema e o idioma do sistema do aparelho.</p>
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <label className="text-xs font-black uppercase tracking-[0.12em] text-[#60758a]">Tema
+          <select value={themeMode} onChange={(e)=>onThemeModeChange(e.target.value as CrewThemeMode)} className="mt-2 h-11 w-full rounded-2xl border border-[#d7e4ef] bg-white px-3 text-sm font-bold text-[#092846] outline-none focus:border-blue-400">
+            <option value="system">Automático pelo sistema</option>
+            <option value="light">Claro</option>
+            <option value="dark">Escuro</option>
+          </select>
+        </label>
+        <label className="text-xs font-black uppercase tracking-[0.12em] text-[#60758a]">Idioma
+          <select value={language} onChange={(e)=>saveLanguage(e.target.value)} className="mt-2 h-11 w-full rounded-2xl border border-[#d7e4ef] bg-white px-3 text-sm font-bold text-[#092846] outline-none focus:border-blue-400"><option value="pt">Português (Brasil)</option><option value="en">English</option><option value="es">Español</option><option value="fr">Français</option><option value="it">Italiano</option><option value="de">Deutsch</option></select>
+        </label>
       </div>
     </div>
   );
@@ -571,15 +858,14 @@ function RosterFilters({ roster, query, setQuery, dutyType, setDutyType, uniqueT
 function RightActions({ roster, gym, events, stats, load, dbStatus, savedRosters, isSavingDb, pendingOffline, isSendingEmail, handleSyncOffline, handleEmailReport, handleSaveDatabase, handleExportCalendar, handleExportPdf, handleCopy, setLocation, onOpenSettings }: { roster: CrewRoster; gym: GymRecommendation[]; events: RosterEvent[]; stats: ReturnType<typeof getStats>; load: LoadAnalysis; dbStatus: DatabaseStatus | null; savedRosters: SavedRosterSummary[]; isSavingDb: boolean; pendingOffline: number; isSendingEmail: boolean; handleSyncOffline: () => void; handleEmailReport: () => void; handleSaveDatabase: () => void; handleExportCalendar: (mode?: CalendarExportMode) => void; handleExportPdf: () => void; handleCopy: () => void; setLocation: (path: string) => void; onOpenSettings: () => void }) {
   return (
     <aside className="space-y-4">
-      <ActionCard title="Nova escala" description="Limpa a análise atual e abre a tela de upload para carregar outro PDF." icon={CloudUpload} button="Carregar PDF" onClick={() => setLocation("/")} />
-      <ActionCard title="Import Roster" description="Volte para o upload e importe um novo CrewRosterReport em PDF." icon={CloudUpload} button="Upload File" onClick={() => setLocation("/")} />
+      <ActionCard title="Importar escala" description="Escolher PDF no dispositivo e substituir a escala atual sem duplicar histórico." icon={CloudUpload} button="Escolher PDF no dispositivo" onClick={() => setLocation("/")} />
       <DatabaseCard dbStatus={dbStatus} savedRosters={savedRosters} isSavingDb={isSavingDb} onSave={handleSaveDatabase} />
       <div className="rounded-[1.25rem] border border-white bg-white p-5 shadow-[0_14px_45px_rgba(20,54,84,0.07)]">
         <h3 className="text-lg font-black">Offline / APK</h3>
         <p className="mt-1 text-sm text-[#60758a]">Pendências ficam salvas no aparelho e sincronizam depois sem duplicar.</p>
         <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl bg-slate-50 p-3">
           <span className="text-sm font-bold text-[#092846]">{pendingOffline} pendente(s)</span>
-          <Button onClick={handleSyncOffline} disabled={isSavingDb || pendingOffline === 0} variant="outline" className="rounded-xl border-blue-200 text-blue-600">Sincronizar</Button>
+          <Button onClick={handleSyncOffline} disabled={isSavingDb || pendingOffline === 0} variant="outline" className="rounded-xl border-blue-200 text-blue-600">Atualizar ICS</Button>
         </div>
       </div>
       <ActionCard title="Enviar por e-mail" description="Envia um resumo premium da análise para qualquer e-mail, se SendGrid ou MailerSend estiver configurado no Render." icon={Mail} button={isSendingEmail ? "Enviando..." : "Enviar"} onClick={handleEmailReport} />
@@ -630,7 +916,7 @@ function GoogleCalendarQuickCard({ roster, gym, load, onOpenSettings }: { roster
 
   async function handleSyncNow() {
     if (!configured) {
-      toast.error("Configure VITE_GOOGLE_CLIENT_ID no ambiente do sistema para ativar Google Calendar.");
+      toast.error("Configure VITE_GOOGLE_CLIENT_ID no ambiente do sistema para ativar Agenda automática.");
       onOpenSettings();
       return;
     }
@@ -638,9 +924,9 @@ function GoogleCalendarQuickCard({ roster, gym, load, onOpenSettings }: { roster
     try {
       const result = await syncRosterToGoogleCalendar(roster, settings, buildGoogleSyncExtras(gym, load));
       sessionStorage.removeItem("crewcheck_auto_sync_pending");
-      toast.success(`Google Calendar atualizado: ${result.created} novo(s), ${result.updated} atualizado(s), ${result.deleted} removido(s).`);
+      toast.success(`Agenda automática atualizado: ${result.created} novo(s), ${result.updated} atualizado(s), ${result.deleted} removido(s).`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Falha ao sincronizar Google Calendar.");
+      toast.error(error instanceof Error ? error.message : "Falha ao sincronizar Agenda automática.");
     } finally {
       setIsSyncing(false);
     }
@@ -650,20 +936,20 @@ function GoogleCalendarQuickCard({ roster, gym, load, onOpenSettings }: { roster
     <div className="rounded-[1.25rem] border border-blue-100 bg-gradient-to-br from-white to-sky-50 p-5 shadow-[0_14px_45px_rgba(20,54,84,0.07)]">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-lg font-black">Google Calendar</h3>
-          <p className="mt-1 text-sm text-[#60758a]">Sincroniza e substitui eventos da escala sem duplicar.</p>
+          <h3 className="text-lg font-black">Agenda automática</h3>
+          <p className="mt-1 text-sm text-[#60758a]">Atualiza um link ICS privado para assinatura no Google Calendar, sem OAuth.</p>
         </div>
         <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-600 text-white"><CalendarDays className="h-5 w-5" /></div>
       </div>
       <div className="rounded-2xl bg-white/75 p-3 text-xs leading-5 text-[#425a72]">
-        <p><strong>Calendário:</strong> {settings.selectedCalendarName || settings.selectedCalendarId || "Calendário principal"}</p>
-        <p><strong>Automático:</strong> {settings.autoSync ? "ativo após upload" : "desativado"}</p>
-        <p><strong>Exportação:</strong> {googleSyncModeLabel(settings.exportMode || "all")}</p>
-        {!configured && <p className="mt-2 font-bold text-amber-700">Falta configurar VITE_GOOGLE_CLIENT_ID no Render/Vercel.</p>}
+        <p><strong>Link:</strong> {settings.selectedCalendarName || settings.selectedCalendarId || "Calendário principal"}</p>
+        <p><strong>Atualização automática:</strong> {settings.autoSync ? "ativo após upload" : "desativado"}</p>
+        <p><strong>Conteúdo:</strong> {googleSyncModeLabel(settings.exportMode || "all")}</p>
+        {!configured && <p className="mt-2 font-bold text-amber-700">Use Configurações para copiar o link ICS e assinar no Google Calendar.</p>}
       </div>
       <div className="mt-4 grid grid-cols-2 gap-2">
         <Button onClick={handleSyncNow} disabled={isSyncing || !configured} className="rounded-xl bg-blue-600 text-white hover:bg-blue-700">
-          <RefreshCw className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} /> {isSyncing ? "Sincronizando" : "Sincronizar"}
+          <RefreshCw className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} /> {isSyncing ? "Sincronizando" : "Atualizar ICS"}
         </Button>
         <Button onClick={onOpenSettings} variant="outline" className="rounded-xl border-blue-200 text-blue-700"><Settings className="h-4 w-4" /> Configurar</Button>
       </div>
@@ -671,17 +957,134 @@ function GoogleCalendarQuickCard({ roster, gym, load, onOpenSettings }: { roster
   );
 }
 
-function SettingsPanel({ roster, gym, load }: { roster: CrewRoster; gym: GymRecommendation[]; load: LoadAnalysis }) {
+
+function ProfileAccountCard({ roster }: { roster: CrewRoster }) {
+  const user = getStoredUser();
+  const name = resolvedCrewName(roster, user);
+  return (
+    <div className="rounded-[1.25rem] border border-white bg-white p-5 shadow-[0_14px_45px_rgba(20,54,84,0.07)]">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-4">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#092846] text-lg font-black text-white">{initials(name)}</div>
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-sky-600">perfil e conta</p>
+            <h3 className="text-xl font-black text-[#092846]">{titleCase(name)}</h3>
+            <p className="text-sm font-semibold text-[#60758a]">{user?.email || 'Conta local'} · {roster.base || 'Base não identificada'}</p>
+          </div>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <a href="/privacy.html" target="_blank" className="rounded-2xl border border-[#d7e4ef] px-4 py-3 text-center text-sm font-black text-[#092846] hover:bg-[#f7fbff]">Privacidade</a>
+          <a href="/delete-account.html" target="_blank" className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-center text-sm font-black text-red-700 hover:bg-red-100">Excluir conta</a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RoutineSettingsCard() {
+  const activities = loadRoutineActivities();
+  const maxRoutineActivities = 12;
+  return (
+    <div className="rounded-[1.25rem] border border-white bg-white p-5 shadow-[0_14px_45px_rgba(20,54,84,0.07)]">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-600">configurações de rotina</p>
+          <h3 className="text-xl font-black text-[#092846]">Rotina centralizada</h3>
+          <p className="mt-1 text-sm leading-6 text-[#60758a]">Limite: {activities.length}/{maxRoutineActivities}. O CrewCheck bloqueia duplicidade por tipo de atividade, salvo quando o tipo for diferente.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {activities.slice(0, 6).map((item) => <span key={item.id} className="rounded-full bg-[#eef5fb] px-3 py-1 text-xs font-black text-[#425a72]">{getActivityLabel(item.type)}</span>)}
+          {activities.length > 6 && <span className="rounded-full bg-[#eef5fb] px-3 py-1 text-xs font-black text-[#425a72]">+{activities.length - 6}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReliabilityCenterCard({ ignoredAlertKeys, onClear }: { ignoredAlertKeys: string[]; onClear: () => void }) {
+  return (
+    <div className="rounded-[1.25rem] border border-emerald-100 bg-gradient-to-br from-white to-emerald-50 p-5 shadow-[0_14px_45px_rgba(20,54,84,0.07)]">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">central de confiabilidade</p>
+          <h3 className="text-xl font-black text-[#092846]">Aprendizado de falsos positivos</h3>
+          <p className="mt-1 text-sm leading-6 text-[#60758a]">Alertas marcados pelo administrador deixam de aparecer para o usuário comum e ficam registrados como regra local de confiança.</p>
+        </div>
+        <Button type="button" onClick={onClear} disabled={!ignoredAlertKeys.length} variant="outline" className="rounded-2xl border-emerald-200 text-emerald-700">Limpar aprendizado</Button>
+      </div>
+      <div className="mt-4 rounded-2xl bg-white/75 p-3 text-sm font-bold text-[#425a72]">{ignoredAlertKeys.length ? `${ignoredAlertKeys.length} regra(s) aprendida(s).` : 'Nenhum falso positivo aprendido ainda.'}</div>
+    </div>
+  );
+}
+
+function ExportSettingsCard({ handleExportCalendar, handleExportPdf, handleCopy, handleEmailReport, isSendingEmail }: { handleExportCalendar: (mode?: CalendarExportMode) => void; handleExportPdf: () => void; handleCopy: () => void; handleEmailReport: () => void; isSendingEmail: boolean }) {
+  return (
+    <div className="rounded-[1.25rem] border border-white bg-white p-5 shadow-[0_14px_45px_rgba(20,54,84,0.07)]">
+      <p className="text-xs font-black uppercase tracking-[0.18em] text-sky-600">exportações</p>
+      <h3 className="mt-1 text-xl font-black text-[#092846]">PDF, ICS e compartilhamento</h3>
+      <p className="mt-1 text-sm leading-6 text-[#60758a]">As opções de exportação ficam centralizadas aqui para manter a tela de escala limpa.</p>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        <Button onClick={() => handleExportCalendar("all")} variant="outline" className="rounded-xl border-[#d8e4ee] text-[#092846]"><Download className="h-4 w-4" /> ICS completo</Button>
+        <Button onClick={() => handleExportCalendar("flights")} variant="outline" className="rounded-xl border-[#d8e4ee] text-[#092846]"><Plane className="h-4 w-4" /> Só voos</Button>
+        <Button onClick={() => handleExportCalendar("routine")} variant="outline" className="rounded-xl border-[#d8e4ee] text-[#092846]"><Dumbbell className="h-4 w-4" /> Rotina</Button>
+        <Button onClick={handleExportPdf} className="rounded-xl bg-[#092846] text-white hover:bg-[#0d365e]"><FileText className="h-4 w-4" /> PDF</Button>
+        <Button onClick={handleCopy} variant="outline" className="rounded-xl border-[#d8e4ee]"><Copy className="h-4 w-4" /> Copiar</Button>
+        <Button onClick={handleEmailReport} disabled={isSendingEmail} variant="outline" className="rounded-xl border-blue-200 text-blue-700"><Mail className="h-4 w-4" /> {isSendingEmail ? "Enviando" : "E-mail"}</Button>
+      </div>
+    </div>
+  );
+}
+
+function SupportSettingsCard() {
+  const whatsapp = "https://wa.me/5561996071663?text=Ol%C3%A1%2C%20preciso%20de%20suporte%20no%20CrewCheck.";
+  const email = "mailto:suporte@crewcheck.app?subject=Suporte%20CrewCheck&body=Ol%C3%A1%2C%20preciso%20de%20suporte%20no%20CrewCheck.";
+  const openSupport = (url: string) => {
+    try {
+      const nativeBridge = (window as unknown as { CrewCheckNative?: { openExternal?: (target: string) => boolean | void } }).CrewCheckNative;
+      if (nativeBridge?.openExternal) {
+        nativeBridge.openExternal(url);
+        return;
+      }
+    } catch {}
+    try {
+      const opened = window.open(url, "_blank", "noopener,noreferrer");
+      if (opened) return;
+    } catch {}
+    window.location.href = url;
+  };
+  return (
+    <div className="rounded-[1.25rem] border border-white bg-white p-5 shadow-[0_14px_45px_rgba(20,54,84,0.07)]">
+      <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-600">suporte</p>
+      <h3 className="mt-1 text-xl font-black text-[#092846]">Ajuda e atendimento</h3>
+      <p className="mt-1 text-sm leading-6 text-[#60758a]">Abrimos WhatsApp/e-mail fora do CrewCheck, sem gravar mensagem, telefone ou dados pessoais no sistema.</p>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+        <button type="button" onClick={() => openSupport(whatsapp)} className="rounded-2xl bg-emerald-600 px-4 py-3 text-center text-sm font-black text-white hover:bg-emerald-700">Abrir WhatsApp</button>
+        <button type="button" onClick={() => openSupport(email)} className="rounded-2xl border border-[#d7e4ef] px-4 py-3 text-center text-sm font-black text-[#092846] hover:bg-[#f7fbff]">Enviar e-mail</button>
+      </div>
+    </div>
+  );
+}
+
+function SettingsPanel({ roster, gym, load, themeMode, onThemeModeChange, ignoredAlertKeys, onClearIgnoredAlerts, handleExportCalendar, handleExportPdf, handleCopy, handleEmailReport, isSendingEmail }: { roster: CrewRoster; gym: GymRecommendation[]; load: LoadAnalysis; themeMode: CrewThemeMode; onThemeModeChange: (mode: CrewThemeMode) => void; ignoredAlertKeys: string[]; onClearIgnoredAlerts: () => void; handleExportCalendar: (mode?: CalendarExportMode) => void; handleExportPdf: () => void; handleCopy: () => void; handleEmailReport: () => void; isSendingEmail: boolean }) {
   const [settings, setSettings] = useState<GoogleCalendarSettings>(() => loadGoogleCalendarSettings());
   const [calendars, setCalendars] = useState<GoogleCalendarOption[]>([]);
   const [connected, setConnected] = useState(() => hasGoogleCalendarToken());
   const [isLoadingCalendars, setIsLoadingCalendars] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [clientIdOverride, setClientIdOverride] = useState(() => getGoogleClientIdOverride());
+  const [feedInfo, setFeedInfo] = useState<{ feedUrl?: string; updatedAt?: string | null; hasContent?: boolean }>({});
   const configured = isGoogleCalendarConfigured();
   const hasEnvClientId = hasGoogleClientIdFromEnv();
   const currentUser = getStoredUser();
   const isAdminUser = isGoogleCalendarAdmin(currentUser);
+
+  useEffect(() => {
+    let active = true;
+    getCalendarFeedInfo()
+      .then((info) => { if (active) setFeedInfo(info); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, []);
 
   function persist(next: GoogleCalendarSettings) {
     const saved = saveGoogleCalendarSettings(next);
@@ -695,20 +1098,22 @@ function SettingsPanel({ roster, gym, load }: { roster: CrewRoster; gym: GymReco
 
   async function handleConnectAndLoad() {
     if (!configured) {
-      toast.error("Configure VITE_GOOGLE_CLIENT_ID para ativar a sincronização com Google Calendar.");
+      toast.error("Configure VITE_GOOGLE_CLIENT_ID para ativar a sincronização com Agenda automática.");
       return;
     }
     setIsLoadingCalendars(true);
     try {
       await connectGoogleCalendar("consent");
       setConnected(true);
+      const info = await getCalendarFeedInfo();
+      setFeedInfo(info);
       const items = await listGoogleCalendars();
       setCalendars(items);
       const selected = items.find((item) => item.id === settings.selectedCalendarId) || items.find((item) => item.primary) || items[0];
       if (selected) persist({ ...settings, selectedCalendarId: selected.id, selectedCalendarName: selected.summary });
-      toast.success("Google Calendar conectado.");
+      toast.success("Agenda automática conectado.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Não foi possível conectar ao Google Calendar.");
+      toast.error(error instanceof Error ? error.message : "Não foi possível conectar ao Agenda automática.");
     } finally {
       setIsLoadingCalendars(false);
     }
@@ -716,11 +1121,13 @@ function SettingsPanel({ roster, gym, load }: { roster: CrewRoster; gym: GymReco
 
   async function handleRefreshCalendars() {
     if (!configured) {
-      toast.error("Configure VITE_GOOGLE_CLIENT_ID para ativar a sincronização com Google Calendar.");
+      toast.error("Configure VITE_GOOGLE_CLIENT_ID para ativar a sincronização com Agenda automática.");
       return;
     }
     setIsLoadingCalendars(true);
     try {
+      const info = await getCalendarFeedInfo();
+      setFeedInfo(info);
       const items = await listGoogleCalendars();
       setConnected(true);
       setCalendars(items);
@@ -734,16 +1141,29 @@ function SettingsPanel({ roster, gym, load }: { roster: CrewRoster; gym: GymReco
 
   async function handleSyncNow() {
     if (!configured) {
-      toast.error("Configure VITE_GOOGLE_CLIENT_ID para ativar Google Calendar.");
+      toast.error("Configure o Google Client ID no Render ou no campo técnico do administrador.");
       return;
     }
     setIsSyncing(true);
     try {
-      const result = await syncRosterToGoogleCalendar(roster, settings, buildGoogleSyncExtras(gym, load));
+      let result;
+      try {
+        result = await syncRosterToGoogleCalendar(roster, settings, buildGoogleSyncExtras(gym, load));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (/expirou|401|autorização|autorizacao|token/i.test(message)) {
+          toast.info("Reconectando ao Agenda automática para renovar a autorização...");
+          await connectGoogleCalendar("consent");
+          result = await syncRosterToGoogleCalendar(roster, settings, buildGoogleSyncExtras(gym, load));
+        } else {
+          throw error;
+        }
+      }
       sessionStorage.removeItem("crewcheck_auto_sync_pending");
-      toast.success(`Google Calendar atualizado: ${result.created} novo(s), ${result.updated} atualizado(s), ${result.deleted} removido(s).`);
+      toast.success(`Agenda automática atualizado: ${result.created} novo(s), ${result.updated} atualizado(s), ${result.deleted} removido(s).`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Falha ao sincronizar Google Calendar.");
+      const message = error instanceof Error ? error.message : "Falha ao sincronizar Agenda automática.";
+      toast.error(`${message} Confira se a conta está conectada, se o calendário permite edição e se o domínio está autorizado no Google Cloud.`);
     } finally {
       setIsSyncing(false);
     }
@@ -754,11 +1174,17 @@ function SettingsPanel({ roster, gym, load }: { roster: CrewRoster; gym: GymReco
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">
       <section className="space-y-4">
+        <ProfileAccountCard roster={roster} />
+        <LanguageSettingsCard themeMode={themeMode} onThemeModeChange={onThemeModeChange} />
+        <RoutineSettingsCard />
+        <ReliabilityCenterCard ignoredAlertKeys={ignoredAlertKeys} onClear={onClearIgnoredAlerts} />
+        <ExportSettingsCard handleExportCalendar={handleExportCalendar} handleExportPdf={handleExportPdf} handleCopy={handleCopy} handleEmailReport={handleEmailReport} isSendingEmail={isSendingEmail} />
+        <SupportSettingsCard />
         <div className="rounded-[1.25rem] border border-white bg-white p-5 shadow-[0_14px_45px_rgba(20,54,84,0.07)]">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.18em] text-sky-600">configurações</p>
-              <h3 className="mt-1 text-2xl font-black">Google Calendar sem duplicidade</h3>
+              <h3 className="mt-1 text-2xl font-black">Agenda automática sem duplicidade</h3>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-[#60758a]">Escolha o calendário que receberá a escala. O CrewCheck marca cada evento com uma chave privada e, no próximo upload, atualiza ou remove o evento antigo em vez de criar cópias.</p>
             </div>
             <Badge className={`rounded-full border-0 px-3 py-1 ${connected ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800"}`}>{connected ? "Conectado" : "Pendente"}</Badge>
@@ -766,52 +1192,60 @@ function SettingsPanel({ roster, gym, load }: { roster: CrewRoster; gym: GymReco
 
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             <div className="rounded-2xl border border-[#d7e4ef] bg-[#f8fbfe] p-4">
-              <h4 className="font-black text-[#092846]">1. Conectar conta Google</h4>
-              <p className="mt-2 text-sm leading-6 text-[#60758a]">Autorize acesso apenas para listar calendários e criar/atualizar eventos da escala.</p>
+              <h4 className="font-black text-[#092846]">1. Gerar assinatura ICS</h4>
+              <p className="mt-2 text-sm leading-6 text-[#60758a]">Gere um link privado de calendário. Assine esse link uma vez no Google Calendar, Outlook ou Apple Calendar.</p>
               {!configured && (
                 <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-800">
                   {isAdminUser
-                    ? <>Falta variável <code>VITE_GOOGLE_CLIENT_ID</code> no ambiente do sistema. Configure no Render antes do build ou cole temporariamente o Client ID abaixo.</>
-                    : <>Google Calendar ainda não foi configurado pelo administrador do sistema.</>}
+                    ? <>Não precisa variável <code>VITE_GOOGLE_CLIENT_ID</code> no ambiente do sistema. Configure no Render antes do build ou cole temporariamente o Client ID abaixo.</>
+                    : <>Agenda automática ainda não foi configurado pelo administrador do sistema.</>}
                 </p>
               )}
               <Button onClick={handleConnectAndLoad} disabled={!configured || isLoadingCalendars} className="mt-4 rounded-xl bg-[#092846] text-white hover:bg-[#0d365e]">
-                <RefreshCw className={`h-4 w-4 ${isLoadingCalendars ? "animate-spin" : ""}`} /> {isLoadingCalendars ? "Conectando" : "Conectar Google"}
+                <RefreshCw className={`h-4 w-4 ${isLoadingCalendars ? "animate-spin" : ""}`} /> {isLoadingCalendars ? "Gerando" : "Gerar link"}
               </Button>
               {isAdminUser && !hasEnvClientId && (
                 <div className="mt-4 rounded-2xl border border-amber-200 bg-white p-3">
                   <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-amber-100 px-3 py-1 text-[0.68rem] font-black uppercase tracking-[0.12em] text-amber-800">
                     <Lock className="h-3.5 w-3.5" /> Somente administrador
                   </div>
-                  <label className="block text-xs font-black uppercase tracking-[0.12em] text-amber-700">Client ID Google opcional</label>
+                  <label className="block text-xs font-black uppercase tracking-[0.12em] text-amber-700">Modo antigo Google OAuth desativado</label>
                   <input
                     value={clientIdOverride}
                     onChange={(event) => setClientIdOverride(event.target.value)}
                     placeholder="000000000000-xxxxxxxx.apps.googleusercontent.com"
                     className="mt-2 h-11 w-full rounded-xl border border-[#d7e4ef] px-3 text-xs font-semibold text-[#092846] outline-none focus:border-amber-400"
                   />
-                  <p className="mt-2 text-xs leading-5 text-amber-800">Campo técnico oculto para tripulantes. Preferencialmente configure <code>VITE_GOOGLE_CLIENT_ID</code> no Render.</p>
-                  <Button type="button" onClick={handleSaveClientId} variant="outline" className="mt-2 rounded-xl border-amber-200 text-amber-700">Salvar Client ID local</Button>
+                  <p className="mt-2 text-xs leading-5 text-amber-800">Este campo não é mais necessário. O CrewCheck agora usa assinatura ICS em vez de <code>VITE_GOOGLE_CLIENT_ID</code> no Render.</p>
+                  <Button type="button" onClick={handleSaveClientId} variant="outline" className="mt-2 rounded-xl border-amber-200 text-amber-700">Limpar campo técnico</Button>
                 </div>
               )}
             </div>
 
             <div className="rounded-2xl border border-[#d7e4ef] bg-[#f8fbfe] p-4">
-              <h4 className="font-black text-[#092846]">2. Escolher calendário</h4>
-              <p className="mt-2 text-sm leading-6 text-[#60758a]">Use um calendário dedicado, por exemplo “CrewCheck Escala”, para facilitar conferência e remoção.</p>
+              <h4 className="font-black text-[#092846]">2. Assinar no calendário</h4>
+              <p className="mt-2 text-sm leading-6 text-[#60758a]">Copie o link ICS e adicione no Google Calendar em “Adicionar por URL”. O Google atualizará periodicamente.</p>
               <select value={settings.selectedCalendarId} onChange={(event) => {
                 const selected = options.find((item) => item.id === event.target.value);
                 persist({ ...settings, selectedCalendarId: event.target.value, selectedCalendarName: selected?.summary || event.target.value });
               }} className="mt-4 h-12 w-full rounded-2xl border border-[#d7e4ef] bg-white px-3 text-sm font-bold text-[#092846] outline-none focus:border-blue-400">
                 {options.map((calendar) => <option key={calendar.id} value={calendar.id}>{calendar.summary}{calendar.primary ? " · principal" : ""}</option>)}
               </select>
-              <Button onClick={handleRefreshCalendars} disabled={!configured || isLoadingCalendars} variant="outline" className="mt-3 rounded-xl border-blue-200 text-blue-700"><RefreshCw className={`h-4 w-4 ${isLoadingCalendars ? "animate-spin" : ""}`} /> Atualizar lista</Button>
+              <div className="mt-3 rounded-2xl border border-blue-100 bg-white p-3">
+                <label className="text-xs font-black uppercase tracking-[0.12em] text-blue-700">Link para assinar</label>
+                <input readOnly value={feedInfo.feedUrl || 'Toque em Gerar link para criar sua assinatura ICS'} className="mt-2 h-11 w-full rounded-xl border border-[#d7e4ef] bg-[#f8fbfe] px-3 text-xs font-bold text-[#092846]" />
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <Button type="button" onClick={() => feedInfo.feedUrl ? navigator.clipboard.writeText(feedInfo.feedUrl).then(() => toast.success('Link ICS copiado. Cole no Google Calendar em Adicionar por URL.')).catch(() => toast.error('Não consegui copiar o link.')) : toast.info('Gere o link primeiro.')} variant="outline" className="rounded-xl border-blue-200 text-blue-700"><Copy className="h-4 w-4" /> Copiar link</Button>
+                  {feedInfo.feedUrl && <a href={feedInfo.feedUrl} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center justify-center rounded-xl bg-blue-600 px-3 text-sm font-black text-white hover:bg-blue-700">Abrir ICS</a>}
+                </div>
+              </div>
+              <Button onClick={handleRefreshCalendars} disabled={!configured || isLoadingCalendars} variant="outline" className="mt-3 rounded-xl border-blue-200 text-blue-700"><RefreshCw className={`h-4 w-4 ${isLoadingCalendars ? "animate-spin" : ""}`} /> Atualizar link</Button>
             </div>
           </div>
 
           <div className="mt-4 rounded-2xl border border-[#d7e4ef] bg-[#f8fbfe] p-4">
             <h4 className="font-black text-[#092846]">3. O que sincronizar/exportar</h4>
-            <p className="mt-2 text-sm leading-6 text-[#60758a]">Mesmo padrão do gerador ICS: escolha se o Google Calendar receberá tudo, somente voos, academia ou rotina inteligente.</p>
+            <p className="mt-2 text-sm leading-6 text-[#60758a]">Mesmo padrão do gerador ICS: escolha se o Agenda automática receberá tudo, somente voos, academia ou rotina inteligente.</p>
             <select value={settings.exportMode || "all"} onChange={(event) => persist({ ...settings, exportMode: event.target.value as GoogleCalendarSyncMode })} className="mt-4 h-12 w-full rounded-2xl border border-[#d7e4ef] bg-white px-3 text-sm font-bold text-[#092846] outline-none focus:border-blue-400">
               <option value="all">Tudo · escala, voos, atividades, folgas, academia e rotina</option>
               <option value="flights">Voos · somente etapas de voo</option>
@@ -823,7 +1257,7 @@ function SettingsPanel({ roster, gym, load }: { roster: CrewRoster; gym: GymReco
           <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 p-4">
             <label className="flex cursor-pointer items-start gap-3 text-sm font-bold text-[#092846]">
               <input type="checkbox" checked={settings.autoSync} onChange={(event) => persist({ ...settings, autoSync: event.target.checked })} className="mt-1 h-4 w-4 rounded border-blue-300" />
-              <span><strong>Sincronizar automaticamente após cada upload de escala.</strong><br /><span className="font-medium text-[#60758a]">Quando uma nova escala for importada, o sistema tenta atualizar o calendário escolhido sem duplicar eventos. Se a sessão Google tiver expirado, ele pedirá reconexão em Configurações.</span></span>
+              <span><strong>Atualizar automaticamente o link ICS após cada upload de escala.</strong><br /><span className="font-medium text-[#60758a]">Quando uma nova escala for importada, o CrewCheck atualiza o mesmo link ICS. Não há login Google, token, OAuth ou Google Cloud Identity.</span></span>
             </label>
           </div>
         </div>
@@ -831,15 +1265,15 @@ function SettingsPanel({ roster, gym, load }: { roster: CrewRoster; gym: GymReco
 
       <aside className="space-y-4">
         <div className="rounded-[1.25rem] border border-white bg-white p-5 shadow-[0_14px_45px_rgba(20,54,84,0.07)]">
-          <h3 className="text-lg font-black">Sincronizar agora</h3>
-          <p className="mt-2 text-sm leading-6 text-[#60758a]">Atualiza o mês atual no calendário selecionado usando o filtro: <b>{googleSyncModeLabel(settings.exportMode || "all")}</b>. Eventos que não existem mais nesse filtro são removidos para não sobrar duplicidade.</p>
+          <h3 className="text-lg font-black">Atualizar ICS agora</h3>
+          <p className="mt-2 text-sm leading-6 text-[#60758a]">Atualiza o link ICS usando o filtro: <b>{googleSyncModeLabel(settings.exportMode || "all")}</b>. Eventos que não existem mais nesse filtro são removidos para não sobrar duplicidade.</p>
           <Button onClick={handleSyncNow} disabled={!configured || isSyncing} className="mt-4 w-full rounded-xl bg-blue-600 text-white hover:bg-blue-700">
-            <RefreshCw className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} /> {isSyncing ? "Sincronizando" : "Sincronizar escala"}
+            <RefreshCw className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} /> {isSyncing ? "Sincronizando" : "Atualizar link ICS"}
           </Button>
         </div>
         <div className="rounded-[1.25rem] border border-emerald-100 bg-emerald-50 p-5 text-sm leading-6 text-emerald-900">
-          <h3 className="font-black">Como evita duplicidade</h3>
-          <p className="mt-2">Cada evento recebe uma chave privada com mês, tripulante, data, rota/código e horário. Em novo upload, o CrewCheck procura essa chave, aplica PATCH no evento existente, cria só o que é novo e apaga o que saiu da escala.</p>
+          <h3 className="font-black">Como funciona sem autorização Google</h3>
+          <p className="mt-2">O link ICS é sempre o mesmo. A cada nova escala, o CrewCheck substitui o conteúdo do link. O Google/Outlook/Apple Calendar leem esse link e atualizam os eventos periodicamente.</p>
         </div>
       </aside>
     </div>
@@ -870,9 +1304,101 @@ function calendarOptions(calendars: GoogleCalendarOption[], settings: GoogleCale
 }
 
 function isGoogleCalendarAdmin(user: ReturnType<typeof getStoredUser>): boolean {
+  return isCrewCheckAdmin(user);
+}
+
+function isCrewCheckAdmin(user: ReturnType<typeof getStoredUser>): boolean {
   const role = normalize(user?.role || '');
   const email = normalize(user?.email || '');
-  return ['admin', 'administrator', 'master', 'owner', 'suporte', 'support', 'bruno'].includes(role) || email === 'bmedeiros1987@gmail.com';
+  return ['admin', 'administrator', 'master', 'owner', 'suporte', 'support', 'admin'].includes(role) || email === 'suporte@crewcheck.app' || email === 'bmedeiros1987@gmail.com';
+}
+
+function getUserFacingCompliance(compliance: ComplianceResult, isAdminUser: boolean, ignoredAlertKeys: string[] = []): ComplianceResult {
+  const ignored = new Set(ignoredAlertKeys);
+  const baseAlerts = compliance.alerts.filter((alert) => !ignored.has(alertLearningKey(alert)));
+  if (isAdminUser) return { ...compliance, alerts: baseAlerts };
+  const alerts = baseAlerts.filter((alert) => !isTechnicalCodeAlert(alert));
+  const hasError = alerts.some((alert) => alert.severity === 'error');
+  const hasWarning = alerts.some((alert) => alert.severity === 'warning');
+  return {
+    ...compliance,
+    alerts,
+    overallStatus: hasError ? 'violation' : hasWarning ? 'warning' : 'compliant',
+    score: hasError ? Math.min(compliance.score, 69) : hasWarning ? Math.min(compliance.score, 84) : Math.max(compliance.score, 90),
+    summary: alerts.length === 0 ? 'Nenhuma irregularidade automática encontrada para o usuário. Alertas técnicos de leitura ficam restritos ao administrador.' : compliance.summary,
+  };
+}
+
+function isTechnicalCodeAlert(alert: ComplianceResult['alerts'][number]): boolean {
+  const text = normalize(`${alert.title} ${alert.description} ${alert.details || ''} ${alert.legalReference || ''}`);
+  return text.includes('siglas nao classificadas')
+    || text.includes('sigla') && text.includes('nao entram no calculo')
+    || text.includes('glossario crewcheck')
+    || text.includes('unknown code');
+}
+
+
+function alertLearningKey(alert: ComplianceResult['alerts'][number]): string {
+  return normalize(`${alert.title}|${alert.date || ''}|${alert.legalReference || ''}`);
+}
+
+function loadIgnoredAlertKeys(): string[] {
+  try {
+    const raw = localStorage.getItem('crewcheck_false_positive_alerts_v1');
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveIgnoredAlertKeys(keys: string[]): void {
+  try {
+    localStorage.setItem('crewcheck_false_positive_alerts_v1', JSON.stringify(keys.slice(-250)));
+  } catch {
+    // Sem armazenamento local disponível.
+  }
+}
+
+function isCrewCheckAppMode(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('app') === '1' || params.get('android') === '1') {
+      window.localStorage.setItem('crewcheck_app_mode', '1');
+      return true;
+    }
+    return window.localStorage.getItem('crewcheck_app_mode') === '1';
+  } catch {
+    return false;
+  }
+}
+
+function loadCrewThemeMode(): CrewThemeMode {
+  try {
+    const saved = localStorage.getItem('crewcheck_theme_mode');
+    return saved === 'light' || saved === 'dark' || saved === 'system' ? saved : 'system';
+  } catch {
+    return 'system';
+  }
+}
+
+function saveCrewThemeMode(mode: CrewThemeMode): void {
+  try { localStorage.setItem('crewcheck_theme_mode', mode); } catch {}
+}
+
+function getEffectiveCrewTheme(mode: CrewThemeMode): 'light' | 'dark' {
+  if (mode === 'dark') return 'dark';
+  if (mode === 'light') return 'light';
+  try { return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; } catch { return 'light'; }
+}
+
+function applyCrewThemeMode(mode: CrewThemeMode): void {
+  try {
+    const effective = getEffectiveCrewTheme(mode);
+    document.documentElement.dataset.crewTheme = effective;
+    document.documentElement.dataset.crewThemeMode = mode;
+  } catch {}
 }
 
 function ManualPanel() {
@@ -882,14 +1408,18 @@ function ManualPanel() {
         <div className="rounded-[1.25rem] border border-white bg-white p-5 shadow-[0_14px_45px_rgba(20,54,84,0.07)]">
           <p className="text-xs font-black uppercase tracking-[0.18em] text-sky-600">manual do sistema</p>
           <h3 className="mt-1 text-2xl font-black">Como usar o CrewCheck</h3>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-[#60758a]">Carregue o PDF da escala, confira os cartões interpretados, salve o histórico e use a sincronização Google Calendar para manter a agenda atualizada sem eventos repetidos.</p>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-[#60758a]">Carregue o PDF da escala, confira os cartões interpretados, salve o histórico e use a sincronização Agenda automática para manter a agenda atualizada sem eventos repetidos.</p>
           <div className="mt-5 grid gap-3 md:grid-cols-2">
             <ManualStep title="1. Enviar escala" text="Na tela inicial, toque em Carregar PDF. O CrewCheck lê dados do tripulante, base, função, voos, reservas, folgas, treinamentos e observações." />
             <ManualStep title="2. Conferir leitura" text="Use a aba My Roster para verificar dias, horários e rotas. Programações contínuas são concatenadas para reduzir duplicidade visual." />
             <ManualStep title="3. Irregularidades" text="A aba Irregularidades separa violação confirmada, ponto de atenção e leitura incerta. Sempre confira a escala oficial antes de decisão formal." />
             <ManualStep title="4. Rotina inteligente" text="Cadastre treino, estudo, faculdade e compromissos. O sistema sugere janelas considerando carga, repouso, pernoites e madrugadas." />
-            <ManualStep title="5. Google Calendar" text="Vá em Configurações, conecte o Google, escolha o calendário e ative sincronização automática após upload." />
+            <ManualStep title="5. Agenda automática" text="Vá em Configurações, conecte o Google, escolha o calendário e ative sincronização automática após upload." />
             <ManualStep title="6. Histórico" text="Salve escalas para acompanhar estatísticas e recuperar análises anteriores. O app mantém pendências offline e sincroniza quando possível." />
+          </div>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <a href="/manual.html" target="_blank" className="rounded-2xl bg-[#092846] px-4 py-3 text-sm font-black text-white hover:bg-[#0d365e]">Abrir manual completo</a>
+            <a href="/privacy.html" target="_blank" className="rounded-2xl border border-[#d7e4ef] px-4 py-3 text-sm font-black text-[#092846] hover:bg-[#f7fbff]">Privacidade</a>
           </div>
         </div>
       </section>
@@ -996,6 +1526,7 @@ function RoutinePanel({ gym, load }: { gym: GymRecommendation[]; load: LoadAnaly
   }
 
   function addActivity() {
+    const maxRoutineActivities = 12;
     const normalized = {
       ...draft,
       id: `${draft.type}-${Date.now()}`,
@@ -1003,8 +1534,18 @@ function RoutinePanel({ gym, load }: { gym: GymRecommendation[]; load: LoadAnaly
       durationMinutes: Math.max(15, Math.min(240, Number(draft.durationMinutes) || 60)),
       frequencyPerWeek: Math.max(1, Math.min(7, Number(draft.frequencyPerWeek) || 1)),
     };
+    const duplicateSameType = activities.some((item) => item.type === normalized.type);
+    if (duplicateSameType) {
+      toast.error(`Rotina de ${getActivityLabel(normalized.type)} já existe. Para evitar duplicidade, remova ou edite a atividade atual.`);
+      return;
+    }
+    if (activities.length >= maxRoutineActivities) {
+      toast.error(`Limite de ${maxRoutineActivities} rotinas atingido. Remova uma rotina antes de adicionar outra.`);
+      return;
+    }
     updateActivities([...activities, normalized]);
     setDraft(makeDraftRoutineActivity(draft.type));
+    toast.success(`Rotina criada: ${normalized.name}.`);
   }
 
   function removeActivity(id: string) {
@@ -1024,7 +1565,7 @@ function RoutinePanel({ gym, load }: { gym: GymRecommendation[]; load: LoadAnaly
             <div>
               <p className="text-xs font-black uppercase tracking-[0.18em] text-sky-600">rotina adaptada à escala</p>
               <h3 className="mt-1 text-2xl font-black">Treino, estudo e compromissos</h3>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-[#60758a]">Configure duração, intensidade e tipo de atividade. O CrewCheck cruza isso com folgas, pernoites, madrugadas, repouso antes/depois e carga operacional para sugerir janelas realistas.</p>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-[#60758a]">Configure duração, intensidade e tipo de atividade. O CrewCheck limita duplicidades por tipo de rotina, confirma criação com aviso e cruza folgas, pernoites, madrugadas, repouso antes/depois e carga operacional para sugerir janelas realistas.</p>
             </div>
             <button onClick={resetDefaults} className="rounded-2xl border border-[#d7e4ef] px-4 py-2 text-sm font-black text-[#092846] hover:bg-[#f7fbff]">Restaurar padrão</button>
           </div>
@@ -1156,7 +1697,7 @@ function GymPanel({ gym, load }: { gym: GymRecommendation[]; load: LoadAnalysis 
   const best = gym.filter((item) => item.priority !== "low");
   const limited = gym.filter((item) => item.priority === "low");
   const layoverDays = load.days.filter((day) => day.type === "LAYOVER");
-  const formalRestDays = load.days.filter((day) => ["DO", "DR", "DOF"].includes(day.type));
+  const formalRestDays = load.days.filter((day) => day.isDayOff);
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
       <section className="space-y-4">
@@ -1182,7 +1723,7 @@ function GymPanel({ gym, load }: { gym: GymRecommendation[]; load: LoadAnalysis 
         <div className="rounded-[1.25rem] border border-white bg-white p-5 shadow-[0_14px_45px_rgba(20,54,84,0.07)]">
           <h3 className="text-lg font-black">Como o sistema escolhe</h3>
           <div className="mt-4 space-y-3 text-sm text-[#425a72]">
-            <LegalLine title="Folga formal" text="DO, DR e DOF são os melhores dias para treino completo, desde que a jornada anterior não tenha sido muito pesada." />
+            <LegalLine title="Folga formal" text="DO, DR, DOF, DOP e VC são os melhores dias para treino completo, desde que a jornada anterior não tenha sido muito pesada." />
             <LegalLine title="OFF" text="Extensão de descanso: bom para treino moderado, mas não trato como folga formal mensal." />
             <LegalLine title="Pernoite/inativo" text="Analisa hotel/localidade e carga anterior; em chegada pesada, sugere mobilidade em vez de musculação forte." />
             <LegalLine title="Voo e madrugada" text="Quanto mais trechos, maior jornada, início cedo, término tarde ou madrugada, menor a prioridade para treino pesado." />
@@ -1243,14 +1784,60 @@ function FatiguePanel({ load, compliance }: { load: LoadAnalysis; compliance: Co
   );
 }
 
+
+function MobileSideDrawer({ open, activeView, displayName, rank, base, errors, onClose, onChange, onNewRoster, onPowerOff }: { open: boolean; activeView: ViewKey; displayName: string; rank: string; base: string; errors: number; onClose: () => void; onChange: (view: ViewKey) => void; onNewRoster: () => void; onPowerOff: () => void }) {
+  const nav: Array<{ key: ViewKey; label: string; caption: string; icon: LucideIcon; badge?: number }> = [
+    { key: 'summary', label: 'Resumo', caption: 'visão limpa', icon: LayoutDashboard },
+    { key: 'roster', label: 'Minha escala', caption: 'agenda por dia', icon: CalendarDays },
+    { key: 'alerts', label: 'Alertas', caption: 'somente avisos', icon: Bell, badge: errors },
+    { key: 'irregularities', label: 'Conformidade', caption: 'alertas confiáveis', icon: ShieldAlert, badge: errors },
+    { key: 'gym', label: 'Rotina', caption: 'treino e estudo', icon: Dumbbell },
+    { key: 'fatigue', label: 'Carga da escala', caption: 'fadiga e descanso', icon: Gauge },
+    { key: 'statistics', label: 'Histórico', caption: 'escalas salvas', icon: BarChart3 },
+    { key: 'settings', label: 'Configurações', caption: 'perfil, rotina e conta', icon: Settings },
+    { key: 'manual', label: 'Manual', caption: 'como usar', icon: BookOpen },
+  ];
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[80] lg:hidden">
+      <button className="absolute inset-0 bg-black/55 backdrop-blur-sm" onClick={onClose} aria-label="Fechar menu" />
+      <aside className="absolute left-0 top-0 flex h-full w-[86vw] max-w-sm flex-col bg-[#071f38] p-4 text-white shadow-2xl">
+        <button onClick={() => onChange('settings')} className="mb-4 flex items-center gap-3 rounded-3xl bg-white/8 p-3 text-left">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-300 to-blue-500 text-[#071f38] font-black">{initials(displayName)}</div>
+          <div className="min-w-0"><p className="truncate text-base font-black">{titleCase(displayName)}</p><p className="truncate text-xs text-cyan-100/70">{rank} · {base} · Perfil</p></div>
+        </button>
+        <nav className="flex-1 space-y-2 overflow-y-auto pr-1">
+          {nav.map((item) => {
+            const Icon = item.icon;
+            const active = item.key === activeView;
+            return (
+              <button key={item.key} onClick={() => onChange(item.key)} className={`relative flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left transition ${active ? 'bg-blue-600 text-white shadow-lg' : 'bg-white/5 text-cyan-50/80 hover:bg-white/10'}`}>
+                <Icon className="h-5 w-5" />
+                <span className="min-w-0"><span className="block font-black">{item.label}</span><span className="block truncate text-xs text-cyan-100/60">{item.caption}</span></span>
+                {Boolean(item.badge) && <span className="ml-auto rounded-full bg-red-500 px-2 py-0.5 text-xs font-black text-white">{item.badge}</span>}
+              </button>
+            );
+          })}
+        </nav>
+        <div className="mt-4 grid gap-2 border-t border-white/10 pt-4">
+          <button onClick={onNewRoster} className="rounded-2xl bg-white px-4 py-3 text-sm font-black text-[#071f38]"><CloudUpload className="mr-2 inline h-4 w-4" />Nova escala</button>
+          <button onClick={onPowerOff} className="rounded-2xl border border-red-300/20 bg-red-500/10 px-4 py-3 text-sm font-black text-red-100"><LogOut className="mr-2 inline h-4 w-4" />Sair</button>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
 function DesktopSidebar({ activeView, onChange, onNewRoster, onPowerOff }: { activeView: ViewKey; onChange: (view: ViewKey) => void; onNewRoster: () => void; onPowerOff: () => void }) {
   const nav: Array<{ key: ViewKey; label: string; caption: string; icon: LucideIcon }> = [
+    { key: "summary", label: "Resumo", caption: "visão geral", icon: LayoutDashboard },
     { key: "roster", label: "Escala", caption: "agenda completa", icon: CalendarDays },
+    { key: "alerts", label: "Alertas", caption: "avisos e atenção", icon: Bell },
     { key: "irregularities", label: "Irregularidades", caption: "leis e ACT", icon: ShieldAlert },
     { key: "gym", label: "Rotina", caption: "treino, estudo e vida", icon: Dumbbell },
     { key: "fatigue", label: "Escala puxada", caption: "fadiga e carga", icon: Gauge },
     { key: "statistics", label: "Histórico", caption: "estatísticas salvas", icon: BarChart3 },
-    { key: "settings", label: "Configurações", caption: "Google Calendar", icon: Settings },
+    { key: "settings", label: "Configurações", caption: "Agenda automática", icon: Settings },
     { key: "manual", label: "Manual", caption: "ajuda do sistema", icon: BookOpen },
   ];
   return (
@@ -1291,8 +1878,9 @@ function DesktopSidebar({ activeView, onChange, onNewRoster, onPowerOff }: { act
 
 function MobileViewTabs({ activeView, onChange, errors }: { activeView: ViewKey; onChange: (view: ViewKey) => void; errors: number }) {
   const tabs: Array<{ key: ViewKey; label: string; icon: LucideIcon; badge?: number }> = [
+    { key: "summary", label: "Resumo", icon: LayoutDashboard },
     { key: "roster", label: "Escala", icon: CalendarDays },
-    { key: "irregularities", label: "Irreg.", icon: ShieldAlert, badge: errors },
+    { key: "alerts", label: "Alertas", icon: Bell, badge: errors },
     { key: "gym", label: "Rotina", icon: Dumbbell },
     { key: "fatigue", label: "Puxada", icon: Gauge },
     { key: "statistics", label: "Hist.", icon: BarChart3 },
@@ -1315,6 +1903,44 @@ function MobileViewTabs({ activeView, onChange, errors }: { activeView: ViewKey;
   );
 }
 
+function AndroidFeatureShortcuts({ activeView, onChange, errors, onNewRoster, onPowerOff }: { activeView: ViewKey; onChange: (view: ViewKey) => void; errors: number; onNewRoster: () => void; onPowerOff: () => void }) {
+  const shortcuts: Array<{ key: string; label: string; caption: string; icon: LucideIcon; view?: ViewKey; action?: () => void; badge?: number; tone: string }> = [
+    { key: "summary", label: "Resumo", caption: "visão geral", icon: LayoutDashboard, view: "summary", tone: "from-cyan-400 to-blue-600" },
+    { key: "roster", label: "Escala", caption: "programação", icon: CalendarDays, view: "roster", tone: "from-sky-400 to-blue-600" },
+    { key: "alerts", label: "Alertas", caption: "avisos", icon: Bell, view: "alerts", badge: errors, tone: "from-rose-500 to-red-600" },
+    { key: "gym", label: "Rotina", caption: "treino/estudo", icon: Dumbbell, view: "gym", tone: "from-emerald-400 to-teal-600" },
+    { key: "calendar", label: "Calendário", caption: "Google/ICS", icon: CalendarDays, view: "settings", tone: "from-indigo-400 to-blue-600" },
+    { key: "statistics", label: "Histórico", caption: "salvas", icon: BarChart3, view: "statistics", tone: "from-cyan-400 to-sky-600" },
+    { key: "manual", label: "Manual", caption: "ajuda", icon: BookOpen, view: "manual", tone: "from-violet-400 to-purple-600" },
+  ];
+  return (
+    <section className="mb-3 rounded-[1.25rem] border border-cyan-300/10 bg-[#07172a] p-3 shadow-[0_18px_50px_rgba(0,0,0,0.28)] lg:hidden">
+      <div className="mb-3 flex items-center justify-between px-1">
+        <div>
+          <p className="text-[0.62rem] font-black uppercase tracking-[0.22em] text-cyan-200/70">CrewCheck</p>
+          <h2 className="text-lg font-black text-white">Painel offline</h2>
+        </div>
+        <span className="rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1 text-[0.64rem] font-black text-emerald-200">offline-first</span>
+      </div>
+      <div className="grid grid-cols-4 gap-2 landscape:grid-cols-8">
+        {shortcuts.map((item) => {
+          const Icon = item.icon;
+          const active = item.view === activeView;
+          const handleClick = item.action || (() => item.view && onChange(item.view));
+          return (
+            <button key={item.key} onClick={handleClick} className={`relative rounded-2xl border p-2 text-center transition active:scale-[0.98] ${active ? "border-cyan-300/30 bg-cyan-400/12 text-white" : "border-white/5 bg-[#0b2039] text-slate-200"}`}>
+              <span className={`mx-auto mb-1.5 flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br ${item.tone} text-white shadow-sm`}><Icon className="h-4 w-4" /></span>
+              <span className="block truncate text-[0.68rem] font-black leading-tight">{item.label}</span>
+              <span className="mt-0.5 hidden truncate text-[0.58rem] font-semibold opacity-60 min-[390px]:block">{item.caption}</span>
+              {Boolean(item.badge) && <span className="absolute right-1 top-1 rounded-full bg-red-500 px-1.5 text-[10px] font-black text-white">{item.badge}</span>}
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function KpiCard({ icon: Icon, label, value, hint, tone }: { icon: LucideIcon; label: string; value: string; hint: string; tone: string }) {
   return (
     <div className="rounded-[1.25rem] border border-white bg-white p-5 shadow-[0_14px_45px_rgba(20,54,84,0.07)]">
@@ -1328,14 +1954,14 @@ function KpiCard({ icon: Icon, label, value, hint, tone }: { icon: LucideIcon; l
 
 function ViewKpis({ activeView, stats, load, errors, warnings, gym, roster }: { activeView: ViewKey; stats: ReturnType<typeof getStats>; load: LoadAnalysis; errors: number; warnings: number; gym: GymRecommendation[]; roster: CrewRoster }) {
   const layovers = roster.days.filter((day) => day.type === "LAYOVER").length;
-  const formalDaysOff = roster.days.filter((day) => ["DO", "DR", "DOF"].includes(day.type)).length;
+  const formalDaysOff = roster.days.filter(isFormalDayOffForUi).length;
   const bestGym = gym.filter((item) => item.priority === "high" || item.priority === "medium").length;
   const hardDays = load.days.filter((day) => day.fatigueScore >= 70).length;
 
   const cards: Array<{ icon: LucideIcon; label: string; value: string; hint: string; tone: string }> = activeView === "gym"
     ? [
         { icon: Dumbbell, label: "Dias viáveis", value: String(bestGym), hint: "treino completo/moderado", tone: "#15963a" },
-        { icon: House, label: "Folgas formais", value: String(formalDaysOff), hint: "DO / DR / DOF", tone: "#2f80ed" },
+        { icon: House, label: "Folgas formais", value: String(formalDaysOff), hint: "DO / DR / DOF / DOP / VC", tone: "#2f80ed" },
         { icon: BedDouble, label: "Pernoites", value: String(layovers), hint: "inativo fora de base", tone: "#e0a000" },
         { icon: Moon, label: "Evitar carga", value: String(gym.filter((item) => item.priority === "low").length), hint: "mobilidade/descanso", tone: "#f97316" },
       ]
@@ -1362,7 +1988,7 @@ function ViewKpis({ activeView, stats, load, errors, warnings, gym, roster }: { 
             ]
           : [
             { icon: CalendarDays, label: "Eventos", value: String(stats.flightSegments + stats.trainingSessions + stats.meetings + stats.daysOff + stats.reserveDays), hint: "voos e atividades", tone: "#2f80ed" },
-            { icon: House, label: "Folgas", value: String(stats.daysOff), hint: "DO / DR / DOF", tone: "#15963a" },
+            { icon: House, label: "Folgas", value: String(stats.daysOff), hint: "DO / DR / DOF / DOP / VC", tone: "#15963a" },
             { icon: BedDouble, label: "Pernoites", value: String(layovers), hint: "dias inativos", tone: "#e0a000" },
             { icon: ShieldAlert, label: "Alertas", value: String(errors + warnings), hint: `${errors} críticos`, tone: errors ? "#dc2626" : "#f97316" },
           ];
@@ -1378,88 +2004,255 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   return <label className="space-y-1.5 text-xs font-bold text-[#61778e]"><span>{label}</span>{children}</label>;
 }
 
-function DesktopRosterTable({ groups, todayId }: { groups: RosterDayGroup[]; todayId?: string }) {
+function DesktopRosterTable({ groups, todayId, routineSuggestions }: { groups: RosterDayGroup[]; todayId?: string; routineSuggestions: RoutineSuggestion[] }) {
   const totalEvents = groups.reduce((sum, group) => sum + group.events.length, 0);
   return (
-    <div className="hidden overflow-hidden rounded-[1.25rem] border border-white bg-white shadow-[0_14px_45px_rgba(20,54,84,0.07)] lg:block">
-      <div className="grid grid-cols-[9.5rem_minmax(24rem,1fr)_11rem_8rem_6rem] border-b border-[#dce6ef] px-5 py-3 text-xs font-black uppercase tracking-wide text-[#173d5f]"><span>Date (UTC)</span><span>Programação do dia</span><span>Flight / Code</span><span>Status</span><span className="text-right">Actions</span></div>
-      <div className="divide-y divide-[#e7eef5]">{groups.map((group) => <RosterTableDayRow key={group.id} group={group} isToday={group.events.some((event) => event.id === todayId)} />)}</div>
-      <div className="flex items-center justify-between border-t border-[#e7eef5] px-5 py-4 text-sm text-[#60758a]"><span>Exibindo {groups.length} dia(s) e {totalEvents} programação(ões) carregadas da escala.</span><span className="rounded-full bg-[#eef5fb] px-3 py-1 text-xs font-black text-[#092846]">agrupado por dia</span></div>
-    </div>
+    <section className="cc-roster-desktop-list hidden space-y-3 lg:block">
+      <div className="overflow-hidden rounded-[1.25rem] border border-white bg-white shadow-[0_14px_45px_rgba(20,54,84,0.07)]">
+        <div className="flex flex-col gap-3 border-b border-[#dce6ef] px-5 py-4 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-sky-600">Minha escala premium</p>
+            <h3 className="mt-1 text-xl font-black text-[#092846]">Programações em cards, sem corte de tela</h3>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs font-black uppercase tracking-[0.08em] text-[#425a72]">
+            <span className="rounded-full bg-[#eef5fb] px-3 py-1">{groups.length} dia(s)</span>
+            <span className="rounded-full bg-[#eef5fb] px-3 py-1">{totalEvents} evento(s)</span>
+            <span className="rounded-full bg-blue-50 px-3 py-1 text-blue-700">toque/clique para detalhes</span>
+          </div>
+        </div>
+        <div className="space-y-3 bg-[#f7fbff] p-4">{groups.map((group) => <RosterTableDayRow key={group.id} group={group} isToday={group.events.some((event) => event.id === todayId)} routineSuggestions={routineSuggestionsForDate(routineSuggestions, group.dateLabel)} />)}</div>
+        <div className="flex items-center justify-between border-t border-[#e7eef5] px-5 py-4 text-sm text-[#60758a]"><span>Layout corrigido para desktop, iPad e iOS: as colunas rígidas foram substituídas por cards adaptáveis.</span><span className="rounded-full bg-[#eef5fb] px-3 py-1 text-xs font-black text-[#092846]">Premium iOS</span></div>
+      </div>
+    </section>
   );
 }
 
-function RosterTableDayRow({ group, isToday }: { group: RosterDayGroup; isToday: boolean }) {
+function RosterTableDayRow({ group, isToday, routineSuggestions }: { group: RosterDayGroup; isToday: boolean; routineSuggestions: RoutineSuggestion[] }) {
   return (
-    <div className="grid grid-cols-[9.5rem_minmax(24rem,1fr)_11rem_8rem_6rem] items-stretch px-5 py-3 text-sm transition hover:bg-[#f7fbff]">
-      <div className="flex flex-col justify-center font-semibold leading-tight">
-        <p className="text-xs font-black uppercase text-[#092846]">{group.weekday} {group.dayNumber} {group.monthLabel}</p>
-        <p className="mt-1 text-[#60758a]">{group.time}</p>
-        {isToday && <span className="mt-2 w-fit rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-black text-blue-600">Today</span>}
+    <article className={`cc-roster-day-desktop rounded-[1.15rem] border bg-white shadow-[0_12px_32px_rgba(20,54,84,0.06)] ${isToday ? 'border-blue-200 ring-2 ring-blue-100' : 'border-[#e2edf6]'}`}>
+      <div className="grid min-w-0 gap-4 p-4 xl:grid-cols-[8.5rem_minmax(0,1fr)]">
+        <div className="cc-roster-date-desktop flex flex-row items-center justify-between rounded-2xl border border-[#e2edf6] bg-[#f8fbfd] px-4 py-3 text-left xl:flex-col xl:items-start xl:justify-center xl:px-3 xl:py-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.12em] text-[#60758a]">{group.weekday}</p>
+            <p className="text-3xl font-black leading-none text-[#092846]">{group.dayNumber}</p>
+            <p className="mt-1 text-xs font-black uppercase tracking-[0.12em] text-[#60758a]">{group.monthLabel}</p>
+          </div>
+          <div className="text-right xl:mt-3 xl:text-left">
+            <p className="text-xs font-black uppercase tracking-[0.12em] text-[#71869b]">Período</p>
+            <p className="mt-0.5 text-sm font-black text-[#092846]">{group.time}</p>
+            {isToday && <span className="mt-2 inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-black text-blue-600">Hoje</span>}
+          </div>
+        </div>
+        <div className="min-w-0 space-y-2.5">
+          {group.events.map((event) => <RosterTableSubEvent key={event.id} event={event} routineSuggestions={routineSuggestions} />)}
+        </div>
       </div>
-      <div className="space-y-2">
-        {group.events.map((event) => <RosterTableSubEvent key={event.id} event={event} />)}
-      </div>
-      <div className="flex flex-col justify-center gap-2 font-bold text-[#173d5f]">
-        {group.events.map((event) => <span key={`${event.id}-code`}>{event.code || "—"}</span>)}
-      </div>
-      <div className="flex flex-col justify-center gap-2">
-        {group.events.map((event) => {
-          const style = getEventStyle(event);
-          return <span key={`${event.id}-status`} className="w-fit rounded-full px-3 py-1 text-xs font-bold" style={{ backgroundColor: style.bg, color: style.solid }}>{event.status}</span>;
-        })}
-      </div>
-      <div className="flex items-center justify-end gap-2"><button className="rounded-lg border border-[#dce6ef] p-2 hover:bg-[#eef5fb]" aria-label="Mais opções"><MoreHorizontal className="h-4 w-4" /></button></div>
+    </article>
+  );
+}
+
+function RosterTableSubEvent({ event, routineSuggestions }: { event: RosterEvent; routineSuggestions: RoutineSuggestion[] }) {
+  const [open, setOpen] = useState(false);
+  const style = getEventStyle(event);
+  const toneClass = getRosterEventToneClass(event);
+  const Icon = style.icon;
+  const flight = useFlightStatus(event);
+  const isFlight = event.typeLabel === 'Flight' && Boolean(event.leg);
+  const statusLabel = isFlight ? (flight.status || event.status || 'Scheduled') : event.status;
+  return (
+    <div className={`cc-roster-event ${toneClass} overflow-hidden rounded-2xl border bg-white`}>
+      <button type="button" onClick={() => setOpen((value) => !value)} className="grid w-full min-w-0 grid-cols-[3rem_minmax(5.5rem,7.5rem)_minmax(0,1fr)_auto] items-center gap-3 px-3 py-3 text-left transition hover:bg-[#fbfdff] 2xl:grid-cols-[3rem_8rem_minmax(0,1fr)_18rem_auto]">
+        <div className="cc-roster-event-icon flex h-10 w-10 items-center justify-center rounded-xl text-white shadow-sm" style={{ backgroundColor: style.solid }}><Icon className="h-5 w-5" /></div>
+        <div className="cc-roster-event-time min-w-0 text-sm font-black tabular-nums text-[#092846]">{event.time}</div>
+        <div className="min-w-0">
+          <p className="cc-roster-event-title break-words font-black leading-tight text-[#092846]">{event.activity}</p>
+          <p className="cc-roster-event-subtitle mt-0.5 break-words text-sm leading-5 text-[#60758a]">{event.subtitle}</p>
+          {routineSuggestions.length > 0 && <p className="cc-roster-routine-line mt-1 break-words text-xs font-bold text-blue-700">Rotina sugerida: {formatRoutineSuggestionSummary(routineSuggestions)}</p>}
+        </div>
+        <div className="hidden min-w-0 grid-cols-3 gap-2 2xl:grid">
+          <FlightMiniPill label="Código" value={event.code || event.leg?.flightNumber || '—'} />
+          <FlightMiniPill label="Status" value={statusLabel || '—'} />
+          <FlightMiniPill label="Portão" value={isFlight ? (flight.gate || '—') : '—'} />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="hidden rounded-full px-3 py-1 text-xs font-bold xl:inline-flex" style={{ backgroundColor: style.bg, color: style.solid }}>{statusLabel}</span>
+          <MoreHorizontal className="hidden h-4 w-4 text-[#60758a] xl:block" />
+          <ChevronDown className={`h-4 w-4 text-[#60758a] transition ${open ? 'rotate-180' : ''}`} />
+        </div>
+      </button>
+      {open && <div className="border-t border-[#e5edf5] px-3 pb-3"><MobileRosterEventDetails event={event} routineSuggestions={routineSuggestions} /></div>}
     </div>
   );
 }
 
-function RosterTableSubEvent({ event }: { event: RosterEvent }) {
+function MobileRosterList({ groups, todayId, roster, routineSuggestions }: { groups: RosterDayGroup[]; todayId?: string; roster: CrewRoster; routineSuggestions: RoutineSuggestion[] }) {
+  return (
+    <div className="lg:hidden android-roster-list">
+      <div className="mb-3 overflow-hidden rounded-[1.25rem] border border-white bg-white shadow-[0_14px_45px_rgba(20,54,84,0.07)]">
+        <div className="flex items-center justify-between px-4 py-3">
+          <div>
+            <p className="text-[0.62rem] uppercase tracking-[0.24em] text-sky-600">Minha escala</p>
+            <h2 className="text-lg font-black text-[#092846]">{MONTHS_PT[roster.month - 1]} {roster.year}</h2>
+          </div>
+          <span className="rounded-full bg-[#eef5fb] px-3 py-1 text-xs font-black text-[#425a72]">{groups.length} dias</span>
+        </div>
+      </div>
+      <div className="space-y-2.5">{groups.map((group) => <MobileRosterDayCard key={group.id} group={group} isToday={group.events.some((event) => event.id === todayId)} routineSuggestions={routineSuggestionsForDate(routineSuggestions, group.dateLabel)} />)}</div>
+    </div>
+  );
+}
+
+function MobileRosterDayCard({ group, isToday, routineSuggestions }: { group: RosterDayGroup; isToday: boolean; routineSuggestions: RoutineSuggestion[] }) {
+  return (
+    <div className="cc-roster-day-card grid grid-cols-[4.05rem_minmax(0,1fr)] gap-2.5 rounded-[1.15rem] border p-2.5 shadow-[0_14px_38px_rgba(20,54,84,0.09)] landscape:grid-cols-[5.2rem_minmax(0,1fr)]">
+      <div className="cc-roster-date-card flex flex-col items-center justify-center rounded-[0.9rem] border px-1.5 py-2 text-center leading-tight">
+        <p className="text-[0.64rem] font-black text-[#60758a]">{group.weekday}</p>
+        <p className="text-3xl font-black text-[#092846] landscape:text-2xl">{group.dayNumber}</p>
+        <p className="text-[0.68rem] font-bold text-[#60758a]">{group.monthLabel}</p>
+        {isToday && <span className="mt-1 inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-black text-blue-600">Hoje</span>}
+      </div>
+      <div className="min-w-0 space-y-1.5">
+        {group.events.map((event) => <MobileRosterSubEvent key={event.id} event={event} routineSuggestions={routineSuggestions} />)}
+      </div>
+    </div>
+  );
+}
+
+function MobileRosterSubEvent({ event, routineSuggestions }: { event: RosterEvent; routineSuggestions: RoutineSuggestion[] }) {
+  const [open, setOpen] = useState(false);
   const style = getEventStyle(event);
+  const toneClass = getRosterEventToneClass(event);
   const Icon = style.icon;
   return (
-    <div className="grid grid-cols-[3rem_7.5rem_minmax(0,1fr)] items-center gap-3 rounded-2xl bg-[#f8fbfd] px-3 py-2">
-      <div className="flex h-9 w-9 items-center justify-center rounded-lg text-white shadow-sm" style={{ backgroundColor: style.solid }}><Icon className="h-5 w-5" /></div>
-      <div className="text-sm font-bold text-[#60758a]">{event.time}</div>
-      <div className="min-w-0"><p className="truncate font-black" style={{ color: style.solid }}>{event.activity}</p><p className="truncate text-[#60758a]">{event.subtitle}</p></div>
-    </div>
-  );
-}
-
-function MobileRosterList({ groups, todayId, roster }: { groups: RosterDayGroup[]; todayId?: string; roster: CrewRoster }) {
-  return (
-    <div className="lg:hidden">
-      <div className="mb-4 overflow-hidden rounded-[1.6rem] border border-white bg-white shadow-[0_14px_45px_rgba(20,54,84,0.07)]">
-        <div className="bg-[#092846] px-5 py-4 text-center text-white"><p className="text-xs uppercase tracking-[0.24em] text-cyan-100/70">Agenda</p><h2 className="text-xl font-black">{MONTHS_PT[roster.month - 1].toUpperCase()} {roster.year}</h2></div>
+    <button onClick={() => setOpen(!open)} className={`cc-roster-event ${toneClass} w-full rounded-[1rem] border p-2.5 text-left transition active:scale-[0.99]`}>
+      <div className="grid grid-cols-[2.65rem_4.15rem_minmax(0,1fr)_1.5rem] items-center gap-2">
+        <div className="cc-roster-event-icon flex h-10 w-10 items-center justify-center rounded-xl text-white shadow-sm" style={{ backgroundColor: style.solid }}><Icon className="h-5 w-5" /></div>
+        <div className="cc-roster-event-time text-[0.76rem] font-black leading-tight tabular-nums">{formatStackedTime(event.time)}</div>
+        <div className="min-w-0"><p className="cc-roster-event-title truncate text-[0.96rem] font-black leading-tight">{event.code || event.activity}</p><p className="cc-roster-event-subtitle mt-0.5 truncate text-[0.75rem] leading-tight">{event.subtitle}</p></div>
+        <ChevronDown className={`cc-roster-chevron h-4 w-4 transition ${open ? 'rotate-180' : ''}`} />
       </div>
-      <div className="space-y-3">{groups.map((group) => <MobileRosterDayCard key={group.id} group={group} isToday={group.events.some((event) => event.id === todayId)} />)}</div>
-    </div>
+      {open && <MobileRosterEventDetails event={event} routineSuggestions={routineSuggestions} />}
+    </button>
   );
 }
 
-function MobileRosterDayCard({ group, isToday }: { group: RosterDayGroup; isToday: boolean }) {
+
+
+function MobileRosterEventDetails({ event, routineSuggestions }: { event: RosterEvent; routineSuggestions: RoutineSuggestion[] }) {
+  const flight = useFlightStatus(event);
+  const isFlight = event.typeLabel === 'Flight' && Boolean(event.leg);
   return (
-    <div className="grid grid-cols-[4.4rem_minmax(0,1fr)] gap-3 rounded-2xl border border-white bg-white p-3 shadow-[0_10px_30px_rgba(20,54,84,0.08)]">
-      <div className="border-r border-[#dce6ef] pr-3 text-center leading-tight"><p className="text-xs font-black text-[#60758a]">{group.weekday}</p><p className="text-3xl font-black text-[#092846]">{group.dayNumber}</p><p className="text-xs font-bold text-[#60758a]">{group.monthLabel}</p>{isToday && <span className="mt-2 inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-black text-blue-600">Today</span>}</div>
-      <div className="min-w-0 space-y-2">
-        {group.events.map((event) => <MobileRosterSubEvent key={event.id} event={event} />)}
+    <div className="cc-roster-event-details mt-2 rounded-xl p-3 text-xs leading-5 shadow-inner">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0"><b className="text-sm">{event.activity}</b><p className="mt-0.5">{event.subtitle}</p></div>
+        <span className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-black">{event.typeLabel}</span>
       </div>
+      {isFlight && (
+        <div className="cc-flight-live-grid mt-3 grid grid-cols-3 gap-2">
+          <FlightMiniPill label="Status" value={flight.status || event.status || 'Scheduled'} />
+          <FlightMiniPill label="Portão" value={flight.gate || '—'} />
+          <FlightMiniPill label="Terminal" value={flight.terminal || '—'} />
+        </div>
+      )}
+      {isFlight && <p className="mt-2 text-[11px] font-semibold opacity-75">Dados do voo: {flight.source || 'sem provedor online configurado'}{flight.updatedAt ? ` · Atualizado ${new Date(flight.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}</p>}
+      <div className="cc-roster-info-box mt-2 rounded-lg p-2"><b>Mais informações:</b> {rosterEventRecommendation(event)}</div>
+      {routineSuggestions.length > 0 && <div className="cc-roster-routine-box mt-2 rounded-lg border p-2"><b>Rotina sugerida para este dia:</b><ul className="mt-1 space-y-1">{routineSuggestions.slice(0, 4).map((item) => <li key={item.id}>{item.startTime}–{item.endTime} · {item.activityName} · {item.suitability}</li>)}</ul></div>}
     </div>
   );
 }
 
-function MobileRosterSubEvent({ event }: { event: RosterEvent }) {
-  const style = getEventStyle(event);
-  const Icon = style.icon;
-  return (
-    <div className="grid grid-cols-[3.2rem_4.6rem_minmax(0,1fr)] items-center gap-2 rounded-2xl bg-[#f8fbfd] p-2">
-      <div className="flex h-11 w-11 items-center justify-center rounded-xl text-white shadow-sm" style={{ backgroundColor: style.solid }}><Icon className="h-6 w-6" /></div>
-      <div className="text-sm font-bold leading-tight text-[#60758a]">{formatStackedTime(event.time)}</div>
-      <div className="min-w-0"><p className="truncate font-black" style={{ color: style.solid }}>{event.activity}</p><p className="truncate text-sm text-[#60758a]">{event.subtitle}</p>{event.code && <p className="mt-1 inline-flex rounded-full bg-[#eef3f8] px-2 py-0.5 text-xs font-bold text-[#60758a]">{event.code}</p>}</div>
-    </div>
-  );
+type FlightStatusSnapshot = { status?: string; gate?: string; terminal?: string; source?: string; updatedAt?: string; matchedFlight?: string; scheduledTime?: string; confirmedTime?: string };
+
+function useFlightStatus(event: RosterEvent): FlightStatusSnapshot {
+  const [snapshot, setSnapshot] = useState<FlightStatusSnapshot>(() => cachedFlightStatus(event));
+  useEffect(() => {
+    if (event.typeLabel !== 'Flight') return;
+    const statusLeg = selectBsbAwareStatusLeg(event);
+    const flightNumber = statusLeg?.flightNumber || firstFlightCode(event.code);
+    if (!flightNumber) return;
+    const controller = new AbortController();
+    const params = new URLSearchParams({
+      flightNumber,
+      codes: event.code || flightNumber,
+      origin: statusLeg?.origin || event.leg?.origin || '',
+      destination: statusLeg?.destination || event.leg?.destination || '',
+      route: event.activity || '',
+      airport: 'BSB',
+      date: event.date.toISOString().slice(0, 10),
+    });
+    fetch(`/api/flight-status?${params.toString()}`, { signal: controller.signal, cache: 'no-store' })
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload) => {
+        if (!payload?.ok) return;
+        const next = { status: payload.status, gate: payload.gate, terminal: payload.terminal, source: payload.source, updatedAt: payload.updatedAt, matchedFlight: payload.matchedFlight, scheduledTime: payload.scheduledTime, confirmedTime: payload.confirmedTime };
+        setSnapshot(next);
+        try { localStorage.setItem(flightStatusCacheKey(event), JSON.stringify(next)); } catch {}
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [event.id, event.typeLabel, event.code, event.activity, event.leg?.flightNumber, event.leg?.origin, event.leg?.destination, event.date]);
+  return snapshot;
 }
 
+function selectBsbAwareStatusLeg(event: RosterEvent): FlightLeg | undefined {
+  const legs = event.legs?.length ? event.legs : event.leg ? [event.leg] : [];
+  return legs.find((leg) => [leg.origin, leg.destination].some((airport) => String(airport || '').toUpperCase() === 'BSB')) || legs[0];
+}
+
+function firstFlightCode(value: string): string {
+  return String(value || '').toUpperCase().split(/[^A-Z0-9]+/).find((token) => /^[A-Z]{1,4}\d{2,5}$/.test(token)) || '';
+}
+
+function flightStatusCacheKey(event: RosterEvent): string {
+  return `crewcheck_flight_status_${event.code || event.leg?.flightNumber || event.id}_${event.date.toISOString().slice(0,10)}`;
+}
+
+function cachedFlightStatus(event: RosterEvent): FlightStatusSnapshot {
+  if (event.typeLabel !== 'Flight') return {};
+  try {
+    const raw = localStorage.getItem(flightStatusCacheKey(event));
+    if (raw) return JSON.parse(raw) as FlightStatusSnapshot;
+  } catch {}
+  return { status: event.status || 'Scheduled', gate: '—', terminal: '—', source: event.activity?.includes('BSB') ? 'BSB Aero oficial: aguardando consulta' : 'Sem dados online' };
+}
+
+function rosterEventRecommendation(event: RosterEvent): string {
+  if (event.typeLabel === 'Flight') {
+    const legs = event.day.legs?.length || 0;
+    if (legs > 3) return 'Dia com muitas pernas. Priorize hidratação, alimentação e descanso entre etapas; rotina leve apenas se houver janela ampla.';
+    if (event.day.isNextDay) return 'Voo em madrugada/virando dia. Evite treino pesado; prefira descanso ou caminhada leve após recuperação.';
+    return 'Voo operacional normal. Atividades leves podem caber se houver folga real antes ou depois da apresentação.';
+  }
+  if (['Training','Ground Duty','Simulator'].includes(event.typeLabel)) return 'Treinamento/check separado do voo. Bom para estudo leve antes/depois, evitando compromissos colados no horário.';
+  if (['Inativo','Hotel'].includes(event.typeLabel)) return 'Janela potencial para rotina. Confirme deslocamento, sono e horário local antes de atividade física.';
+  if (['Day Off','Folga','Descanso'].includes(event.typeLabel)) return 'Melhor janela para rotina, treino ou compromissos, respeitando recuperação e sono.';
+  if (['Reserve','Standby','Sobreaviso','Reserva'].includes(event.typeLabel)) return 'Mantenha disponibilidade. Só encaixe atividades curtas e próximas, sem risco de perder acionamento.';
+  return 'Toque em Rotina para ver sugestões calculadas considerando descanso, jornada e carga do mês.';
+}
+
+
+function getUpcomingRosterEvents(events: RosterEvent[], limit = 5): RosterEvent[] {
+  if (!events.length) return [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const future = events.filter((event) => {
+    const date = new Date(event.date);
+    date.setHours(0, 0, 0, 0);
+    return date.getTime() >= today.getTime();
+  });
+  return (future.length ? future : events).slice(0, limit);
+}
+
+function routineSuggestionsForDate(items: RoutineSuggestion[], dateLabel: string): RoutineSuggestion[] {
+  return items.filter((item) => item.date === dateLabel).sort((a, b) => a.startTime.localeCompare(b.startTime));
+}
+
+function formatRoutineSuggestionSummary(items: RoutineSuggestion[]): string {
+  return items
+    .slice(0, 2)
+    .map((item) => `${item.startTime} ${item.activityName}`)
+    .join(' · ');
+}
 
 function DatabaseCard({ dbStatus, savedRosters, isSavingDb, onSave }: { dbStatus: DatabaseStatus | null; savedRosters: SavedRosterSummary[]; isSavingDb: boolean; onSave: () => void }) {
   const connected = Boolean(dbStatus?.ok || dbStatus?.connected);
@@ -1533,7 +2326,7 @@ function AlertCard({ alert, onOpen }: { alert: ComplianceResult['alerts'][number
   );
 }
 
-function IrregularityDetailPage({ alert, onBack, onOpenDay }: { alert: ComplianceResult['alerts'][number]; onBack: () => void; onOpenDay: () => void }) {
+function IrregularityDetailPage({ alert, onBack, onOpenDay, isAdminUser, onSuppressFalsePositive }: { alert: ComplianceResult['alerts'][number]; onBack: () => void; onOpenDay: () => void; isAdminUser: boolean; onSuppressFalsePositive: () => void }) {
   const isError = alert.severity === "error";
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
@@ -1558,6 +2351,7 @@ function IrregularityDetailPage({ alert, onBack, onOpenDay }: { alert: Complianc
       </section>
       <aside className="space-y-3">
         {alert.date && <Button onClick={onOpenDay} className="w-full rounded-xl bg-[#092846] text-white hover:bg-[#0d365e]"><CalendarDays className="h-4 w-4" /> Abrir dia na escala</Button>}
+        {isAdminUser && <Button onClick={onSuppressFalsePositive} variant="outline" className="w-full rounded-xl border-emerald-200 text-emerald-700"><CheckCircle2 className="h-4 w-4" /> Ensinar falso positivo</Button>}
         <Button onClick={onBack} variant="outline" className="w-full rounded-xl border-[#d8e4ee]"><ShieldAlert className="h-4 w-4" /> Ver outros alertas</Button>
       </aside>
     </div>
@@ -1721,7 +2515,7 @@ function buildDailyRosterGroups(events: RosterEvent[]): RosterDayGroup[] {
 
   return Array.from(byDate.entries())
     .map(([dateLabel, list]) => {
-      const sorted = adjustSequentialDisplayTimes([...list].sort((a, b) => timeToSortValue(extractStartTime(a.time)) - timeToSortValue(extractStartTime(b.time))));
+      const sorted = collapseSameDayFragments(adjustSequentialDisplayTimes([...list].sort((a, b) => timeToSortValue(extractStartTime(a.time)) - timeToSortValue(extractStartTime(b.time)))));
       const first = sorted[0];
       return {
         id: `day-${dateLabel}`,
@@ -1735,6 +2529,30 @@ function buildDailyRosterGroups(events: RosterEvent[]): RosterDayGroup[] {
       };
     })
     .sort((a, b) => a.date.getTime() - b.date.getTime());
+}
+
+function collapseSameDayFragments(events: RosterEvent[]): RosterEvent[] {
+  const result: RosterEvent[] = [];
+  for (const event of events) {
+    const code = normalizeEventCode(event);
+    const previous = result[result.length - 1];
+    const prevCode = previous ? normalizeEventCode(previous) : '';
+    const eventRange = parseDisplayTimeRange(event.time);
+    const prevRange = previous ? parseDisplayTimeRange(previous.time) : null;
+    const isFragmentCode = /^(HSB|HSBE|ASB|RES)$/.test(code);
+    if (previous && isFragmentCode && code === prevCode && eventRange && prevRange) {
+      const distance = Math.abs(eventRange.start - prevRange.end);
+      const hasZero = eventRange.start === eventRange.end || prevRange.start === prevRange.end;
+      if (hasZero || distance <= 90 || eventRange.start <= prevRange.end + 90) {
+        const start = Math.min(prevRange.start, eventRange.start);
+        const end = Math.max(normalizeDisplayEnd(prevRange.start, prevRange.end), normalizeDisplayEnd(eventRange.start, eventRange.end));
+        result[result.length - 1] = { ...previous, id: `${previous.id}__merged__${event.id}`, time: `${minutesToDisplayTime(start)} – ${minutesToDisplayTime(end)}` };
+        continue;
+      }
+    }
+    result.push(event);
+  }
+  return result;
 }
 
 function adjustSequentialDisplayTimes(events: RosterEvent[]): RosterEvent[] {
@@ -1797,7 +2615,7 @@ function formatStackedTime(time: string): ReactNode {
 }
 
 function buildRosterEvents(roster: CrewRoster): RosterEvent[] {
-  return [...roster.days]
+  const rawEvents = [...roster.days]
     .sort((a, b) => {
       const diff = parseRosterDate(a.date).getTime() - parseRosterDate(b.date).getTime();
       if (diff !== 0) return diff;
@@ -1808,33 +2626,83 @@ function buildRosterEvents(roster: CrewRoster): RosterEvent[] {
       const base = buildBaseEvent(day, date);
       const supplemental = supplementalActivitiesForDay(day, base, dayIndex);
 
-      // v10: programações de voo são concatenadas em um único cartão por duty/dia,
-      // no estilo CrewLounge: BSB-POA-CNF-POA, NAT-GRU-BSB etc.
-      // Isso evita cartões falsos/soltos e facilita a conferência operacional.
       if (day.legs?.length) {
         const first = day.legs[0];
         const last = day.legs[day.legs.length - 1];
         const route = routeChain(day.legs);
         const cities = cityChain(day.legs);
         const codes = flightCodeSummary(day.legs);
-        const activityPrefix = flightActivityPrefix(day);
-        const time = `${day.dutyReport || first.departureTime} – ${day.dutyDebrief || last.arrivalTime}`;
-        const grouped: RosterEvent = {
+        // Para voos exibimos o horário do voo/trecho, não o intervalo total da jornada do dia.
+        // Isso evita falso visual de 20h+ quando há C32F/CRM antes do voo no mesmo dia.
+        const time = `${first.departureTime} – ${last.arrivalTime}`;
+        const flight: RosterEvent = {
           ...base,
           id: `${day.date}-flight-group-${dayIndex}-${codes}`,
           leg: first,
+          legs: day.legs,
           time,
-          activity: activityPrefix ? `${activityPrefix} + ${route}` : route,
-          subtitle: activityPrefix ? `${cities} · Programação concatenada` : cities,
-          code: activityPrefix ? `${activityPrefixCode(day)} · ${codes}` : codes,
+          activity: route,
+          subtitle: cities,
+          code: codes,
           typeLabel: "Flight",
-          status: activityPrefix ? "Scheduled" : "Scheduled",
+          status: isPsFlightDayForUi(day) ? "Extra (PS)" : "Scheduled",
         };
-        return [grouped];
+        // Treinamentos/checks ficam separados do voo, mesmo quando aparecem no mesmo dia.
+        return [...supplemental.filter((event) => event.typeLabel !== "Day Off"), flight];
       }
       if (supplemental.length > 1 || (supplemental.length === 1 && day.type === "OTHER")) return supplemental;
       return [{ ...base, id: `${day.date}-${day.type}-${dayIndex}-${day.pairingCode || 'duty'}`, ...eventTextForDay(day) }];
     });
+
+  return dedupeRosterEvents(rawEvents)
+    .sort((a, b) => a.date.getTime() - b.date.getTime() || timeToSortValue(extractStartTime(a.time)) - timeToSortValue(extractStartTime(b.time)));
+}
+
+function dedupeRosterEvents(events: RosterEvent[]): RosterEvent[] {
+  const groups = new Map<string, RosterEvent[]>();
+  for (const event of events) {
+    const code = normalizeEventCode(event);
+    const key = `${event.dateLabel}|${code}|${event.typeLabel}`;
+    const list = groups.get(key) || [];
+    list.push(event);
+    groups.set(key, list);
+  }
+  const result: RosterEvent[] = [];
+  for (const list of groups.values()) {
+    if (list.length === 1) { result.push(list[0]); continue; }
+    const sorted = [...list].sort((a, b) => timeToSortValue(extractStartTime(a.time)) - timeToSortValue(extractStartTime(b.time)));
+    const code = normalizeEventCode(sorted[0]);
+    const shouldMerge = /^(HSB|HSBE|ASB|RES|CBF|EMER|MT)$/.test(code) || sorted.some(isZeroLengthEvent);
+    if (!shouldMerge) { result.push(...sorted); continue; }
+    const ranges = sorted.map((event) => parseDisplayTimeRange(event.time)).filter((range): range is { start: number; end: number } => Boolean(range));
+    const merged = { ...sorted[0] };
+    if (ranges.length) {
+      const start = Math.min(...ranges.map((range) => range.start));
+      const end = Math.max(...ranges.map((range) => normalizeDisplayEnd(range.start, range.end)));
+      merged.time = `${minutesToDisplayTime(start)} – ${minutesToDisplayTime(end)}`;
+    }
+    merged.id = sorted.map((event) => event.id).join('__dedup__');
+    result.push(merged);
+  }
+  return result;
+}
+
+function normalizeEventCode(event: RosterEvent): string {
+  const code = String(event.code || event.day.pairingCode || event.day.type || '').toUpperCase();
+  if (code.includes('HSBE')) return 'HSBE';
+  if (code.includes('HSB')) return 'HSB';
+  if (code.includes('ASB')) return 'ASB';
+  if (code.includes('RES')) return 'RES';
+  return code.replace(/\s+/g, ' ').trim();
+}
+
+function isZeroLengthEvent(event: RosterEvent): boolean {
+  const range = parseDisplayTimeRange(event.time);
+  return Boolean(range && range.start === range.end);
+}
+
+function isPsFlightDayForUi(day: RosterDay): boolean {
+  return Boolean(day.legs?.some((leg) => String(leg.workType || '').toUpperCase() === 'PS')) || String(day.pairingCode || '').toUpperCase() === 'PS';
 }
 
 function flightActivityPrefix(day: RosterDay): string {
@@ -1908,7 +2776,14 @@ function supplementalActivitiesForDay(day: RosterDay, base: Omit<RosterEvent, "i
 }
 
 function isDayOffRosterDay(day: RosterDay): boolean {
-  return ["DO", "DOF", "DR", "OFF"].includes(String(day.type || '').toUpperCase());
+  return ["DO", "DOF", "DR", "OFF"].includes(String(day.type || '').toUpperCase()) || getRosterCodeDefinition(day.pairingCode || '')?.category === "DAY_OFF";
+}
+
+function isFormalDayOffForUi(day: RosterDay): boolean {
+  const code = String(day.pairingCode || '').toUpperCase();
+  return ["DO", "DOF", "DR"].includes(String(day.type || '').toUpperCase())
+    || ["DOP", "DOPR", "VC", "FOLGA"].includes(code)
+    || getRosterCodeDefinition(code)?.category === "DAY_OFF";
 }
 
 function activityEventText(code: string): Pick<RosterEvent, "activity" | "subtitle" | "code" | "typeLabel" | "status"> | null {
@@ -1943,7 +2818,11 @@ function eventTextForDay(day: RosterDay): Pick<RosterEvent, "activity" | "subtit
   const mapped = eventTextFromRosterCode(rosterCode);
   if (mapped) return mapped;
 
-  if (["DO", "DOF", "DR"].includes(day.type)) return { activity: "Folga formal", subtitle: "Folga publicada na escala", code: day.type, typeLabel: "Day Off", status: "Day Off" };
+  if (["DO", "DOF", "DR"].includes(day.type) || getRosterCodeDefinition(day.pairingCode || "")?.category === "DAY_OFF") {
+    const code = day.pairingCode || day.type;
+    const mapped = eventTextFromRosterCode(code);
+    return mapped || { activity: "Folga formal", subtitle: "Folga publicada na escala", code, typeLabel: "Day Off", status: "Day Off" };
+  }
   if (day.type === "OFF") return { activity: "OFF", subtitle: "Extensão de repouso; não entra como folga formal mensal", code: day.type, typeLabel: "Day Marker", status: "Rest" };
   if (["HSB", "HSBE"].includes(day.type)) return { activity: `${day.type} / Sobreaviso`, subtitle: "Home Stand By", code: day.pairingCode || day.type, typeLabel: "Standby", status: "Standby" };
   if (["ASB", "RES"].includes(day.type)) return { activity: `${day.type} / Reserva`, subtitle: day.type === "ASB" ? "Airport Stand By" : "Reserva", code: day.pairingCode || day.type, typeLabel: "Reserve", status: "Reserve" };
@@ -1955,22 +2834,38 @@ function isPsFlightEvent(event: RosterEvent): boolean {
   return code === 'PS' || Boolean(event.day.legs?.some((leg) => String(leg.workType || '').toUpperCase() === 'PS'));
 }
 
+function getRosterEventToneClass(event: RosterEvent): string {
+  const key = event.typeLabel;
+  if (key === "Flight" && isPsFlightEvent(event)) return "cc-roster-positioning";
+  if (key === "Flight") return "cc-roster-flight";
+  if (key === "Hotel" || key === "Inativo") return "cc-roster-hotel";
+  if (key === "Folga" || key === "Descanso" || key === "Day Off") return "cc-roster-off";
+  if (key === "Sobreaviso" || key === "Reserva" || key === "Reserve" || key === "Standby") return "cc-roster-standby";
+  if (key === "Training" || key === "Ground Duty" || key === "Simulator") return "cc-roster-training";
+  if (key === "Transport") return "cc-roster-transport";
+  if (key === "Meeting") return "cc-roster-meeting";
+  if (key === "Sem programação") return "cc-roster-empty";
+  if (key === "Ausência" || key === "Justificado" || key === "Day Marker" || key === "Interrupção") return "cc-roster-attention";
+  if (key === "Médico" || key === "Medical") return "cc-roster-medical";
+  return "cc-roster-duty";
+}
+
 function getEventStyle(event: RosterEvent): { icon: LucideIcon; solid: string; bg: string } {
   const key = event.typeLabel;
   if (key === "Flight" && isPsFlightEvent(event)) return { icon: Plane, solid: "#64748b", bg: "#f1f5f9" };
-  if (key === "Flight") return { icon: Plane, solid: "#0b2b4c", bg: "#eaf2ff" };
-  if (key === "Hotel" || key === "Inativo") return { icon: BedDouble, solid: "#e0a000", bg: "#fff4cc" };
-  if (key === "Folga" || key === "Descanso" || key === "Day Off") return { icon: House, solid: "#15963a", bg: "#e9f8ee" };
-  if (key === "Sobreaviso" || key === "Reserva" || key === "Reserve" || key === "Standby") return { icon: UserRound, solid: "#e36c0a", bg: "#fff0df" };
-  if (key === "Training" || key === "Ground Duty") return { icon: GraduationCap, solid: "#e11d48", bg: "#fff1f2" };
-  if (key === "Simulator") return { icon: GraduationCap, solid: "#7c3aed", bg: "#f0e8ff" };
-  if (key === "Transport") return { icon: Plane, solid: "#9a7a42", bg: "#f8f0df" };
-  if (key === "Meeting") return { icon: Users, solid: "#0f8d96", bg: "#e7fbfd" };
+  if (key === "Flight") return { icon: Plane, solid: "#0284c7", bg: "#e0f2fe" };
+  if (key === "Hotel" || key === "Inativo") return { icon: BedDouble, solid: "#d97706", bg: "#fffbeb" };
+  if (key === "Folga" || key === "Descanso" || key === "Day Off") return { icon: House, solid: "#16a34a", bg: "#dcfce7" };
+  if (key === "Sobreaviso" || key === "Reserva" || key === "Reserve" || key === "Standby") return { icon: UserRound, solid: "#f97316", bg: "#ffedd5" };
+  if (key === "Training" || key === "Ground Duty") return { icon: GraduationCap, solid: "#e11d48", bg: "#ffe4e6" };
+  if (key === "Simulator") return { icon: GraduationCap, solid: "#7c3aed", bg: "#ede9fe" };
+  if (key === "Transport") return { icon: Plane, solid: "#a16207", bg: "#fef3c7" };
+  if (key === "Meeting") return { icon: Users, solid: "#0891b2", bg: "#cffafe" };
   if (key === "Sem programação") return { icon: CalendarDays, solid: "#64748b", bg: "#f1f5f9" };
-  if (key === "Ausência" || key === "Justificado" || key === "Day Marker") return { icon: ClipboardList, solid: "#f97316", bg: "#fff7ed" };
-  if (key === "Interrupção") return { icon: AlertTriangle, solid: "#f97316", bg: "#fff7ed" };
-  if (key === "Médico" || key === "Medical") return { icon: ShieldCheck, solid: "#0f8d96", bg: "#e7fbfd" };
-  return { icon: BriefcaseBusiness, solid: "#0f8d96", bg: "#e7fbfd" };
+  if (key === "Ausência" || key === "Justificado" || key === "Day Marker") return { icon: ClipboardList, solid: "#ea580c", bg: "#ffedd5" };
+  if (key === "Interrupção") return { icon: AlertTriangle, solid: "#dc2626", bg: "#fee2e2" };
+  if (key === "Médico" || key === "Medical") return { icon: ShieldCheck, solid: "#0d9488", bg: "#ccfbf1" };
+  return { icon: BriefcaseBusiness, solid: "#0891b2", bg: "#cffafe" };
 }
 
 function getRosterCode(day: RosterDay): string {
@@ -2002,16 +2897,20 @@ function getComplianceStatus(compliance: ComplianceResult) {
 }
 
 function viewTitle(view: ViewKey) {
-  const titles: Record<ViewKey, string> = { roster: "My Roster", irregularities: "Irregularidades", gym: "Rotina Inteligente", fatigue: "Escala Puxada", statistics: "Histórico", settings: "Configurações", manual: "Manual" };
+  const titles: Record<ViewKey, string> = { summary: "Resumo", roster: "Minha Escala", alerts: "Alertas", irregularities: "Conformidade", gym: "Rotina", fatigue: "Escala Puxada", metrics: "Métricas", glossary: "Glossário", statistics: "Histórico", settings: "Configurações", manual: "Manual" };
   return titles[view];
 }
 
 function viewSubtitle(view: ViewKey) {
   const subtitles: Record<ViewKey, string> = {
-    roster: "Veja a escala interpretada automaticamente a partir do PDF, com filtros, voos, folgas, reservas e treinamentos.",
+    summary: "Visão objetiva da escala: folgas, pernoites, eventos, alertas e próximos compromissos.",
+    roster: "Primeiro a escala, depois filtros e detalhes. Toque em um card para ver mais informações.",
+    alerts: "Somente avisos e irregularidades. O número de alertas fica centralizado neste menu.",
     irregularities: "Confira irregularidades e pontos de atenção com ACT aplicada por função, RBAC 117, Lei do Aeronauta e regras trabalhistas parametrizadas.",
     gym: "Organize treino, estudo, faculdade e atividades pessoais com duração, intensidade e janelas seguras conforme a escala.",
     fatigue: "Ranking dos dias mais cansativos, nota de puxada da escala e leitura de risco de fadiga.",
+    metrics: "Métricas utilizadas para nota de conformidade, descanso, carga de escala e alertas.",
+    glossary: "Siglas operacionais, tipos de evento e critérios usados pelo CrewCheck.",
     statistics: "Estatísticas pessoais das escalas salvas e comparativo geral superficial, com aviso de uso não oficial.",
     settings: "Escolha o calendário Google, conecte a conta e ative atualização automática após upload da escala.",
     manual: "Guia rápido de uso do CrewCheck, leitura da escala, privacidade e sincronização de calendário.",
@@ -2020,12 +2919,45 @@ function viewSubtitle(view: ViewKey) {
 }
 
 function viewHeroIcon(view: ViewKey) {
-  const icons: Record<ViewKey, ReactNode> = { roster: <CalendarDays className="h-7 w-7" />, irregularities: <ShieldAlert className="h-7 w-7" />, gym: <Dumbbell className="h-7 w-7" />, fatigue: <Gauge className="h-7 w-7" />, statistics: <BarChart3 className="h-7 w-7" />, settings: <Settings className="h-7 w-7" />, manual: <BookOpen className="h-7 w-7" /> };
+  const icons: Record<ViewKey, ReactNode> = { summary: <LayoutDashboard className="h-7 w-7" />, roster: <CalendarDays className="h-7 w-7" />, alerts: <Bell className="h-7 w-7" />, irregularities: <ShieldAlert className="h-7 w-7" />, gym: <Dumbbell className="h-7 w-7" />, fatigue: <Gauge className="h-7 w-7" />, metrics: <BarChart3 className="h-7 w-7" />, glossary: <BookOpen className="h-7 w-7" />, statistics: <BarChart3 className="h-7 w-7" />, settings: <Settings className="h-7 w-7" />, manual: <BookOpen className="h-7 w-7" /> };
   return icons[view];
 }
 
+function buildEmptyLoadAnalysis(): LoadAnalysis {
+  return {
+    intensityScore: 0,
+    recoveryScore: 0,
+    grade: "Moderada",
+    summary: "Aguardando leitura da escala.",
+    hardestDays: [],
+    easiestDays: [],
+    days: [],
+  };
+}
+
 function buildFallbackLoadAnalysis(roster: CrewRoster): LoadAnalysis {
-  const days: DayLoadAnalysis[] = roster.days.map((day) => ({ date: day.date, dayOfWeek: day.dayOfWeek, type: day.type, label: day.type, fatigueScore: day.dutyHours ? Math.min(100, Math.round(day.dutyHours * 6)) : 10, loadLabel: "Moderado", dutyHours: day.dutyHours || 0, flightHours: day.flyingHours || 0, sectors: day.legs?.length || 0, restBefore: null, restAfter: null, isNightDuty: false, isEarlyStart: false, isLateFinish: Boolean(day.isNextDay), isDayOff: ["OFF", "DO", "DOF", "DR", "LAYOVER"].includes(day.type), gymScore: 50, reasons: ["análise simplificada"] }));
+  const days: DayLoadAnalysis[] = roster.days.map((day) => ({
+    date: day.date,
+    dayOfWeek: day.dayOfWeek,
+    type: day.type,
+    label: day.type,
+    fatigueScore: day.dutyHours ? Math.min(100, Math.round(day.dutyHours * 6)) : 10,
+    loadLabel: "Moderado",
+    dutyHours: day.dutyHours || 0,
+    flightHours: day.flyingHours || 0,
+    dutyStartTime: day.dutyReport || null,
+    dutyEndTime: day.dutyDebrief || null,
+    isDutyNextDay: Boolean(day.isNextDay),
+    sectors: day.legs?.length || 0,
+    restBefore: null,
+    restAfter: null,
+    isNightDuty: false,
+    isEarlyStart: false,
+    isLateFinish: Boolean(day.isNextDay),
+    isDayOff: ["OFF", "DO", "DOF", "DR", "LAYOVER"].includes(day.type) || getRosterCodeDefinition(day.pairingCode || "")?.category === "DAY_OFF",
+    gymScore: 50,
+    reasons: ["análise simplificada"],
+  }));
   return { intensityScore: 50, recoveryScore: 50, grade: "Moderada", summary: "Análise simplificada.", hardestDays: days.slice(0, 5), easiestDays: days.slice(0, 5), days };
 }
 

@@ -1,4 +1,5 @@
 import { isAimsFormat, parseAimsRoster } from './aimsParser';
+import { getRosterCodeDefinition, isKnownRosterCode } from './rosterCodes';
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.js?url';
 
 let pdfjsModulePromise: Promise<any> | null = null;
@@ -113,6 +114,11 @@ export async function parsePDF(file: File): Promise<CrewRoster> {
   const isCrewRosterReport = /Roster\s+Report/i.test(fullText) || /CrewRosterReport/i.test(file.name);
   if (isCrewRosterReport) {
     const parsed = parseCrewRosterReportRows(rows, fullText);
+    if (parsed.days.length > 0) return parsed;
+  }
+
+  if (isTicketRosterFormat(fullText, file.name)) {
+    const parsed = parseTicketRoster(fullText, rows);
     if (parsed.days.length > 0) return parsed;
   }
 
@@ -722,6 +728,7 @@ function inferDayType(text: string): RosterDay['type'] {
   if (/\bC\d{2,3}F\b/.test(sample)) return 'CRM';
   if (/\bRES\b/.test(sample)) return 'RES';
   if (/\bDOF\b/.test(sample)) return 'DOF';
+  if (/\b(DOPR|DOP|VC|FOLGA)\b/.test(sample)) return 'DO';
   if (/\bDO\b/.test(sample)) return 'DO';
   if (/\bDR\b/.test(sample)) return 'DR';
   if (/\bOFF\b/.test(sample)) return 'OFF';
@@ -731,7 +738,7 @@ function inferDayType(text: string): RosterDay['type'] {
 function extractPairingCode(text: string): string {
   const direct = text.match(/\b(?:LA\d{3,4}|HSBE?|ASB|C\d{2,3}F|MT|CBF|EMER|NSJ?|IJ|DM|[A-Z]{1,4}J)[-/A-Z0-9]*\/\d{6}\/[A-Z0-9-]+\b/i)?.[0];
   if (direct) return direct;
-  const activity = text.match(/\b(HSBE?|ASB|CBF|EMER|MT|C\d{2,3}F|NSJ?|IJ|DM|[A-Z]{1,4}J|DOF?|DR|CRM)\b/i)?.[0];
+  const activity = text.match(/\b(HSBE?|ASB|CBF|EMER|MT|C\d{2,3}F|NSJ?|IJ|DM|DOPR|DOP|VC|FOLGA|[A-Z]{1,4}J|DOF?|DR|CRM)\b/i)?.[0];
   return activity || '';
 }
 
@@ -754,7 +761,7 @@ function inferAircraftType(text: string): string | undefined {
 }
 
 function isContinuationRow(text: string): boolean {
-  return /\b(LA\d{3,4}|HSBE?|ASB|CBF|EMER|MT|NSJ?|IJ|DM|[A-Z]{1,4}J|DOF?|DR|CRM|C\d{2,3}F)\b/.test(text);
+  return /\b(LA\d{3,4}|HSBE?|ASB|CBF|EMER|MT|NSJ?|IJ|DM|DOPR|DOP|VC|FOLGA|[A-Z]{1,4}J|DOF?|DR|CRM|C\d{2,3}F)\b/.test(text);
 }
 
 function isHeaderOrFooterRow(text: string): boolean {
@@ -984,6 +991,552 @@ function rescueActivitiesFromText(days: RosterDay[], fullText: string, reference
 
 function monthNumberToEnglishAbbr(month: number): string {
   return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][month - 1] || 'Jan';
+}
+
+
+const TICKET_WEEKDAYS = new Set(['MON','TUE','WED','THU','FRI','SAT','SUN']);
+const TICKET_MONTHS: Record<string, number> = {
+  JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6,
+  JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12,
+};
+const TICKET_STATIONS = new Set(['BSB','GRU','CGH','VCP','NAT','MAB','FLN','MCZ','FOR','CNF','PMW','CPV','GYN','JPA','SDU','GIG','SSA','REC','POA','CWB','BEL','MAO','SLZ','THE','AJU','IOS','NVT','IGU','UDI','RAO','JOI','CXJ','LDB','MGF','JDO','BPS','VIX','PNZ','STM','MCP','PVH','RBR','BVB','CGB','CGR','XAP','IMP','FEN','OPS','JTC','PPB','MOC','IZA','CAC','AEP','EZE','SCL','LIM','BOG','MIA','JFK','LAX','MEX','MAD','LIS','FCO','CDG','LHR','FRA','MUC','AMS','ASU','MVD','UIO','GYE']);
+
+type TicketHeader = { crewName: string; crewId: string; base: string; rank: string; month: number; year: number; airline: string };
+type TicketVisualItem = VisualItem & { rowIndex: number; visualY: number };
+type TicketMarker = { page: number; weekday: string; day: number; month: number; year: number; weekY: number; monthY: number; order: number };
+
+function isTicketRosterFormat(text: string, fileName?: string): boolean {
+  const sample = normalizeTicketText(text);
+  return /Tripulante\s*:/i.test(sample)
+    && /(Apresenta(?:ção|cao)|Termino da Jornada|Término da Jornada|LA\s*\d{3,4})/i.test(sample)
+    && /\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b[\s\S]{0,140}\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/i.test(sample)
+    || /ticket/i.test(fileName || '');
+}
+
+function parseTicketRoster(fullText: string, visualRows?: VisualRow[]): CrewRoster {
+  // O formato ticket costuma ser extraído de formas diferentes em Android,
+  // desktop e iOS: às vezes a ordem visual fica boa, outras vezes o texto linear
+  // fica mais fiel. Por isso, calculamos os dois caminhos e escolhemos o mais
+  // completo, em vez de aceitar uma interpretação parcial com 1 ou 2 dias.
+  const parsedFromVisual = visualRows?.length ? parseTicketRosterFromVisualRows(fullText, visualRows) : null;
+  const parsedFromText = parseTicketRosterFromText(fullText);
+  return chooseBestTicketRoster(parsedFromVisual, parsedFromText);
+}
+
+function chooseBestTicketRoster(visual: CrewRoster | null, text: CrewRoster): CrewRoster {
+  if (!visual || !visual.days?.length) return text;
+  if (!text.days?.length) return visual;
+
+  // Ticket PDFs are extracted differently depending on browser/WebView.
+  // Android usually gives a good visual order, while desktop/PDF.js often gives
+  // a better linear text order. Using only one source caused platform-specific
+  // losses, including day 21/22 overnight legs on web and duplicate 1h HSB/ASB
+  // rows on Android. We now merge both interpretations and then pick the best
+  // row for each real duty window.
+  const preferred = scoreTicketRoster(text) >= scoreTicketRoster(visual) ? text : visual;
+  const secondary = preferred === text ? visual : text;
+  const mergedDays = dedupeTicketDaysPreferBest([...(preferred.days || []), ...(secondary.days || [])]);
+
+  return {
+    ...preferred,
+    crewName: preferred.crewName !== 'Tripulante' ? preferred.crewName : secondary.crewName,
+    crewId: preferred.crewId || secondary.crewId,
+    base: preferred.base || secondary.base,
+    month: preferred.month || secondary.month,
+    year: preferred.year || secondary.year,
+    rawText: preferred.rawText || secondary.rawText,
+    days: mergedDays,
+  };
+}
+
+function scoreTicketRoster(roster: CrewRoster): number {
+  const days = roster.days || [];
+  const flightLegs = days.reduce((sum, day) => sum + (day.legs?.length || 0), 0);
+  const timed = days.filter(day => day.dutyReport || day.dutyDebrief).length;
+  const known = days.filter(day => day.pairingCode && (isKnownRosterCode(day.pairingCode) || /^LA\d{3,4}$/.test(day.pairingCode))).length;
+  const overnight = days.filter(day => day.isNextDay || day.type === 'LAYOVER' || (day.legs || []).some(leg => leg.isNextDay)).length;
+  const validDuration = days.filter(day => !day.dutyReport || !day.dutyDebrief || timeToMinutes(day.dutyDebrief) !== timeToMinutes(day.dutyReport)).length;
+  return days.length * 10 + flightLegs * 8 + timed * 4 + known * 2 + overnight * 8 + validDuration;
+}
+
+function parseTicketRosterFromVisualRows(fullText: string, visualRows: VisualRow[]): CrewRoster | null {
+  const rawItems = visualRows.flatMap((row, rowIndex) => (row.items || []).map(item => ({
+    ...item,
+    rowIndex,
+    str: String(item.str || '').trim(),
+  }))).filter(item => item.str.length > 0);
+  if (rawItems.length < 10) return null;
+
+  const firstY = rawItems[0]?.y || 0;
+  const lastY = rawItems[rawItems.length - 1]?.y || 0;
+  const orientation = firstY > lastY ? -1 : 1;
+  const items: TicketVisualItem[] = rawItems.map(item => ({ ...item, visualY: orientation * item.y }));
+  const markers = findTicketDateMarkers(items);
+  if (markers.length < 3) return null;
+
+  const reference = inferTicketReference(markers, fullText);
+  const days: RosterDay[] = [];
+
+  const markersByPage = new Map<number, TicketMarker[]>();
+  for (const marker of markers) {
+    const arr = markersByPage.get(marker.page) || [];
+    arr.push(marker);
+    markersByPage.set(marker.page, arr);
+  }
+
+  for (const [page, pageMarkers] of markersByPage.entries()) {
+    const sorted = pageMarkers.sort((a, b) => a.weekY - b.weekY || a.order - b.order);
+    const pageItems = items.filter(item => item.page === page).sort((a, b) => a.visualY - b.visualY || a.x - b.x);
+
+    sorted.forEach((marker, index) => {
+      const prev = sorted[index - 1];
+      const next = sorted[index + 1];
+      const startY = prev ? Math.max(prev.monthY + 6, marker.weekY - 45) : marker.weekY - 55;
+      const endY = next ? next.weekY - 8 : Infinity;
+      const blockItems = pageItems.filter(item => item.visualY >= startY && item.visualY < endY);
+      const blockText = normalizeTicketText(blockItems.map(item => item.str).join(' '));
+      const parsed = parseTicketDayBlock(marker, blockText, reference.base);
+      for (const day of parsed) {
+        if (day.month !== reference.month || day.year !== reference.year) continue;
+        days.push(day);
+      }
+    });
+  }
+
+  const uniqueDays = dedupeTicketDays(days).sort((a, b) => {
+    const da = parseTicketDateForSort(a.date);
+    const db = parseTicketDateForSort(b.date);
+    if (da !== db) return da - db;
+    return (a.dutyReport ? timeToMinutes(a.dutyReport) : 9999) - (b.dutyReport ? timeToMinutes(b.dutyReport) : 9999);
+  });
+
+  return {
+    crewName: reference.crewName,
+    crewId: reference.crewId,
+    base: reference.base,
+    rank: reference.rank,
+    airline: reference.airline,
+    month: reference.month,
+    year: reference.year,
+    days: uniqueDays,
+    rawText: fullText,
+  };
+}
+
+function findTicketDateMarkers(items: TicketVisualItem[]): TicketMarker[] {
+  const markers: TicketMarker[] = [];
+  const weekdayItems = items.filter(item => TICKET_WEEKDAYS.has(normalizeTicketToken(item.str))).sort((a, b) => a.rowIndex - b.rowIndex);
+
+  for (const weekday of weekdayItems) {
+    const dayCandidate = items
+      .filter(item => item.page === weekday.page)
+      .filter(item => /^\d{1,2}$/.test(item.str.trim()))
+      .filter(item => Number(item.str) >= 1 && Number(item.str) <= 31)
+      .filter(item => Math.abs(item.x - weekday.x) <= 25)
+      .filter(item => item.visualY >= weekday.visualY - 2 && item.visualY <= weekday.visualY + 30)
+      .sort((a, b) => Math.abs(a.visualY - weekday.visualY) - Math.abs(b.visualY - weekday.visualY))[0];
+    if (!dayCandidate) continue;
+
+    const monthCandidate = items
+      .filter(item => item.page === weekday.page)
+      .filter(item => Boolean(TICKET_MONTHS[normalizeTicketToken(item.str)]))
+      .filter(item => Math.abs(item.x - weekday.x) <= 35)
+      .filter(item => item.visualY >= weekday.visualY - 2 && item.visualY <= weekday.visualY + 42)
+      .sort((a, b) => Math.abs(a.visualY - dayCandidate.visualY) - Math.abs(b.visualY - dayCandidate.visualY))[0];
+    if (!monthCandidate) continue;
+
+    const month = TICKET_MONTHS[normalizeTicketToken(monthCandidate.str)];
+    markers.push({
+      page: weekday.page,
+      weekday: normalizeTicketToken(weekday.str),
+      day: Number(dayCandidate.str),
+      month,
+      year: new Date().getFullYear(),
+      weekY: weekday.visualY,
+      monthY: Math.max(weekday.visualY, dayCandidate.visualY, monthCandidate.visualY),
+      order: weekday.rowIndex,
+    });
+  }
+
+  const deduped: TicketMarker[] = [];
+  for (const marker of markers.sort((a, b) => a.page - b.page || a.weekY - b.weekY)) {
+    const exists = deduped.some(prev => prev.page === marker.page && Math.abs(prev.weekY - marker.weekY) < 6 && prev.day === marker.day && prev.month === marker.month);
+    if (!exists) deduped.push(marker);
+  }
+
+  const referenceYear = inferTicketYearFromMarkers(deduped);
+  return deduped.map(marker => ({ ...marker, year: referenceYear }));
+}
+
+function inferTicketReference(markers: TicketMarker[], fullText: string): TicketHeader {
+  const clean = normalizeTicketText(fullText);
+  const crewName = clean.match(/Tripulante\s*:\s*([A-ZÀ-Ú][A-ZÀ-Ú\s.'-]{2,}?)(?=\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun|Apresenta|LA\s*\d|$))/i)?.[1]?.trim() || 'Tripulante';
+  const monthCounts = new Map<number, number>();
+  for (const marker of markers) monthCounts.set(marker.month, (monthCounts.get(marker.month) || 0) + 1);
+  const month = [...monthCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || new Date().getMonth() + 1;
+  const year = inferTicketYearFromMarkers(markers, month);
+  const base = inferTicketBase(clean) || 'BSB';
+  return { crewName: cleanCrewName(crewName), crewId: '', base, rank: 'CCM', month, year, airline: 'LATAM' };
+}
+
+function inferTicketYearFromMarkers(markers: TicketMarker[], referenceMonth?: number): number {
+  const currentYear = new Date().getFullYear();
+  const months = markers.map(marker => marker.month);
+  if (!months.length) return currentYear;
+  const ref = referenceMonth || months.sort((a, b) => months.filter(x => x === b).length - months.filter(x => x === a).length)[0] || new Date().getMonth() + 1;
+  return currentYear;
+}
+
+function inferTicketBase(text: string): string | null {
+  const stationHits = [...text.matchAll(/\b([A-Z]{3})\s+\d{1,2}:\d{2}\b/g)]
+    .map(match => match[1])
+    .filter(code => TICKET_STATIONS.has(code));
+  const counts = new Map<string, number>();
+  for (const station of stationHits) counts.set(station, (counts.get(station) || 0) + 1);
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+}
+
+function parseTicketDayBlock(marker: TicketMarker, blockText: string, base: string): RosterDay[] {
+  const output: RosterDay[] = [];
+  const text = normalizeTicketText(blockText);
+  const flightDay = parseTicketFlights(marker, text, base);
+  if (flightDay) output.push(flightDay);
+  const activityDays = parseTicketActivities(marker, text, base, Boolean(flightDay));
+  output.push(...activityDays);
+  return output;
+}
+
+function parseTicketFlights(marker: TicketMarker, text: string, base: string): RosterDay | null {
+  const flightMatches = [...text.matchAll(/\bLA\s*(\d{3,4})\b/g)];
+  if (!flightMatches.length) return null;
+
+  const day = createRosterDay(marker.day, marker.month, marker.year, base);
+  day.type = 'VOO';
+  day.rawText = text;
+  const ticketReportMatch = text.match(/Apresenta(?:ção|cao)\s*:\s*(\d{1,2}:\d{2})/i);
+  day.dutyReport = ticketReportMatch ? cleanTime(ticketReportMatch[1]) : null;
+  const debriefMatch = text.match(/T(?:é|e)rmino\s+da\s+Jornada\s*:\s*(\d{1,2}:\d{2})/i);
+  if (debriefMatch) day.dutyDebrief = cleanTime(debriefMatch[1]);
+
+  flightMatches.forEach((match, index) => {
+    const flightNumber = `LA${match[1]}`;
+    const start = match.index || 0;
+    const end = index < flightMatches.length - 1 ? (flightMatches[index + 1].index || text.length) : text.length;
+    const segment = text.slice(start, end);
+    const pair = parseTicketStationTimePair(segment);
+    if (!pair) return;
+    const { first, second } = pair;
+    const isNextDay = /\(\s*\d{1,2}\s*\/\s*\d{1,2}\s*\)/.test(segment) || timeToMinutes(second.time) < timeToMinutes(first.time);
+    const workType = /\bExtra\b/i.test(segment) ? 'PS' : 'OP';
+    if (day.legs.some(leg => leg.flightNumber === flightNumber && leg.departureTime === first.time && leg.origin === first.station)) return;
+    day.legs.push({
+      flightNumber,
+      origin: first.station,
+      destination: second.station,
+      departureTime: first.time,
+      arrivalTime: second.time,
+      workType,
+      isNextDay,
+      duration: diffHours(first.time, second.time, isNextDay),
+    });
+    if (isNextDay) day.isNextDay = true;
+  });
+
+  if (!day.legs.length) return null;
+  day.legs.sort((a, b) => timeToMinutes(a.departureTime) - timeToMinutes(b.departureTime));
+  day.pairingCode = day.legs.map(leg => leg.flightNumber).join(' · ');
+  finalizeRosterDay(day);
+  return day;
+}
+
+type TicketStationTime = { station: string; time: string };
+
+function parseTicketStationTimePair(segment: string): { first: TicketStationTime; second: TicketStationTime } | null {
+  // Caminho 1: texto linear já pareado: "BSB 14:19 VCP 15:45".
+  const adjacentPairs = [...segment.matchAll(/\b([A-Z]{3})\s+(\d{1,2}:\d{2})\b/g)]
+    .map(pair => ({ station: pair[1], time: cleanTime(pair[2]) }))
+    .filter(pair => TICKET_STATIONS.has(pair.station));
+  if (adjacentPairs.length >= 2) return { first: adjacentPairs[0], second: adjacentPairs[1] };
+
+  // Caminho 2: muitos PDFs ticket saem em colunas: "BSB VCP 14:19 15:45".
+  // Nesse caso, preservamos a ordem visual/textual e casamos as duas primeiras
+  // estações com os dois primeiros horários do segmento.
+  const stations = [...segment.matchAll(/\b([A-Z]{3})\b/g)]
+    .map(match => match[1])
+    .filter(station => TICKET_STATIONS.has(station));
+  const times = [...segment.matchAll(/\b(\d{1,2}:\d{2})\b/g)].map(match => cleanTime(match[1]));
+  if (stations.length >= 2 && times.length >= 2) {
+    return {
+      first: { station: stations[0], time: times[0] },
+      second: { station: stations[1], time: times[1] },
+    };
+  }
+
+  return null;
+}
+
+function parseTicketActivities(marker: TicketMarker, text: string, base: string, hasFlight: boolean): RosterDay[] {
+  const output: RosterDay[] = [];
+  const codeMatches = [...text.matchAll(/\b([A-Z][A-Z0-9_-]{1,12})\b/g)];
+  const candidates: { code: string; index: number }[] = [];
+
+  for (const match of codeMatches) {
+    const rawCode = match[1].toUpperCase();
+    if (rawCode === 'LA' || rawCode === 'OP' || rawCode === 'PS' || rawCode === 'EXTRA') continue;
+    if (TICKET_STATIONS.has(rawCode)) continue;
+    if (/^LA\d{3,4}$/.test(rawCode)) continue;
+    const code = normalizeRosterCodeAlias(rawCode);
+    if (!isTicketActivityCode(code)) continue;
+    if (hasFlight && (code === 'DO' || code === 'DR' || code === 'DOF' || code === 'OFF')) continue;
+    candidates.push({ code, index: match.index || 0 });
+  }
+
+  candidates.sort((a, b) => a.index - b.index);
+  const consumed = new Set<string>();
+  candidates.forEach((candidate, index) => {
+    const key = `${candidate.code}-${candidate.index}`;
+    if (consumed.has(key)) return;
+    consumed.add(key);
+    const end = index < candidates.length - 1 ? candidates[index + 1].index : text.length;
+    const segment = text.slice(candidate.index, end);
+    const day = createRosterDay(marker.day, marker.month, marker.year, base);
+    day.pairingCode = candidate.code;
+    day.rawText = segment;
+    day.type = mapTicketActivityType(candidate.code);
+
+    if (isTicketDayOffCode(candidate.code)) {
+      day.dutyReport = null;
+      day.dutyDebrief = null;
+      day.dutyHours = 0;
+    } else {
+      const adjacentTimes = [...segment.matchAll(/\b[A-Z]{3}\s+(\d{1,2}:\d{2})\b/g)].map(match => cleanTime(match[1]));
+      const looseTimes = [...segment.matchAll(/\b(\d{1,2}:\d{2})\b/g)].map(match => cleanTime(match[1]));
+      const uniqueTimes = Array.from(new Set(adjacentTimes.length >= 2 ? adjacentTimes : looseTimes));
+      if (uniqueTimes.length >= 2) {
+        // In ticket layout, activity segments often include station/start and
+        // station/end, but some extraction modes repeat the first time twice.
+        // Use the first and the last distinct time to avoid 09:00-09:00,
+        // 11:07-11:07 and synthetic 1h duplicates.
+        day.dutyReport = uniqueTimes[0];
+        day.dutyDebrief = uniqueTimes[uniqueTimes.length - 1];
+        day.isNextDay = timeToMinutes(day.dutyDebrief) < timeToMinutes(day.dutyReport);
+        day.dutyHours = round2(diffHours(day.dutyReport, day.dutyDebrief, day.isNextDay));
+      }
+    }
+
+    finalizeRosterDay(day);
+    output.push(day);
+  });
+
+  return dedupeTicketDays(output);
+}
+
+function normalizeRosterCodeAlias(code: string): string {
+  const upper = code.toUpperCase();
+  if (upper === 'HSB') return 'HSB';
+  if (upper === 'HSBE') return 'HSBE';
+  return upper;
+}
+
+function isTicketActivityCode(code: string): boolean {
+  return isKnownRosterCode(code)
+    || /^(DO|DR|DOF|OFF|HSB|HSBE|ASB|MT|CBF|EMER|C\d{2,3}F|M\d{2,3}|CRM|SICK|VC|PS|NSJ|NS|NSS|NSP)$/.test(code);
+}
+
+function isTicketDayOffCode(code: string): boolean {
+  return ['DO', 'DR', 'DOF', 'OFF', 'VC', 'DOP', 'DOPR', 'FOLGA'].includes(code) || getRosterCodeDefinition(code)?.category === 'DAY_OFF';
+}
+
+function mapTicketActivityType(code: string): RosterDay['type'] {
+  if (code === 'DO') return 'DO';
+  if (code === 'DOF') return 'DOF';
+  if (code === 'DR') return 'DR';
+  if (['DOP', 'DOPR', 'VC', 'FOLGA'].includes(code) || getRosterCodeDefinition(code)?.category === 'DAY_OFF') return 'DO';
+  if (code === 'OFF') return 'OFF';
+  if (code === 'HSBE') return 'HSBE';
+  if (code === 'HSB') return 'HSB';
+  if (code === 'ASB') return 'ASB';
+  if (code === 'RES') return 'RES';
+  if (code === 'CRM' || code === 'CBF' || code === 'EMER' || /^C\d{2,3}F$/.test(code)) return 'CRM';
+  return 'OTHER';
+}
+
+function parseTicketRosterFromText(fullText: string): CrewRoster {
+  const clean = normalizeTicketText(fullText);
+  const lines = fullText.split(/\r?\n/).map(line => normalizeTicketText(line)).filter(Boolean);
+  const markers: { index: number; weekday: string; day: number; month: number; year: number }[] = [];
+  const year = new Date().getFullYear();
+
+  for (let i = 0; i < lines.length; i++) {
+    const weekday = lines[i].match(/(?:^|\s)(Mon|Tue|Wed|Thu|Fri|Sat|Sun)(?:\s|$)/i)?.[1];
+    if (!weekday) continue;
+    let dayNumber = 0;
+    let month = 0;
+    const windowText = lines.slice(i, Math.min(lines.length, i + 8)).join(' ');
+    const compactMarker = windowText.match(/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/i);
+    if (compactMarker) {
+      dayNumber = Number(compactMarker[2]);
+      month = TICKET_MONTHS[compactMarker[3].toUpperCase()];
+    } else {
+      for (let j = i; j < Math.min(lines.length, i + 8); j++) {
+        const dayMatch = lines[j].match(/(?:^|\s)(\d{1,2})(?:\s|$)/);
+        if (dayMatch && !dayNumber) dayNumber = Number(dayMatch[1]);
+        const monthMatch = lines[j].match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/i);
+        if (monthMatch) month = TICKET_MONTHS[monthMatch[1].toUpperCase()];
+        if (dayNumber >= 1 && dayNumber <= 31 && month) break;
+      }
+    }
+    if (dayNumber >= 1 && dayNumber <= 31 && month) markers.push({ index: i, weekday: weekday.toUpperCase(), day: dayNumber, month, year });
+  }
+
+  const dedupedMarkers = markers.filter((marker, index, all) => !all.some((prev, prevIndex) => prevIndex < index && prev.day === marker.day && prev.month === marker.month && Math.abs(prev.index - marker.index) <= 3));
+  const monthCounts = new Map<number, number>();
+  dedupedMarkers.forEach(marker => monthCounts.set(marker.month, (monthCounts.get(marker.month) || 0) + 1));
+  const referenceMonth = [...monthCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || new Date().getMonth() + 1;
+  const base = inferTicketBase(clean) || 'BSB';
+  const crewName = clean.match(/Tripulante\s*:\s*([A-ZÀ-Ú][A-ZÀ-Ú\s.'-]{2,}?)(?=\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun|Apresenta|LA\s*\d|$))/i)?.[1]
+    || clean.match(/Tripulante\s*:\s*([A-ZÀ-Ú][A-ZÀ-Ú\s.'-]{2,})/i)?.[1]
+    || 'Tripulante';
+  const days: RosterDay[] = [];
+
+  dedupedMarkers.forEach((marker, idx) => {
+    const start = findTicketBlockStart(lines, marker.index, idx > 0 ? dedupedMarkers[idx - 1].index : -1);
+    const end = idx < dedupedMarkers.length - 1 ? dedupedMarkers[idx + 1].index : lines.length;
+    const blockText = normalizeTicketText(lines.slice(start, end).join(' '));
+    const ticketMarker: TicketMarker = { page: 1, weekday: marker.weekday, day: marker.day, month: marker.month, year, weekY: marker.index, monthY: marker.index + 3, order: marker.index };
+    parseTicketDayBlock(ticketMarker, blockText, base).forEach(day => {
+      const dayMonth = day.month || marker.month;
+      if (dayMonth === referenceMonth || Math.abs(dayMonth - referenceMonth) <= 1) days.push(day);
+    });
+  });
+
+  return {
+    crewName: cleanCrewName(crewName),
+    crewId: '',
+    base,
+    rank: 'CCM',
+    airline: 'LATAM',
+    month: referenceMonth,
+    year,
+    days: dedupeTicketDays(days),
+    rawText: fullText,
+  };
+}
+
+function findTicketBlockStart(lines: string[], markerIndex: number, previousMarkerIndex: number): number {
+  // No layout ticket, a linha "Apresentação" e até o primeiro par estação/horário
+  // podem aparecer visualmente acima do marcador do dia. Recuamos poucas linhas,
+  // sem invadir o bloco do dia anterior.
+  let start = markerIndex;
+  for (let i = markerIndex - 1; i > previousMarkerIndex; i--) {
+    const line = lines[i] || '';
+    if (/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b/i.test(line)) break;
+    if (/T(?:é|e)rmino\s+da\s+Jornada/i.test(line)) break;
+    if (/Apresenta(?:ção|cao)|\bLA\s*\d{3,4}\b|\b[A-Z]{3}\s+\d{1,2}:\d{2}\b|\b\d{1,2}:\d{2}\b/.test(line)) start = i;
+    if (markerIndex - i >= 6) break;
+  }
+  return start;
+}
+
+
+function parseTicketDateForSort(date: string): number {
+  const [d, m, y] = date.split('/').map(Number);
+  return new Date(y || 1970, (m || 1) - 1, d || 1).getTime();
+}
+
+function dedupeTicketDays(days: RosterDay[]): RosterDay[] {
+  return dedupeTicketDaysPreferBest(days);
+}
+
+function dedupeTicketDaysPreferBest(days: RosterDay[]): RosterDay[] {
+  const output: RosterDay[] = [];
+  const sorted = [...days].sort((a, b) => parseTicketDateForSort(a.date) - parseTicketDateForSort(b.date)
+    || (a.dutyReport ? timeToMinutes(a.dutyReport) : 9999) - (b.dutyReport ? timeToMinutes(b.dutyReport) : 9999)
+    || String(a.pairingCode || '').localeCompare(String(b.pairingCode || '')));
+
+  for (const candidate of sorted) {
+    const idx = output.findIndex(existing => isSameTicketDuty(existing, candidate));
+    if (idx < 0) {
+      output.push(candidate);
+      continue;
+    }
+    if (ticketDayQuality(candidate) > ticketDayQuality(output[idx])) output[idx] = candidate;
+  }
+
+  return output.sort((a, b) => parseTicketDateForSort(a.date) - parseTicketDateForSort(b.date)
+    || (a.dutyReport ? timeToMinutes(a.dutyReport) : 9999) - (b.dutyReport ? timeToMinutes(b.dutyReport) : 9999)
+    || String(a.pairingCode || '').localeCompare(String(b.pairingCode || '')));
+}
+
+function isSameTicketDuty(a: RosterDay, b: RosterDay): boolean {
+  if (a.date !== b.date) return false;
+  if (isTicketFlightDay(a) || isTicketFlightDay(b)) return sameTicketFlightDuty(a, b);
+
+  const codeA = String(a.pairingCode || a.type || '').toUpperCase();
+  const codeB = String(b.pairingCode || b.type || '').toUpperCase();
+  if (codeA !== codeB) return false;
+
+  if (!a.dutyReport && !b.dutyReport && !a.dutyDebrief && !b.dutyDebrief) return true;
+  if (!a.dutyReport || !b.dutyReport) return false;
+
+  const startDiff = Math.abs(timeToMinutes(a.dutyReport) - timeToMinutes(b.dutyReport));
+  const endDiff = a.dutyDebrief && b.dutyDebrief ? Math.abs(timeToMinutes(a.dutyDebrief) - timeToMinutes(b.dutyDebrief)) : 9999;
+  const overlaps = ticketWindowsOverlap(a, b, 5);
+
+  // Same activity extracted twice by two PDF engines, usually one row is
+  // 11:07-11:07 and the other is 11:07-12:25 or 11:08-12:08. Treat as one.
+  return startDiff <= 5 || endDiff <= 5 || overlaps;
+}
+
+function sameTicketFlightDuty(a: RosterDay, b: RosterDay): boolean {
+  const sigA = ticketFlightSignature(a);
+  const sigB = ticketFlightSignature(b);
+  if (sigA && sigB) return sigA === sigB || sigA.includes(sigB) || sigB.includes(sigA);
+  return false;
+}
+
+function ticketFlightSignature(day: RosterDay): string {
+  return (day.legs || []).map(leg => `${leg.flightNumber}-${leg.origin}-${leg.destination}-${leg.departureTime}`).join('|');
+}
+
+function isTicketFlightDay(day: RosterDay): boolean {
+  return day.type === 'VOO' && Array.isArray(day.legs) && day.legs.length > 0;
+}
+
+function ticketWindowsOverlap(a: RosterDay, b: RosterDay, toleranceMinutes = 0): boolean {
+  if (!a.dutyReport || !a.dutyDebrief || !b.dutyReport || !b.dutyDebrief) return false;
+  const aStart = timeToMinutes(a.dutyReport);
+  const aEnd = normalizeTicketEnd(aStart, timeToMinutes(a.dutyDebrief));
+  const bStart = timeToMinutes(b.dutyReport);
+  const bEnd = normalizeTicketEnd(bStart, timeToMinutes(b.dutyDebrief));
+  return aStart <= bEnd + toleranceMinutes && bStart <= aEnd + toleranceMinutes;
+}
+
+function normalizeTicketEnd(start: number, end: number): number {
+  return end < start ? end + 1440 : end;
+}
+
+function ticketDayQuality(day: RosterDay): number {
+  const legs = day.legs?.length || 0;
+  const duration = day.dutyReport && day.dutyDebrief ? Math.max(0, diffHours(day.dutyReport, day.dutyDebrief, Boolean(day.isNextDay)) * 60) : 0;
+  const zeroTimePenalty = day.dutyReport && day.dutyDebrief && day.dutyReport === day.dutyDebrief ? -500 : 0;
+  const nextDayBonus = (day.isNextDay || (day.legs || []).some(leg => leg.isNextDay)) ? 100 : 0;
+  const knownBonus = isKnownRosterCode(day.pairingCode || '') || /^LA\d{3,4}/.test(day.pairingCode || '') ? 10 : 0;
+  return legs * 1000 + duration + nextDayBonus + knownBonus + zeroTimePenalty + String(day.rawText || '').length / 200;
+}
+
+function normalizeTicketToken(value: string): string {
+  return normalizeTicketText(value).toUpperCase();
+}
+
+function normalizeTicketText(value: string): string {
+  return String(value || '')
+    .normalize('NFC')
+    .replace(/[\uE000-\uF8FF]/g, ' ')
+    .replace(/[^\p{L}\p{N}:\/()+_\-.'\s]/gu, ' ')
+    .replace(/\bLA\s+(\d{3,4})\b/gi, 'LA$1')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function parseRosterText(fullText: string): CrewRoster {

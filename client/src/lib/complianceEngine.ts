@@ -1,5 +1,6 @@
 import type { CrewRoster, RosterDay, FlightLeg } from './pdfParser';
 import { getActRulesForProfile, getLegalProfile, type CrewRoleSelection, type LegalProfileSummary } from './actRules';
+import { getRosterCodeDefinition } from './rosterCodes';
 
 export interface ComplianceAlert {
   id: string;
@@ -44,6 +45,9 @@ export interface DayLoadAnalysis {
   loadLabel: 'Leve' | 'Moderado' | 'Puxado' | 'Muito puxado';
   dutyHours: number;
   flightHours: number;
+  dutyStartTime: string | null;
+  dutyEndTime: string | null;
+  isDutyNextDay: boolean;
   sectors: number;
   restBefore: number | null;
   restAfter: number | null;
@@ -53,6 +57,7 @@ export interface DayLoadAnalysis {
   isDayOff: boolean;
   gymScore: number;
   reasons: string[];
+  blockedWindows?: Array<{ startTime: string; endTime: string; isNextDay?: boolean; label: string; source: 'duty' | 'flight' | 'standby' | 'reserve' | 'training' | 'raw' }>;
 }
 
 export interface LoadAnalysis {
@@ -154,6 +159,108 @@ function getLegHours(leg: FlightLeg): number {
   return diffHours(leg.departureTime, leg.arrivalTime, Boolean(leg.isNextDay));
 }
 
+
+function isValidClockTime(value: string | null | undefined): value is string {
+  if (!value) return false;
+  return /^\d{1,2}:\d{2}(?:\(\+1\))?$/.test(value.trim());
+}
+
+function cleanClockTime(value: string | null | undefined): string | null {
+  if (!isValidClockTime(value)) return null;
+  const base = value.trim().replace('(+1)', '');
+  const [h, m] = base.split(':').map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function isWindowNextDay(start: string, end: string, explicitNextDay = false): boolean {
+  const startMin = minutesOfDay(start);
+  const endMin = minutesOfDay(end);
+  if (startMin === null || endMin === null) return explicitNextDay;
+  return Boolean(explicitNextDay || endMin <= startMin);
+}
+
+function windowDurationMinutes(start: string, end: string, explicitNextDay = false): number {
+  const startMin = minutesOfDay(start);
+  const endMin = minutesOfDay(end);
+  if (startMin === null || endMin === null) return 0;
+  let diff = endMin - startMin;
+  if (diff <= 0 || explicitNextDay) diff += 24 * 60;
+  return diff;
+}
+
+type BlockingWindowSource = 'duty' | 'flight' | 'standby' | 'reserve' | 'training' | 'raw';
+
+type BlockingWindow = { startTime: string; endTime: string; isNextDay?: boolean; label: string; source: BlockingWindowSource };
+
+function makeBlockingWindow(start: string | null | undefined, end: string | null | undefined, label: string, source: BlockingWindowSource, explicitNextDay = false): BlockingWindow | null {
+  const cleanStart = cleanClockTime(start);
+  const cleanEnd = cleanClockTime(end);
+  if (!cleanStart || !cleanEnd) return null;
+  const duration = windowDurationMinutes(cleanStart, cleanEnd, explicitNextDay);
+  // Descartar janelas absurdas ou quase zeradas para não contaminar rotina/repouso.
+  if (duration < 15 || duration > 20 * 60) return null;
+  return { startTime: cleanStart, endTime: cleanEnd, isNextDay: isWindowNextDay(cleanStart, cleanEnd, explicitNextDay), label, source };
+}
+
+function pushUniqueWindow(windows: BlockingWindow[], next: BlockingWindow | null) {
+  if (!next) return;
+  const key = `${next.startTime}-${next.endTime}-${next.label}-${next.source}`;
+  if (windows.some((item) => `${item.startTime}-${item.endTime}-${item.label}-${item.source}` === key)) return;
+  windows.push(next);
+}
+
+function getActivityLabelForWindow(day: RosterDay): string {
+  const type = String(day.type || '').toUpperCase();
+  if (type === 'VOO') return 'voo';
+  if (type === 'ASB' || type === 'RES') return 'reserva';
+  if (type === 'HSB' || type === 'HSBE') return 'sobreaviso';
+  if (isTrainingOrGround(day)) return 'treinamento/check';
+  return 'programação';
+}
+
+function getDayBlockingWindows(day: RosterDay): BlockingWindow[] {
+  const windows: BlockingWindow[] = [];
+  const type = String(day.type || '').toUpperCase();
+  const label = getActivityLabelForWindow(day);
+
+  pushUniqueWindow(windows, makeBlockingWindow(day.dutyReport, day.dutyDebrief, label, isStandby(day) ? 'standby' : isReserve(day) ? 'reserve' : isTrainingOrGround(day) ? 'training' : 'duty', day.isNextDay));
+
+  const legs = day.legs || [];
+  if (legs.length) {
+    const firstLeg = legs[0];
+    const lastLeg = legs[legs.length - 1];
+    // Bloqueio mínimo pelo horário real dos voos. Isso impede sugestão de rotina
+    // dentro do voo quando report/debrief vierem ausentes, invertidos ou contaminados
+    // por check/treinamento anterior.
+    pushUniqueWindow(windows, makeBlockingWindow(firstLeg.departureTime, lastLeg.arrivalTime, 'voo', 'flight', Boolean(day.isNextDay || lastLeg.isNextDay)));
+  }
+
+  const raw = `${day.rawText || ''} ${day.pairingCode || ''}`.toUpperCase();
+  const rawTimes = Array.from(raw.matchAll(/\b(\d{1,2}:\d{2})(?:\s*\(\+1\)|\(\+1\))?/g)).map((match) => {
+    const token = match[0].replace(/\s+/g, '');
+    return token.includes('(+1)') ? `${match[1]}(+1)` : match[1];
+  });
+
+  if ((type === 'ASB' || type === 'RES' || type === 'HSB' || type === 'HSBE') && rawTimes.length >= 2) {
+    pushUniqueWindow(windows, makeBlockingWindow(rawTimes[0], rawTimes[1], label, type === 'ASB' || type === 'RES' ? 'reserve' : 'standby', rawTimes[1].includes('(+1)')));
+  }
+
+  if (!windows.length && rawTimes.length >= 2 && !isFormalDayOff(day) && !isLayoverOrInactive(day)) {
+    pushUniqueWindow(windows, makeBlockingWindow(rawTimes[0], rawTimes[rawTimes.length - 1], label, 'raw', rawTimes[rawTimes.length - 1].includes('(+1)')));
+  }
+
+  return windows.sort((a, b) => (minutesOfDay(a.startTime) ?? 0) - (minutesOfDay(b.startTime) ?? 0));
+}
+
+function getPrimaryBlockingWindow(day: RosterDay): BlockingWindow | null {
+  const windows = getDayBlockingWindows(day);
+  if (!windows.length) return null;
+  // Para o painel e rotina, o voo real tem prioridade quando o report/debrief está
+  // ausente ou misturado com check. A janela completa continua em blockedWindows.
+  return windows.find((item) => item.source === 'flight') || windows[0];
+}
+
 function getDutyHours(day: RosterDay): number {
   if (typeof day.dutyHours === 'number') return day.dutyHours;
   if (!day.dutyReport || !day.dutyDebrief) return 0;
@@ -179,7 +286,12 @@ function getEffectiveStandbyHours(day: RosterDay): number {
 }
 
 function isFormalDayOff(day: RosterDay): boolean {
-  return ['DO', 'DOF', 'DR'].includes(day.type);
+  const type = String(day.type || '').toUpperCase();
+  const code = getPrimaryRosterCode(day);
+  const definition = getRosterCodeDefinition(code);
+  // Considera como folga formal qualquer código mapeado na base de siglas como DAY_OFF.
+  // Isso inclui DOP/DOPR (período oposto), VC (férias) e demais folgas publicadas.
+  return ['DO', 'DOF', 'DR'].includes(type) || definition?.category === 'DAY_OFF' || ['DOP', 'DOPR', 'VC', 'FOLGA'].includes(code);
 }
 
 function isRestExtension(day: RosterDay): boolean {
@@ -198,9 +310,17 @@ function isEmptyCalendarDay(day: RosterDay): boolean {
   return day.type === 'OTHER' && !day.dutyReport && !day.dutyDebrief && !(day.legs || []).length && !day.pairingCode;
 }
 
+function getPrimaryRosterCode(day: RosterDay): string {
+  const direct = String(day.pairingCode || '').toUpperCase().trim();
+  if (direct && direct !== '—' && !/^LA\d{3,4}$/.test(direct)) return direct;
+  const type = String(day.type || '').toUpperCase().trim();
+  const raw = String(day.rawText || '').toUpperCase();
+  const mapped = raw.match(/\b(DOPR|DOP|DOF|DOA|DOBI|DOB|DOM|DRC|DR|VC|FOLGA|OFF|NSJ|IJ|NS|DM|[A-Z]{1,4}J)\b/)?.[1];
+  return mapped || type || '';
+}
+
 function getRosterCode(day: RosterDay): string {
-  const source = `${day.pairingCode || ''} ${day.type || ''} ${day.rawText || ''}`.toUpperCase();
-  return source.match(/\b(NSJ|IJ|NS|DM|[A-Z]{1,4}J)\b/)?.[1] || '';
+  return getPrimaryRosterCode(day);
 }
 
 function isNonOperationalAbsence(day: RosterDay): boolean {
@@ -284,10 +404,23 @@ function shouldEvaluateMinimumRest(prev: RosterDay, next: RosterDay): boolean {
   return true;
 }
 
-function requiredRestAfterDuty(dutyHours: number): number {
-  if (dutyHours > 15) return 24;
-  if (dutyHours > 12) return 16;
-  return 12;
+function requiredRestAfterDuty(dutyHours: number, prev?: RosterDay, next?: RosterDay): number {
+  // Regra operacional premium para reduzir falso positivo:
+  // - mínimo legal base: 12h;
+  // - escala publicada normal: usar 13h como referência prática;
+  // - voo de acionamento/extra/alteração de escala: aceitar 12h;
+  // - jornadas muito longas seguem como ponto de atenção reforçado, mas sem criar
+  //   alerta de “pernoite maior que 20h”, pois pernoite maior é descanso, não infração.
+  if (isActivationOrScheduleChange(prev) || isActivationOrScheduleChange(next)) return 12;
+  if (dutyHours > 15) return 16;
+  return 13;
+}
+
+function isActivationOrScheduleChange(day?: RosterDay): boolean {
+  if (!day) return false;
+  const raw = `${day.rawText || ''} ${day.type || ''} ${day.pairingCode || ''}`.toUpperCase();
+  if (/(PS|EXTRA|ACIONAMENTO|ACIONADO|ALTERA[ÇC][AÃ]O|REPROGRAMA[ÇC][AÃ]O|REPROGRAMADO|CHAMADO)/.test(raw)) return true;
+  return Boolean((day.legs || []).some((leg) => /(PS|EXTRA|OP)/i.test(String(leg.workType || ''))));
 }
 
 function calculateWeekendPairs(days: RosterDay[]): number {
@@ -502,11 +635,19 @@ function getDayTimingConfidence(day: RosterDay): TimingConfidence {
   };
 }
 
+
+function isFalsePositiveLayoverMaximumAlert(alert: ComplianceAlert): boolean {
+  const text = `${alert.title} ${alert.description} ${alert.details || ''}`.toLowerCase();
+  return /pernoite|inativo|layover/.test(text) && /(maior|acima|superior|exced)/.test(text) && /20\s*h/.test(text);
+}
+
 function auditAlertConfidence(alerts: ComplianceAlert[], days: RosterDay[]): ComplianceAlert[] {
   const dayByDate = new Map(days.map(day => [day.date, day]));
   const timingCritical = /repouso|jornada|sobreaviso|reserva|madrugada|solo entre etapas|tempo em solo|voo diário|pousos|trechos/i;
 
-  return alerts.map((alert) => {
+  return alerts
+    .filter((alert) => !isFalsePositiveLayoverMaximumAlert(alert))
+    .map((alert) => {
     const day = alert.date ? dayByDate.get(alert.date) : null;
     const defaultConfidence: ComplianceAlert['confidence'] = alert.severity === 'error' ? 'alta' : 'media';
     let confidence = alert.confidence || defaultConfidence;
@@ -638,7 +779,7 @@ export function analyzeCompliance(roster: CrewRoster, roleSelection: CrewRoleSel
           severity: 'warning',
           title: 'Mais de 6 atividades consecutivas sem folga formal — revisar',
           description: `${day.date}: identificados ${consecutiveWorkPeriods} períodos consecutivos de atividade sem folga periódica.`,
-          details: 'O sistema agora conta apenas atividades efetivas; OFF e inativo/pernoite interrompem a sequência operacional, mas não entram como folga formal mensal.',
+          details: 'O sistema agora conta apenas atividades efetivas; DOP/DOPR/DO/DR/DOF/VC contam como folga formal; OFF e inativo/pernoite interrompem a sequência operacional, mas não entram como folga formal mensal.',
           legalReference: 'RBAC 117, Apêndice A, A117.25(a)',
           date: day.date,
         });
@@ -770,7 +911,7 @@ export function analyzeCompliance(roster: CrewRoster, roleSelection: CrewRoleSel
         if (rest !== null) {
           restTotal += rest;
           restCount += 1;
-          const required = requiredRestAfterDuty(getDutyHours(previousWorkedDay));
+          const required = requiredRestAfterDuty(getDutyHours(previousWorkedDay), previousWorkedDay, day);
           if (rest < required) {
             pushAlert(alerts, {
               severity: 'error',
@@ -780,7 +921,7 @@ export function analyzeCompliance(roster: CrewRoster, roleSelection: CrewRoleSel
               legalReference: 'RBAC 117, Apêndice A, A117.23(b)',
               date: day.date,
             });
-          } else if (rest < required + 2) {
+          } else if (rest < required + 1) {
             pushAlert(alerts, {
               severity: 'warning',
               title: 'Repouso entre jornadas muito justo',
@@ -792,7 +933,7 @@ export function analyzeCompliance(roster: CrewRoster, roleSelection: CrewRoleSel
 
           const previousDuty = getDutyHours(previousWorkedDay);
           const actAdditionalRequired = required + actRules.rest.additionalRestHours;
-          if (previousDuty > actRules.rest.additionalAfterSimpleDutyOverHours && rest < actAdditionalRequired) {
+          if (!isActivationOrScheduleChange(previousWorkedDay) && !isActivationOrScheduleChange(day) && previousDuty > actRules.rest.additionalAfterSimpleDutyOverHours && rest < actAdditionalRequired) {
             pushAlert(alerts, {
               severity: 'warning',
               title: 'Repouso adicional do ACT após jornada acima de 10h pode não ter sido observado',
@@ -963,7 +1104,7 @@ export function analyzeDayLoads(roster: CrewRoster): LoadAnalysis {
     let score = 0;
     if (isFormalDayOff(day)) {
       score = 4;
-      reasons.push('folga formal publicada (DO/DR/DOF)');
+      reasons.push('folga formal publicada (DO/DR/DOF/DOP/VC e equivalentes)');
     } else if (isRestExtension(day)) {
       score = 6;
       reasons.push('OFF: extensão de descanso/repouso');
@@ -974,39 +1115,46 @@ export function analyzeDayLoads(roster: CrewRoster): LoadAnalysis {
       score = 12;
       reasons.push('dia sem programação lida no PDF; conferir escala oficial antes de usar como folga');
     } else if (isReserve(day) || isStandby(day)) {
-      score += 24;
+      score += 18;
       reasons.push('reserva/sobreaviso exige disponibilidade');
     } else if (isTrainingOrGround(day)) {
-      score += 26;
+      score += 16;
       reasons.push('atividade de solo/treinamento');
     }
 
     if (day.type === 'VOO') {
-      score += 18;
+      score += 14;
       reasons.push('atividade de voo');
     }
     if (dutyHours > 0) {
-      score += dutyHours * 4.2;
+      score += dutyHours * 3.0;
       reasons.push(`${dutyHours.toFixed(1)}h de jornada`);
     }
     if (flightHours > 0) {
-      score += flightHours * 2.5;
+      score += flightHours * 1.8;
       reasons.push(`${flightHours.toFixed(1)}h de voo`);
     }
     if (sectors > 0) {
-      score += sectors * 4.5;
-      reasons.push(`${sectors} trecho(s)`);
+      score += sectors <= 2 ? sectors * 2.5 : 5 + (sectors - 2) * 7.5;
+      reasons.push(`${sectors} perna(s)`);
+      if (sectors > 3) reasons.push('mais de 3 pernas no dia aumenta a puxada');
     }
     if (night) {
-      score += 18;
-      reasons.push('operação noturna/madrugada');
+      score += sectors <= 2 ? 6 : 12;
+      reasons.push(sectors <= 2 ? 'madrugada operacional normal' : 'madrugada com múltiplas pernas');
     }
+    const longGroundIntervals = day.legs?.length > 1 ? getGroundIntervals(day).filter((interval) => interval.minutes >= 150) : [];
+    if (longGroundIntervals.length) {
+      score += Math.min(18, longGroundIntervals.reduce((sum, interval) => sum + Math.max(0, interval.minutes - 120) / 30, 0));
+      reasons.push(`tempo em solo elevado (${longGroundIntervals.length} intervalo(s))`);
+    }
+
     if (early) {
-      score += 12;
+      score += sectors <= 2 ? 6 : 10;
       reasons.push('apresentação muito cedo');
     }
     if (late) {
-      score += 12;
+      score += sectors <= 2 ? 6 : 10;
       reasons.push('término tarde ou no dia seguinte');
     }
     if (restBefore !== null) {
@@ -1038,6 +1186,9 @@ export function analyzeDayLoads(roster: CrewRoster): LoadAnalysis {
       loadLabel: loadLabel(score),
       dutyHours: round1(dutyHours),
       flightHours: round1(flightHours),
+      dutyStartTime: getPrimaryBlockingWindow(day)?.startTime || day.dutyReport || null,
+      dutyEndTime: getPrimaryBlockingWindow(day)?.endTime || day.dutyDebrief || null,
+      isDutyNextDay: Boolean(getPrimaryBlockingWindow(day)?.isNextDay || day.isNextDay),
       sectors,
       restBefore,
       restAfter,
@@ -1047,12 +1198,13 @@ export function analyzeDayLoads(roster: CrewRoster): LoadAnalysis {
       isDayOff: off,
       gymScore,
       reasons: reasons.length ? reasons.slice(0, 5) : ['sem atividade relevante identificada'],
+      blockedWindows: getDayBlockingWindows(day),
     };
   });
 
   const workedDays = days.filter(day => !day.isDayOff || day.fatigueScore > 10);
   const averageScore = workedDays.length ? workedDays.reduce((sum, day) => sum + day.fatigueScore, 0) / workedDays.length : 0;
-  const hardBonus = days.filter(day => day.fatigueScore >= 70).length * 3;
+  const hardBonus = days.filter(day => day.fatigueScore >= 78).length * 2;
   const intensityScore = clamp(Math.round(averageScore + hardBonus), 0, 100);
   const recoveryScore = clamp(100 - intensityScore, 0, 100);
   const hardestDays = [...days].sort((a, b) => b.fatigueScore - a.fatigueScore).slice(0, 6);
@@ -1316,7 +1468,7 @@ function makeLoadSummary(score: number, hardestDays: DayLoadAnalysis[]): string 
   const main = scaleGrade(score).toLowerCase();
   const top = hardestDays[0];
   if (!top) return `Escala ${main}, sem dias críticos identificados.`;
-  return `Escala ${main}. Dia mais cansativo: ${top.date} (${top.label}), nota ${top.fatigueScore}/100.`;
+  return `Escala ${main}. A classificação de puxada considera principalmente sequência, mais de 3 pernas, tempo em solo e repouso; duas pernas na madrugada são tratadas como rotina operacional normal. Dia de maior carga: ${top.date} (${top.label}), nota ${top.fatigueScore}/100.`;
 }
 
 function addHours(time: string, hours: number): string {

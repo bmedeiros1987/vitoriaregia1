@@ -34,7 +34,11 @@ function stableStringify(value: unknown): string {
 }
 
 export async function checksumRoster(payload: unknown): Promise<string> {
-  const text = stableStringify(payload);
+  const roster = (payload as any)?.roster;
+  const periodKey = roster?.year && roster?.month
+    ? `period:${roster?.crewId || roster?.crewName || 'crew'}:${roster.year}-${String(roster.month).padStart(2, '0')}`
+    : '';
+  const text = periodKey || stableStringify(payload);
   if (crypto?.subtle) {
     const encoded = new TextEncoder().encode(text);
     const digest = await crypto.subtle.digest('SHA-256', encoded);

@@ -1,13 +1,13 @@
 {
-  "name": "CrewCheck Premium",
+  "name": "CrewCheck Premium Total",
   "short_name": "CrewCheck",
-  "description": "Análise premium de escala de tripulantes com login, offline-first, MySQL/Aiven, calendário e academia.",
+  "description": "CrewCheck Premium — escala, iFlight, calendário, perfil e temas claro/escuro.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#06101d",
+  "background_color": "#f4f7fb",
   "theme_color": "#092846",
-  "orientation": "portrait-primary",
+  "orientation": "any",
   "lang": "pt-BR",
   "categories": [
     "productivity",
@@ -24,5 +24,5 @@
   ],
   "screenshots": [],
   "prefer_related_applications": false,
-  "version": "10.4.12"
+  "version": "10.8.4"
 }

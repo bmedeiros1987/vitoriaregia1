@@ -30,6 +30,7 @@ export default function AuthPage() {
   });
 
   const update = (key: keyof typeof form, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
+  const isLatamCorporateEmail = form.email.trim().toLowerCase().endsWith('@latam.com');
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -42,6 +43,9 @@ export default function AuthPage() {
         return;
       }
       if (mode === 'register') {
+        if (isLatamCorporateEmail) {
+          throw new Error('Use um e-mail pessoal para criar sua conta CrewCheck. O e-mail corporativo @latam.com deve ser usado somente dentro do portal iFlight.');
+        }
         await register({
           email: form.email,
           password: form.password,
@@ -63,7 +67,7 @@ export default function AuthPage() {
 
   const title = mode === 'register' ? 'Comece com segurança.' : mode === 'reset' ? 'Recupere o acesso.' : 'Bem-vindo de volta.';
   const description = mode === 'register'
-    ? 'Informe apenas e-mail, senha e confirmação. BP, base e função serão preenchidos automaticamente após carregar a escala.'
+    ? 'Informe um e-mail pessoal, senha e confirmação. O e-mail corporativo @latam.com fica reservado somente para o login do iFlight.'
     : mode === 'reset'
       ? 'Informe seu e-mail cadastrado. Enviaremos uma senha provisória profissional e temporária para recuperar o acesso.'
       : 'Entre para carregar nova escala, consultar histórico e sincronizar pendências.';
@@ -124,9 +128,15 @@ export default function AuthPage() {
               </div>
 
               <form onSubmit={submit} className="space-y-3">
-                <Field icon={Mail} label="E-mail">
-                  <input required type="email" value={form.email} onChange={(e) => update('email', e.target.value)} className="field-input" placeholder="tripulante@exemplo.com" />
+                <Field icon={Mail} label={mode === 'register' ? 'E-mail pessoal do CrewCheck' : 'E-mail cadastrado no CrewCheck'}>
+                  <input required type="email" value={form.email} onChange={(e) => update('email', e.target.value)} className={`field-input ${mode === 'register' && isLatamCorporateEmail ? 'ring-2 ring-rose-300/60' : ''}`} placeholder={mode === 'register' ? 'seu.email.pessoal@exemplo.com' : 'seu.email@exemplo.com'} />
                 </Field>
+
+                {mode === 'register' && (
+                  <div className={`rounded-2xl border px-4 py-3 text-xs leading-5 ${isLatamCorporateEmail ? 'border-rose-300/30 bg-rose-500/10 text-rose-50' : 'border-cyan-300/15 bg-cyan-300/10 text-cyan-50/85'}`}>
+                    <strong>Importante:</strong> o e-mail corporativo <strong>@latam.com</strong> não pode ser usado no cadastro do CrewCheck. Ele deve ser digitado apenas no portal oficial iFlight, quando você tocar em Importar do iFlight.
+                  </div>
+                )}
 
                 {mode !== 'reset' && (
                   <Field icon={Lock} label="Senha">
@@ -157,7 +167,11 @@ export default function AuthPage() {
                 <div className="mt-3 flex flex-wrap gap-3 font-black">
                   <a href="/privacy" className="text-cyan-100 underline decoration-cyan-100/40 underline-offset-4 hover:text-white">Política de Privacidade</a>
                   <a href="/terms" className="text-cyan-100 underline decoration-cyan-100/40 underline-offset-4 hover:text-white">Termos de Uso</a>
+                  <a href="/delete-account" className="text-cyan-100 underline decoration-cyan-100/40 underline-offset-4 hover:text-white">Excluir conta/dados</a>
                 </div>
+              </div>
+              <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-3 text-center text-[11px] font-black uppercase tracking-[0.18em] text-cyan-100/70">
+                Premium · LGPD · offline-first
               </div>
             </div>
           </div>

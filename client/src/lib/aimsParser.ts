@@ -420,7 +420,7 @@ function parseDayContent(content: string, homeBase: string): ParsedDay {
       return parseStandby(afterEllipsis.slice(hsbIdx), hsbType);
     }
 
-    const doIdx = afterEllipsis.findIndex(l => l === 'DO' || l === 'DOF' || l === 'DR' || l === 'OFF');
+    const doIdx = afterEllipsis.findIndex(l => l === 'DOPR' || l === 'DOP' || l === 'VC' || l === 'DOPR' || l === 'DOP' || l === 'VC' || l === 'DO' || l === 'DOF' || l === 'DR' || l === 'OFF');
     if (doIdx >= 0) {
       const typeStr = afterEllipsis[doIdx] as RosterDay['type'];
       return { type: typeStr, pairingCode: '', dutyReport: null, dutyDebrief: null, legs: [], dutyHours: 0, flyingHours: 0, isNextDay: false, hotel: null };
@@ -467,7 +467,7 @@ function parseDayContent(content: string, homeBase: string): ParsedDay {
   
   // Check if it's a DO/DOF that was preceded by (...) 
   // Pattern: (...) \n STATION \n time \n time \n DO/DOF
-  const doIdx = remaining.findIndex(l => l === 'DO' || l === 'DOF' || l === 'DR');
+  const doIdx = remaining.findIndex(l => l === 'DOPR' || l === 'DOP' || l === 'VC' || l === 'DO' || l === 'DOF' || l === 'DR');
   if (doIdx > 0) {
     const typeStr = remaining[doIdx] as RosterDay['type'];
     return { type: typeStr, pairingCode: '', dutyReport: null, dutyDebrief: null, legs: [], dutyHours: 0, flyingHours: 0, isNextDay: false, hotel: null };
@@ -495,6 +495,8 @@ function parseGroundActivity(lines: string[], code: string): ParsedDay {
   // confundidos com atividades de solo. Mantemos o código para tradução direta.
   if (def?.category === 'DAY_OFF') {
     const type = canonicalCode === 'DR' ? 'DR' : canonicalCode === 'DOF' ? 'DOF' : canonicalCode === 'OFF' ? 'OFF' : 'DO';
+    // DOP/DOPR/VC e outras folgas ficam como tipo DO para cálculos,
+    // mas mantêm pairingCode original para exibir/traduzir corretamente.
     return { type, pairingCode: canonicalCode, dutyReport: null, dutyDebrief: null, legs: [], dutyHours: 0, flyingHours: 0, isNextDay: false, hotel: null };
   }
 

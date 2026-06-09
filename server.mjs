@@ -172,6 +172,7 @@ const mimeTypes = new Map([
   ['.map', 'application/json; charset=utf-8'],
   ['.txt', 'text/plain; charset=utf-8'],
   ['.pdf', 'application/pdf'],
+  ['.ics', 'text/calendar; charset=utf-8'],
 ]);
 
 function safeJoin(root, requestedPath) {
@@ -307,6 +308,22 @@ async function ensureSchema() {
             key crewcheck_audit_action_idx (action)
           ) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
         `);
+
+        await db.query(`
+          create table if not exists crewcheck_calendar_feeds (
+            id char(36) primary key,
+            created_at timestamp not null default current_timestamp,
+            updated_at timestamp not null default current_timestamp on update current_timestamp,
+            user_id char(36),
+            token varchar(128) not null unique,
+            ics_content mediumtext,
+            period_label varchar(64),
+            mode varchar(32),
+            events_count int not null default 0,
+            key crewcheck_calendar_feeds_user_idx (user_id),
+            key crewcheck_calendar_feeds_token_idx (token)
+          ) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
+        `);
         return;
       }
 
@@ -409,6 +426,27 @@ async function ensureSchema() {
       await db.query(`alter table crewcheck_audit_logs add column if not exists user_id uuid references crewcheck_users(id) on delete set null;`);
       await db.query(`alter table crewcheck_audit_logs add column if not exists entity_id uuid;`);
       await db.query(`alter table crewcheck_audit_logs add column if not exists metadata jsonb not null default '{}'::jsonb;`);
+
+      await db.query(`
+        create table if not exists crewcheck_calendar_feeds (
+          id uuid primary key,
+          created_at timestamptz not null default now(),
+          updated_at timestamptz not null default now(),
+          user_id uuid references crewcheck_users(id) on delete cascade,
+          token text not null unique,
+          ics_content text,
+          period_label text,
+          mode text,
+          events_count integer not null default 0
+        );
+      `);
+      await db.query(`alter table crewcheck_calendar_feeds add column if not exists updated_at timestamptz not null default now();`);
+      await db.query(`alter table crewcheck_calendar_feeds add column if not exists ics_content text;`);
+      await db.query(`alter table crewcheck_calendar_feeds add column if not exists period_label text;`);
+      await db.query(`alter table crewcheck_calendar_feeds add column if not exists mode text;`);
+      await db.query(`alter table crewcheck_calendar_feeds add column if not exists events_count integer not null default 0;`);
+      await db.query(`create index if not exists crewcheck_calendar_feeds_user_idx on crewcheck_calendar_feeds (user_id);`).catch(() => null);
+      await db.query(`create index if not exists crewcheck_calendar_feeds_token_idx on crewcheck_calendar_feeds (token);`).catch(() => null);
     })().catch((error) => {
       schemaPromise = null;
       throw error;
@@ -513,7 +551,7 @@ function cleanRosterLineV3(line) {
 }
 
 function isRosterContinuationV3(line) {
-  return /\b(LA\s?\d{3,4}|DOF?|DR|OFF|HSBE?|ASB|CBF|EMER|MT|CRM|C\d{2,3}F|NSJ?|IJ|DM|[A-Z]{3}\s+\d{1,2}:\d{2}|\d{1,2}:\d{2}\(\+1\))\b/i.test(line);
+  return /\b(LA\s?\d{3,4}|DOPR|DOP|DOF?|DR|OFF|VC|HSBE?|ASB|CBF|EMER|MT|CRM|C\d{2,3}F|NSJ?|IJ|DM|[A-Z]{3}\s+\d{1,2}:\d{2}|\d{1,2}:\d{2}\(\+1\))\b/i.test(line);
 }
 
 function parseCrewRosterBlockV3(dayNumber, month, year, base, blockText) {
@@ -522,7 +560,7 @@ function parseCrewRosterBlockV3(dayNumber, month, year, base, blockText) {
   const events = [];
   const hasFlight = /\bLA\s?\d{3,4}\b/i.test(raw);
   const activityCodes = [...upper.matchAll(/\b(HSBE|HSB|ASB|CBF|EMER|C\d{2,3}F|MT|CRM|NSJ|NS|IJ|DM)\b/g)].map((m) => m[1]);
-  const restMatch = upper.match(/\b(DOF|DO|DR|OFF)\b/);
+  const restMatch = upper.match(/\b(DOPR|DOP|DOF|DO|DR|OFF|VC)\b/);
 
   // Operational activities always win over rest markers in the same visual column/block.
   // This prevents ASB after an ellipsis/rest artifact from being converted to inativo/folga.
@@ -717,7 +755,7 @@ function parseAimsTokensIntoEventsV3(tokens, dayNum, month, year, base) {
     events.push(flightDay);
   }
   if (!events.length) {
-    const rest = joined.match(/\b(DOF|DO|DR|OFF)\b/);
+    const rest = joined.match(/\b(DOPR|DOP|DOF|DO|DR|OFF|VC)\b/);
     if (rest) {
       const day = makeDay(dayNum, month, year, base);
       day.rawText = normalized.join(' ');
@@ -866,7 +904,11 @@ async function readJsonBody(req, maxBytes = 16 * 1024 * 1024) {
 }
 
 function checksumPayload(payload) {
-  return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+  const roster = payload?.roster;
+  const periodKey = roster?.year && roster?.month
+    ? `period:${roster?.crewId || roster?.crewName || 'crew'}:${roster.year}-${String(roster.month).padStart(2, '0')}`
+    : null;
+  return crypto.createHash('sha256').update(periodKey || JSON.stringify(payload)).digest('hex');
 }
 
 function tokenHash(token) {
@@ -875,6 +917,16 @@ function tokenHash(token) {
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
+}
+
+function isLatamCorporateEmail(email) {
+  return normalizeEmail(email).endsWith('@latam.com');
+}
+
+const C32F_ADMIN_EMAIL = 'bmedeiros1987@gmail.com';
+
+function isC32FAdminEmail(email) {
+  return normalizeEmail(email) === C32F_ADMIN_EMAIL;
 }
 
 function newId() {
@@ -1033,9 +1085,24 @@ function safePeriodLabel(row) {
   return `${String(month).padStart(2, '0')}/${year}`;
 }
 
+
+function dedupeRosterRowsByPeriod(rows) {
+  const seen = new Set();
+  const result = [];
+  for (const row of rows || []) {
+    const roster = row.roster_json || {};
+    const key = `${roster.crewId || row.crew_id || row.crew_name || 'crew'}:${row.period_year || roster.year || '0000'}:${row.period_month || roster.month || '00'}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(row);
+  }
+  return result;
+}
+
 function buildStatsFromRosterRows(rows, mode = 'personal') {
   const normalized = (rows || []).map((row) => ({
     id: row.id,
+    createdAt: row.created_at || null,
     period: safePeriodLabel(row),
     year: row.period_year || null,
     month: row.period_month || null,
@@ -1048,7 +1115,11 @@ function buildStatsFromRosterRows(rows, mode = 'personal') {
     criticalAlertsCount: Number(row.critical_alerts_count ?? 0),
   }));
 
-  const periods = normalized.map((item) => {
+  const byPeriod = new Map();
+  for (const item of normalized) byPeriod.set(`${item.year || '0000'}:${item.month || '00'}:${item.roster?.crewId || item.roster?.crewName || 'crew'}`, item);
+  const uniqueNormalized = Array.from(byPeriod.values());
+
+  const periods = uniqueNormalized.map((item) => {
     const roster = item.roster;
     const compliance = item.compliance;
     const gym = item.gym;
@@ -1059,7 +1130,7 @@ function buildStatsFromRosterRows(rows, mode = 'personal') {
       month: item.month,
       daysAnalyzed: Array.isArray(roster.days) ? roster.days.length : 0,
       flightSegments: countFlightSegments(roster),
-      daysOff: countRosterDays(roster, (day) => ['DO', 'DR', 'DOF'].includes(day?.type)),
+      daysOff: countRosterDays(roster, (day) => ['DO', 'DR', 'DOF'].includes(day?.type) || ['DOP','DOPR','VC','FOLGA'].includes(String(day?.pairingCode || '').toUpperCase())),
       layovers: countRosterDays(roster, (day) => day?.type === 'LAYOVER'),
       standby: countRosterDays(roster, (day) => ['HSB', 'HSBE'].includes(day?.type)),
       reserve: countRosterDays(roster, (day) => day?.type === 'ASB'),
@@ -1236,6 +1307,382 @@ function buildPasswordResetEmail({ email, temporaryPassword }) {
   return { subject, text, html };
 }
 
+
+const IFLIGHT_MAIN_URL = 'https://iflightla.ibsplc.aero/iflight-cwp/web/getMainPage';
+
+async function importIFlightRoster({ username, password, periodMonth, periodYear, mfaCode = '', challengeSessionId = '', step = 'start' }) {
+  const connectorUrl = String(process.env.IFLIGHT_CONNECTOR_URL || '').trim();
+  const connectorToken = String(process.env.IFLIGHT_CONNECTOR_TOKEN || '').trim();
+
+  if (connectorUrl) {
+    const response = await fetch(connectorUrl, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(connectorToken ? { authorization: `Bearer ${connectorToken}` } : {}),
+      },
+      body: JSON.stringify({
+        username,
+        password,
+        periodMonth,
+        periodYear,
+        mfaCode,
+        challengeSessionId,
+        step,
+        source: 'crewcheck',
+        mfaMode: 'manual_user_supplied',
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload?.ok === false) {
+      const err = new Error(payload?.message || payload?.detail || `Conector iFlight retornou HTTP ${response.status}.`);
+      err.statusCode = response.status || 502;
+      err.code = payload?.code || 'IFLIGHT_CONNECTOR_ERROR';
+      throw err;
+    }
+    if (payload?.requiresMfa || payload?.status === 'mfa_required' || payload?.challengeRequired) {
+      return {
+        requiresMfa: true,
+        challengeSessionId: payload.challengeSessionId || payload.sessionId || payload.challengeId || challengeSessionId || '',
+        challengeLabel: payload.challengeLabel || payload.factor || payload.method || 'MFA corporativo',
+        message: payload.message || 'O portal solicitou MFA. Informe manualmente o código recebido para continuar.',
+      };
+    }
+    if (payload.roster) {
+      return { roster: payload.roster, sourceFileName: payload.sourceFileName || `iFlight_${periodYear}_${periodMonth}.pdf`, diagnostics: payload.diagnostics || null };
+    }
+    if (payload.dataBase64) {
+      const parsed = await parsePdfOnServer({ filename: payload.filename || `iFlight_${periodYear}_${periodMonth}.pdf`, dataBase64: payload.dataBase64 });
+      return { ...parsed, sourceFileName: payload.filename || `iFlight_${periodYear}_${periodMonth}.pdf` };
+    }
+    const err = new Error('O conector iFlight respondeu sem roster, sem PDF base64 e sem solicitação de MFA.');
+    err.statusCode = 502;
+    err.code = 'IFLIGHT_EMPTY_CONNECTOR_RESPONSE';
+    throw err;
+  }
+
+  let redirectLocation = '';
+  try {
+    const probe = await fetch(IFLIGHT_MAIN_URL, {
+      method: 'GET',
+      redirect: 'manual',
+      headers: {
+        'user-agent': 'CrewCheck/10.5.7 (+https://crewcheck.online)',
+        accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      },
+    });
+    redirectLocation = probe.headers.get('location') || '';
+    if (probe.status >= 300 && probe.status < 400 && redirectLocation) {
+      const err = new Error(/accounts\.google\.com|saml|login|auth/i.test(redirectLocation)
+        ? 'O iFlight usa autenticação corporativa externa. O CrewCheck já aceita usuário, senha e MFA manual, mas para baixar direto é necessário um conector corporativo autorizado que mantenha a sessão e devolva o desafio MFA ao app. Até configurar IFLIGHT_CONNECTOR_URL, use a importação por PDF.'
+        : `O iFlight redirecionou para autenticação externa (${new URL(redirectLocation, IFLIGHT_MAIN_URL).hostname}). Configure um conector corporativo autorizado ou use o PDF.`);
+      err.statusCode = 501;
+      err.code = 'IFLIGHT_CONNECTOR_REQUIRED_FOR_MFA';
+      throw err;
+    }
+  } catch (error) {
+    if (error?.statusCode) throw error;
+    const err = new Error(`Não foi possível verificar o portal iFlight agora. Detalhe: ${error?.message || String(error)}. Use a importação PDF ou configure IFLIGHT_CONNECTOR_URL.`);
+    err.statusCode = 502;
+    err.code = 'IFLIGHT_PORTAL_UNREACHABLE';
+    throw err;
+  }
+
+  const err = new Error('O fluxo com usuário, senha e MFA manual está pronto, mas o download direto depende de conector/API corporativa autorizada em IFLIGHT_CONNECTOR_URL. Sem isso, use a importação PDF.');
+  err.statusCode = 501;
+  err.code = 'IFLIGHT_CONNECTOR_REQUIRED';
+  throw err;
+}
+
+
+function externalBaseUrl(req) {
+  const proto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() || (req.socket.encrypted ? 'https' : 'https');
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+  return `${proto}://${host}`.replace(/\/$/, '');
+}
+
+function emptyCalendarFeed() {
+  return [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//CrewCheck//Automatic Calendar Feed//PT-BR',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'X-WR-CALNAME:CrewCheck · Escala',
+    'X-WR-CALDESC:Importe uma escala no CrewCheck para atualizar esta assinatura.',
+    'END:VCALENDAR',
+    '',
+  ].join('\r\n');
+}
+
+function calendarFeedUrl(req, token) {
+  return `${externalBaseUrl(req)}/calendar-feed/${encodeURIComponent(token)}.ics`;
+}
+
+async function ensureCalendarFeedForUser(db, user) {
+  await ensureSchema();
+  const userId = user.id || null;
+  if (!userId) throw new Error('Usuário sem sessão para criar assinatura de calendário.');
+  const existing = await db.query('select * from crewcheck_calendar_feeds where user_id = $1 limit 1', [userId]);
+  if (existing.rowCount) return existing.rows[0];
+  const row = {
+    id: newId(),
+    token: crypto.randomBytes(32).toString('base64url'),
+  };
+  await db.query(
+    'insert into crewcheck_calendar_feeds (id, user_id, token, ics_content, period_label, mode, events_count) values ($1,$2,$3,$4,$5,$6,$7)',
+    [row.id, userId, row.token, emptyCalendarFeed(), null, 'all', 0],
+  );
+  const created = await db.query('select * from crewcheck_calendar_feeds where id = $1 limit 1', [row.id]);
+  return created.rows[0];
+}
+
+const BSB_AERO_FLIGHTS_URL = 'https://www.bsb.aero/passageiros/voos-online';
+const BSB_AERO_CACHE_TTL_MS = Number(process.env.BSB_AERO_CACHE_TTL_MS || 90_000);
+const bsbAeroFlightCache = new Map();
+
+function normalizeFlightToken(value) {
+  return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function splitFlightTokens(value) {
+  return String(value || '')
+    .toUpperCase()
+    .split(/[^A-Z0-9]+/)
+    .map(normalizeFlightToken)
+    .filter((token) => /^[A-Z]{1,4}\d{2,5}$/.test(token));
+}
+
+function flightNumberVariants(value) {
+  const token = normalizeFlightToken(value);
+  const match = token.match(/^([A-Z]{1,4})(\d{2,5})$/);
+  if (!match) return token ? [token] : [];
+  const [, prefix, number] = match;
+  const aliases = {
+    LA: ['LA', 'TAM', 'JJ'],
+    JJ: ['JJ', 'LA', 'TAM'],
+    TAM: ['TAM', 'LA', 'JJ'],
+    G3: ['G3', 'GLO'],
+    GLO: ['GLO', 'G3'],
+    AD: ['AD', 'AZU'],
+    AZU: ['AZU', 'AD'],
+    TP: ['TP', 'TAP'],
+    TAP: ['TAP', 'TP'],
+    CM: ['CM', 'CMP'],
+    CMP: ['CMP', 'CM'],
+    AR: ['AR', 'ARG'],
+    ARG: ['ARG', 'AR'],
+  };
+  return Array.from(new Set([...(aliases[prefix] || [prefix]), prefix].map((item) => `${item}${number}`)));
+}
+
+function buildFlightCandidates({ flightNumber, codes }) {
+  const tokens = [normalizeFlightToken(flightNumber), ...splitFlightTokens(codes)];
+  return Array.from(new Set(tokens.flatMap(flightNumberVariants).filter(Boolean)));
+}
+
+function htmlToSearchText(html) {
+  return String(html || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&#0*39;/g, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function flightTokenRegex(token) {
+  const normalized = normalizeFlightToken(token);
+  const match = normalized.match(/^([A-Z]{1,4})(\d{2,5})$/);
+  if (!match) return new RegExp(escapeRegExp(normalized), 'i');
+  const [, prefix, number] = match;
+  return new RegExp(`\\b${escapeRegExp(prefix)}\\s*${escapeRegExp(number)}\\b`, 'i');
+}
+
+function extractSegmentForCandidates(text, candidates) {
+  for (const token of candidates) {
+    const regex = flightTokenRegex(token);
+    const match = regex.exec(text);
+    if (match) {
+      const start = Math.max(0, match.index - 320);
+      const end = Math.min(text.length, match.index + 640);
+      return { token, segment: text.slice(start, end) };
+    }
+  }
+  return null;
+}
+
+function parseBsbStatusSegment(segment) {
+  const sourceText = String(segment || '');
+  const statusWords = [
+    'Embarque encerrado',
+    'Última chamada',
+    'Ultima chamada',
+    'Embarcando',
+    'Atrasado',
+    'Cancelado',
+    'Confirmado',
+    'Previsto',
+    'Programado',
+    'No horário',
+    'No horario',
+    'Decolado',
+    'Pousou',
+    'Pousado',
+    'Chegou',
+    'Partiu',
+    'Finalizado',
+  ];
+  const status = statusWords.find((word) => new RegExp(`\\b${escapeRegExp(word)}\\b`, 'i').test(sourceText)) || null;
+  const gateMatch = sourceText.match(/(?:port[aã]o|gate)\s*[:\-]?\s*([A-Z]?\d{1,3}[A-Z]?)/i) || sourceText.match(/\bP(?:T|ORT)?\s*([A-Z]?\d{1,3}[A-Z]?)\b/i);
+  const terminalMatch = sourceText.match(/(?:terminal|term\.?|t)\s*[:\-]?\s*([A-Z0-9]{1,4})\b/i);
+  const scheduledMatch = sourceText.match(/(?:previsto|programado)\s*[:\-]?\s*([0-2]?\d:[0-5]\d)/i);
+  const confirmedMatch = sourceText.match(/(?:confirmado|realizado)\s*[:\-]?\s*([0-2]?\d:[0-5]\d)/i);
+  return {
+    status: status ? normalizeBsbStatus(status) : null,
+    gate: gateMatch?.[1] ? gateMatch[1].toUpperCase() : null,
+    terminal: terminalMatch?.[1] ? terminalMatch[1].toUpperCase() : null,
+    scheduledTime: scheduledMatch?.[1] || null,
+    confirmedTime: confirmedMatch?.[1] || null,
+  };
+}
+
+function normalizeBsbStatus(value) {
+  const text = String(value || '').trim();
+  const lower = text.toLowerCase();
+  if (lower.includes('atras')) return 'Atrasado';
+  if (lower.includes('cancel')) return 'Cancelado';
+  if (lower.includes('embar')) return text.includes('encerrado') ? 'Embarque encerrado' : 'Embarcando';
+  if (lower.includes('última') || lower.includes('ultima')) return 'Última chamada';
+  if (lower.includes('decol')) return 'Decolado';
+  if (lower.includes('pous') || lower.includes('cheg')) return 'Pousou';
+  if (lower.includes('confirm')) return 'Confirmado';
+  if (lower.includes('hor')) return 'No horário';
+  return text || 'Programado';
+}
+
+function shouldUseBsbAero({ origin, destination, route, airport }) {
+  const values = [origin, destination, route, airport].map((value) => String(value || '').toUpperCase());
+  return values.some((value) => /(^|[^A-Z])BSB([^A-Z]|$)/.test(value));
+}
+
+async function fetchBsbAeroFlightStatus(params) {
+  const flightNumber = normalizeFlightToken(params.flightNumber);
+  const candidates = buildFlightCandidates(params);
+  const date = String(params.date || '').slice(0, 10);
+  const cacheKey = `${date}|${candidates.join(',') || flightNumber}|${params.origin || ''}|${params.destination || ''}`;
+  const cached = bsbAeroFlightCache.get(cacheKey);
+  if (cached && Date.now() - cached.time < BSB_AERO_CACHE_TTL_MS) return cached.value;
+
+  const resultBase = {
+    flightNumber,
+    origin: params.origin,
+    destination: params.destination,
+    date,
+    updatedAt: new Date().toISOString(),
+  };
+
+  try {
+    const response = await fetch(BSB_AERO_FLIGHTS_URL, {
+      headers: {
+        accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'accept-language': 'pt-BR,pt;q=0.9,en;q=0.6',
+        'cache-control': 'no-cache',
+        pragma: 'no-cache',
+        'user-agent': 'CrewCheck/10.8.4 (+https://github.com/bmedeiros1987/crewcheck) flight-status-bsb',
+      },
+      signal: AbortSignal.timeout(7500),
+    });
+    if (!response.ok) throw new Error(`BSB_AERO_HTTP_${response.status}`);
+    const html = await response.text();
+    const text = htmlToSearchText(html);
+    const match = extractSegmentForCandidates(text, candidates);
+    if (!match) {
+      const value = { ok: true, ...resultBase, status: 'Programado', gate: null, terminal: null, source: 'BSB Aero oficial: voo não localizado no painel público' };
+      bsbAeroFlightCache.set(cacheKey, { time: Date.now(), value });
+      return value;
+    }
+    const parsed = parseBsbStatusSegment(match.segment);
+    const value = {
+      ok: true,
+      ...resultBase,
+      matchedFlight: match.token,
+      status: parsed.status || 'Programado',
+      gate: parsed.gate,
+      terminal: parsed.terminal,
+      scheduledTime: parsed.scheduledTime,
+      confirmedTime: parsed.confirmedTime,
+      source: 'BSB Aero oficial',
+    };
+    bsbAeroFlightCache.set(cacheKey, { time: Date.now(), value });
+    return value;
+  } catch (error) {
+    const value = { ok: true, ...resultBase, status: 'Programado', gate: null, terminal: null, source: 'BSB Aero oficial indisponível' };
+    bsbAeroFlightCache.set(cacheKey, { time: Date.now(), value });
+    return value;
+  }
+}
+
+async function getFlightStatusSnapshot(query) {
+  const flightNumber = String(query.get('flightNumber') || '').replace(/\s+/g, '').toUpperCase().slice(0, 16);
+  const origin = String(query.get('origin') || '').toUpperCase().slice(0, 4);
+  const destination = String(query.get('destination') || '').toUpperCase().slice(0, 4);
+  const date = String(query.get('date') || '').slice(0, 10);
+  const codes = String(query.get('codes') || '').toUpperCase().slice(0, 128);
+  const route = String(query.get('route') || '').toUpperCase().slice(0, 64);
+  const airport = String(query.get('airport') || '').toUpperCase().slice(0, 4);
+  const updatedAt = new Date().toISOString();
+  const queryBase = { flightNumber, origin, destination, date, codes, route, airport };
+
+  if (shouldUseBsbAero(queryBase)) {
+    const bsbStatus = await fetchBsbAeroFlightStatus(queryBase);
+    // Se o site oficial respondeu de forma conclusiva, ele fica como fonte preferencial.
+    if (bsbStatus.source === 'BSB Aero oficial' || !String(process.env.FLIGHT_STATUS_ENDPOINT || '').trim()) return bsbStatus;
+  }
+
+  // Provedor opcional. Configure FLIGHT_STATUS_ENDPOINT com uma URL interna/proxy
+  // que aceite flightNumber/origin/destination/date. Sem provedor, o CrewCheck
+  // retorna estrutura segura para a UI, sem inventar portão/status.
+  const provider = String(process.env.FLIGHT_STATUS_ENDPOINT || '').trim();
+  if (provider) {
+    try {
+      const providerUrl = new URL(provider);
+      providerUrl.searchParams.set('flightNumber', flightNumber);
+      providerUrl.searchParams.set('codes', codes);
+      if (origin) providerUrl.searchParams.set('origin', origin);
+      if (destination) providerUrl.searchParams.set('destination', destination);
+      if (date) providerUrl.searchParams.set('date', date);
+      const response = await fetch(providerUrl, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(6500) });
+      if (response.ok) {
+        const payload = await response.json();
+        return {
+          ok: true,
+          flightNumber,
+          origin,
+          destination,
+          date,
+          status: String(payload.status || payload.flightStatus || payload.state || 'Scheduled'),
+          gate: payload.gate ? String(payload.gate) : null,
+          terminal: payload.terminal ? String(payload.terminal) : null,
+          source: payload.source || 'provedor externo',
+          updatedAt,
+        };
+      }
+    } catch (error) {
+      return { ok: true, flightNumber, origin, destination, date, status: 'Scheduled', gate: null, terminal: null, source: 'provedor indisponível', updatedAt };
+    }
+  }
+
+  return { ok: true, flightNumber, origin, destination, date, status: 'Scheduled', gate: null, terminal: null, source: shouldUseBsbAero(queryBase) ? 'BSB Aero oficial: voo não localizado' : 'Sem dados online', updatedAt };
+}
+
 async function handleApi(req, res, url) {
   if (url.pathname === '/api/health') {
     sendJson(res, 200, {
@@ -1250,7 +1697,97 @@ async function handleApi(req, res, url) {
     return true;
   }
 
+  if (url.pathname === '/api/calendar-feed' && req.method === 'GET') {
+    const user = await requireAuth(req, res);
+    if (!user) return true;
+    const db = requireDatabase(res);
+    if (!db) return true;
+    try {
+      const feed = await ensureCalendarFeedForUser(db, user);
+      sendJson(res, 200, {
+        ok: true,
+        feedUrl: calendarFeedUrl(req, feed.token),
+        token: feed.token,
+        updatedAt: feed.updated_at || feed.updatedAt || null,
+        periodLabel: feed.period_label || null,
+        mode: feed.mode || 'all',
+        hasContent: Boolean(feed.ics_content && String(feed.ics_content).includes('BEGIN:VEVENT')),
+      });
+    } catch (error) {
+      sendJson(res, 500, { ok: false, message: 'Não foi possível criar o link de calendário.', detail: error.message });
+    }
+    return true;
+  }
 
+  if (url.pathname === '/api/calendar-feed' && req.method === 'POST') {
+    const user = await requireAuth(req, res);
+    if (!user) return true;
+    const db = requireDatabase(res);
+    if (!db) return true;
+    try {
+      const body = await readJsonBody(req, 3 * 1024 * 1024);
+      const ical = String(body.ical || '').replace(/\r?\n/g, '\r\n');
+      if (!ical.includes('BEGIN:VCALENDAR') || !ical.includes('END:VCALENDAR')) {
+        sendJson(res, 400, { ok: false, message: 'Calendário ICS inválido.' });
+        return true;
+      }
+      const feed = await ensureCalendarFeedForUser(db, user);
+      const periodLabel = String(body.periodLabel || '').slice(0, 64) || null;
+      const mode = String(body.mode || 'all').slice(0, 32);
+      const eventsCount = Math.max(0, Math.min(5000, Number(body.eventsCount || 0) || 0));
+      await db.query(
+        'update crewcheck_calendar_feeds set updated_at = now(), ics_content = $1, period_label = $2, mode = $3, events_count = $4 where id = $5',
+        [ical, periodLabel, mode, eventsCount, feed.id],
+      );
+      sendJson(res, 200, {
+        ok: true,
+        feedUrl: calendarFeedUrl(req, feed.token),
+        updatedAt: new Date().toISOString(),
+        periodLabel,
+        mode,
+        eventsCount,
+      });
+    } catch (error) {
+      sendJson(res, 500, { ok: false, message: 'Não foi possível atualizar o calendário automático.', detail: error.message });
+    }
+    return true;
+  }
+
+  if (url.pathname === '/api/c32f/apostila-pdf' && req.method === 'GET') {
+    const user = await requireAuth(req, res);
+    if (!user) return true;
+    if (AUTH_REQUIRED && !isC32FAdminEmail(user.email)) {
+      sendJson(res, 403, { ok: false, code: 'C32F_ADMIN_ONLY', message: 'Apostila C32F restrita ao administrador autorizado.' });
+      return true;
+    }
+    const pdfPath = path.join(__dirname, 'private', 'c32f', 'apostila-v6.pdf');
+    if (!(await exists(pdfPath))) {
+      sendJson(res, 404, { ok: false, code: 'C32F_PDF_NOT_FOUND', message: 'PDF da apostila C32F não encontrado no servidor.' });
+      return true;
+    }
+    const download = url.searchParams.get('download') === '1';
+    res.writeHead(200, {
+      'content-type': 'application/pdf',
+      'content-disposition': `${download ? 'attachment' : 'inline'}; filename="Apostila_C32F_Check_A32F_V6.pdf"`,
+      'cache-control': 'private, no-store, max-age=0',
+      'x-content-type-options': 'nosniff',
+    });
+    fs.createReadStream(pdfPath).pipe(res);
+    return true;
+  }
+
+
+
+
+  if (url.pathname === '/api/flight-status' && req.method === 'GET') {
+    try {
+      const status = await getFlightStatusSnapshot(url.searchParams);
+      sendJson(res, 200, status);
+    } catch (error) {
+      sendJson(res, 200, { ok: true, status: 'Scheduled', gate: null, terminal: null, source: 'Sem dados online', updatedAt: new Date().toISOString() });
+    }
+    return true;
+  }
 
   if (url.pathname === '/api/parse-pdf' && req.method === 'POST') {
     try {
@@ -1259,6 +1796,42 @@ async function handleApi(req, res, url) {
       sendJson(res, 200, { ok: true, ...parsed });
     } catch (err) {
       sendJson(res, 422, { ok: false, message: 'Não consegui interpretar este PDF no servidor.', detail: err?.message || String(err) });
+    }
+    return true;
+  }
+
+
+
+  if (url.pathname === '/api/iflight/import' && req.method === 'POST') {
+    const user = await requireAuth(req, res);
+    if (!user) return true;
+    try {
+      const body = await readJsonBody(req, 256 * 1024);
+      const username = String(body.username || '').trim();
+      const password = String(body.password || '');
+      const periodMonth = String(body.periodMonth || '').padStart(2, '0');
+      const periodYear = String(body.periodYear || '');
+      const mfaCode = String(body.mfaCode || '').trim();
+      const challengeSessionId = String(body.challengeSessionId || '').trim();
+      const step = body.step === 'mfa' ? 'mfa' : 'start';
+      sendJson(res, 410, { ok: false, code: 'IFLIGHT_CREDENTIAL_ENDPOINT_DISABLED', message: 'Por LGPD, o CrewCheck não recebe usuário nem senha corporativa. Use a WebView iFlight dentro do app: login/MFA ficam somente no portal oficial e o CrewCheck captura apenas o PDF da escala.' });
+      return true;
+      if (!username || !password || !/^\d{2}$/.test(periodMonth) || !/^\d{4}$/.test(periodYear)) {
+        sendJson(res, 400, { ok: false, message: 'Informe usuário, senha, mês e ano para tentar a importação iFlight.' });
+        return true;
+      }
+      if (step === 'mfa' && !mfaCode) {
+        sendJson(res, 400, { ok: false, message: 'Informe o código MFA recebido para continuar.' });
+        return true;
+      }
+      const imported = await importIFlightRoster({ username, password, periodMonth, periodYear, mfaCode, challengeSessionId, step });
+      sendJson(res, 200, { ok: true, ...imported });
+    } catch (error) {
+      sendJson(res, error.statusCode || 500, {
+        ok: false,
+        code: error.code || 'IFLIGHT_IMPORT_FAILED',
+        message: error.message || 'Não foi possível importar a escala do iFlight automaticamente.',
+      });
     }
     return true;
   }
@@ -1274,6 +1847,10 @@ async function handleApi(req, res, url) {
       const confirmPassword = String(body.confirmPassword || '');
       if (!email || !email.includes('@') || password.length < 6 || password !== confirmPassword) {
         sendJson(res, 400, { ok: false, message: 'Informe e-mail válido, senha com pelo menos 6 caracteres e confirmação idêntica.' });
+        return true;
+      }
+      if (isLatamCorporateEmail(email)) {
+        sendJson(res, 400, { ok: false, code: 'CORPORATE_EMAIL_NOT_ALLOWED', message: 'Use um e-mail pessoal para criar a conta CrewCheck. O e-mail corporativo @latam.com é permitido somente no login do portal iFlight.' });
         return true;
       }
       const temporaryPassword = generateTemporaryPassword();
@@ -1396,6 +1973,40 @@ async function handleApi(req, res, url) {
     return true;
   }
 
+
+  if (url.pathname === '/api/account' && req.method === 'DELETE') {
+    const user = await requireAuth(req, res);
+    if (!user) return true;
+    const db = requireDatabase(res);
+    if (!db) return true;
+    if (!user.id) {
+      sendJson(res, 400, { ok: false, message: 'Modo local/offline não possui conta de servidor para excluir. Limpe os dados do app no dispositivo.' });
+      return true;
+    }
+    try {
+      await ensureSchema();
+      const userId = user.id;
+      const email = user.email || null;
+      await db.query('delete from crewcheck_sessions where user_id = $1', [userId]);
+      await db.query('delete from crewcheck_rosters where user_id = $1', [userId]);
+      await db.query('delete from crewcheck_audit_logs where user_id = $1', [userId]);
+      const exists = await db.query('select id from crewcheck_users where id = $1 limit 1', [userId]);
+      await db.query('delete from crewcheck_users where id = $1', [userId]);
+      const result = { rowCount: exists.rowCount || exists.rows?.length || 0 };
+      try {
+        const subject = 'Conta CrewCheck excluída';
+        const text = `A conta CrewCheck vinculada ao e-mail ${email || ''} foi excluída junto com os dados associados salvos no servidor. Caso você não tenha solicitado esta ação, responda este e-mail.`;
+        if (email) await sendEmail({ to: email, subject, text, html: `<p>${escapeHtml(text)}</p>` });
+      } catch {
+        // A exclusão não deve falhar por indisponibilidade do e-mail transacional.
+      }
+      sendJson(res, result.rowCount ? 200 : 404, { ok: Boolean(result.rowCount), deleted: Boolean(result.rowCount) });
+    } catch (error) {
+      sendJson(res, 500, { ok: false, message: 'Não foi possível excluir a conta e os dados.', detail: error.message, code: error.code, db: dbErrorInfo(error) });
+    }
+    return true;
+  }
+
   if (url.pathname === '/api/db/status') {
     const db = requireDatabase(res);
     if (!db) return true;
@@ -1422,7 +2033,7 @@ async function handleApi(req, res, url) {
       await ensureSchema();
       const personalLimit = Math.min(Math.max(Number(url.searchParams.get('limit') || 60), 1), 120);
       const personalResult = await db.query(
-        `select id, period_year, period_month, roster_json, compliance_json, gym_json, score, intensity_score, alerts_count, critical_alerts_count
+        `select id, created_at, period_year, period_month, roster_json, compliance_json, gym_json, score, intensity_score, alerts_count, critical_alerts_count
            from crewcheck_rosters
           where ($1::uuid is null or user_id = $1)
           order by period_year asc, period_month asc, created_at asc
@@ -1430,7 +2041,7 @@ async function handleApi(req, res, url) {
         [user.id || null, personalLimit],
       );
       const globalResult = await db.query(
-        `select id, period_year, period_month, roster_json, compliance_json, gym_json, score, intensity_score, alerts_count, critical_alerts_count
+        `select id, created_at, period_year, period_month, roster_json, compliance_json, gym_json, score, intensity_score, alerts_count, critical_alerts_count
            from crewcheck_rosters
           order by created_at desc
           limit 500`,
@@ -1465,7 +2076,7 @@ async function handleApi(req, res, url) {
           limit $1`,
         [limit, user.id || null],
       );
-      sendJson(res, 200, { ok: true, rosters: result.rows.map(summarizeRosterRow) });
+      sendJson(res, 200, { ok: true, rosters: dedupeRosterRowsByPeriod(result.rows).map(summarizeRosterRow) });
     } catch (error) {
       sendJson(res, 500, { ok: false, message: 'Não foi possível listar as escalas salvas.', detail: error.message });
     }
@@ -1679,6 +2290,28 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
 
+    const feedMatch = url.pathname.match(/^\/calendar-feed\/([A-Za-z0-9_-]{20,})\.ics$/);
+    if (feedMatch && req.method === 'GET') {
+      const db = getPool();
+      let ics = emptyCalendarFeed();
+      if (db) {
+        try {
+          await ensureSchema();
+          const result = await db.query('select ics_content from crewcheck_calendar_feeds where token = $1 limit 1', [feedMatch[1]]);
+          if (result.rowCount && result.rows[0]?.ics_content) ics = String(result.rows[0].ics_content);
+        } catch (error) {
+          console.error('calendar feed error:', error.message);
+        }
+      }
+      res.writeHead(200, {
+        'content-type': 'text/calendar; charset=utf-8',
+        'cache-control': 'no-store, max-age=0',
+        'content-disposition': 'inline; filename="crewcheck.ics"',
+      });
+      res.end(ics.replace(/\r?\n/g, '\r\n'));
+      return;
+    }
+
     if (url.pathname.startsWith('/api/')) {
       const handled = await handleApi(req, res, url);
       if (!handled) sendJson(res, 404, { ok: false, message: 'API endpoint não encontrado.' });
@@ -1714,7 +2347,7 @@ const server = http.createServer(async (req, res) => {
     const ext = path.extname(filePath).toLowerCase();
     const headers = {
       'content-type': mimeTypes.get(ext) || 'application/octet-stream',
-      'cache-control': ext === '.html' ? 'no-store' : 'public, max-age=31536000, immutable',
+      'cache-control': ['.html', '.js', '.css', '.json', '.map'].includes(ext) ? 'no-store, max-age=0, must-revalidate' : 'public, max-age=86400',
     };
     res.writeHead(200, headers);
     fs.createReadStream(filePath).pipe(res);
@@ -1767,7 +2400,7 @@ parseCrewRosterBlockV3 = function(dayNumber, month, year, base, blockText) {
   const raw = cleanRosterLineV3(blockText);
   const upper = raw.toUpperCase();
   const events = [];
-  const restMatch = upper.match(/\b(DOF|DO|DR|OFF)\b/);
+  const restMatch = upper.match(/\b(DOPR|DOP|DOF|DO|DR|OFF|VC)\b/);
   const activityMatches = [...upper.matchAll(/\b(HSBE|HSB|ASB|CBF|EMER|C\d{2,3}F|MT|CRM|NSJ|NS|IJ|DM)\b/g)].map((m) => ({ code: m[1], index: m.index || 0 }));
   const seen = new Set();
   for (const item of activityMatches) {
@@ -1936,7 +2569,7 @@ parseAimsTokensIntoEventsV3 = function(tokens, dayNum, month, year, base, nextTo
     events.push(flightDay);
   }
   if (!events.length) {
-    const rest = upperTokens.join(' ').match(/\b(DOF|DO|DR|OFF)\b/);
+    const rest = upperTokens.join(' ').match(/\b(DOPR|DOP|DOF|DO|DR|OFF|VC)\b/);
     if (rest) { const d = makeDay(dayNum, month, year, base); d.rawText = normalized.join(' '); d.type = rest[1]; d.pairingCode = rest[1]; d.dutyHours=0; d.flyingHours=0; events.push(d); }
   }
   return events.length ? events : [makeDay(dayNum, month, year, base)];
@@ -1977,7 +2610,7 @@ function normalizeActivityCodePrecise(code, raw='') { const c=String(code||'').t
 function activityTypeFromCodePrecise(code) { const c=normalizeActivityCodePrecise(code); if (c==='ASB'||c==='HSB'||c==='HSBE') return c; if (c==='CRM'||/^C\d{2,3}F$/.test(c)||c==='CBF'||c==='EMER') return 'CRM'; return 'OTHER'; }
 function pickActivityWindowFromTokensPrecise(tokens) { const cleaned=tokens.map((t)=>String(t||'').trim()).filter(Boolean); const stationTimes=[]; for(let i=0;i<cleaned.length-1;i++){ if(AIRPORTS.has(cleaned[i].toUpperCase()) && isTimeToken(cleaned[i+1])) stationTimes.push(normalizeTimeToken(cleaned[i+1])); } const stationUnique=uniqueTimesV3(stationTimes).filter((t)=>!looksLikeDurationV3(t)); if(stationUnique.length>=2) return {start:stationUnique[0], end:stationUnique[stationUnique.length-1]}; const allTimes=uniqueTimesV3(cleaned.filter(isTimeToken).map(normalizeTimeToken)).filter((t)=>!looksLikeDurationV3(t)); if(!allTimes.length) return {start:null,end:null}; const start=allTimes[0]; let end=allTimes[1]||allTimes[0]; for(const t of allTimes.slice(1)){ const h=diffHours(start,t); if(h>=0.25 && h<=14) end=t; } return {start,end}; }
 function hasCompleteLegTokensPrecise(tokens) { const upper=tokens.map((t)=>String(t).toUpperCase()); const airports=upper.filter((t)=>AIRPORTS.has(t)); const times=tokens.filter(isTimeToken); return airports.length >= 2 && airports.some((a)=>a !== airports[0]) && times.length >= 2; }
-function nextDayContinuationPrefixPrecise(tokens) { const prefix=[]; const operational=new Set(['LA','DO','DOF','DR','OFF','HSB','HSBE','ASB','CBF','EMER','MT','CRM','CRMB','NS','NSJ','IJ','DM']); for(const token of tokens||[]){ const upper=String(token).toUpperCase(); if(prefix.length && operational.has(upper)) break; prefix.push(token); if(/^\([A-Z0-9]{3}\)$/.test(upper)) break; } return prefix; }
+function nextDayContinuationPrefixPrecise(tokens) { const prefix=[]; const operational=new Set(['LA','DOPR','DOP','DOPR','DOP','DO','DOF','DR','OFF','VC','VC','HSB','HSBE','ASB','CBF','EMER','MT','CRM','CRMB','NS','NSJ','IJ','DM']); for(const token of tokens||[]){ const upper=String(token).toUpperCase(); if(prefix.length && operational.has(upper)) break; prefix.push(token); if(/^\([A-Z0-9]{3}\)$/.test(upper)) break; } return prefix; }
 function inferAimsDebriefPrecise(tokens,lastLeg,nextTokens=[]) { if(!lastLeg) return null; const upper=tokens.map((t)=>String(t).toUpperCase()); let destIdx=-1; for(let i=upper.length-1;i>=0;i--) if(upper[i]===lastLeg.destination){ destIdx=i; break; } let after=destIdx>=0?tokens.slice(destIdx+1):[]; if(after.length<2 && nextTokens?.length) after=after.concat(nextDayContinuationPrefixPrecise(nextTokens)); const times=after.filter(isTimeToken).map(normalizeTimeToken); return times[1] || times[0] || null; }
 function inferWorkTypePrecise(text, idx) { const near=String(text||'').slice(Math.max(0,idx-20), idx+35).toUpperCase(); return near.match(/\b(OP|PS|DH)\b/)?.[1] || null; }
 function addMinutesServerPrecise(time, minutes) { const base=toMin(time)+minutes; const h=Math.floor((base%1440)/60); const m=base%60; return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`; }
@@ -2003,7 +2636,8 @@ parsePdfOnServer = async function parsePdfOnServerRC5({ filename, dataBase64 }) 
 
   // 2) PDF.js extraction with visual row grouping.
   try {
-    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.js');
+    const pdfjsImport = await import('pdfjs-dist/legacy/build/pdf.js');
+    const pdfjs = pdfjsImport.default || pdfjsImport;
     const pdf = await pdfjs.getDocument({ data: new Uint8Array(bytes), disableWorker: true, isEvalSupported: false, disableFontFace: true }).promise;
     const pages = [];
     for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
@@ -2120,7 +2754,7 @@ function cleanRosterLineRC5(line) {
 }
 
 function isUsefulRosterContinuationRC5(line) {
-  return /\b(LA\s?\d{3,4}|DOF?|DR|OFF|HSBE?|ASB|CBF|EMER|MT|CRM|CRMB|CRMBSB|C\d{2,3}F|NSJ?|IJ|DM|SAER|[A-Z]{3}\s+\d{1,2}:\d{2}|\d{1,2}:\d{2}\(\+1\))\b/i.test(line);
+  return /\b(LA\s?\d{3,4}|DOPR|DOP|DOF?|DR|OFF|VC|HSBE?|ASB|CBF|EMER|MT|CRM|CRMB|CRMBSB|C\d{2,3}F|NSJ?|IJ|DM|SAER|[A-Z]{3}\s+\d{1,2}:\d{2}|\d{1,2}:\d{2}\(\+1\))\b/i.test(line);
 }
 
 function parseRosterBlockRC5(dayNumber, month, year, base, blockText) {
@@ -2149,7 +2783,7 @@ function parseRosterBlockRC5(dayNumber, month, year, base, blockText) {
   if (flightDay.legs.length) events.push(flightDay);
 
   if (!events.length) {
-    const rest = upper.match(/\b(DOF|DO|DR|OFF)\b/);
+    const rest = upper.match(/\b(DOPR|DOP|DOF|DO|DR|OFF|VC)\b/);
     if (rest) {
       const d = makeDay(dayNumber, month, year, base);
       d.rawText = raw; d.type = rest[1]; d.pairingCode = rest[1]; d.dutyHours = 0; d.flyingHours = 0; events.push(d);
@@ -2310,7 +2944,7 @@ function parseAimsBlockRC5(block, nextBlock, base) {
     events.push(flightDay);
   }
   if (!events.length) {
-    const rest = upper.join(' ').match(/\b(DOF|DO|DR|OFF)\b/);
+    const rest = upper.join(' ').match(/\b(DOPR|DOP|DOF|DO|DR|OFF|VC)\b/);
     if (rest) { const d = makeDay(block.day, block.month, block.year, base); d.rawText = tokens.join(' '); d.type = rest[1]; d.pairingCode = rest[1]; d.dutyHours = 0; d.flyingHours = 0; events.push(d); }
   }
   return events;
@@ -2471,7 +3105,8 @@ parsePdfOnServer = async function parsePdfOnServerRC6({ filename, dataBase64 }) 
   const candidates = [];
 
   try {
-    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.js');
+    const pdfjsImport = await import('pdfjs-dist/legacy/build/pdf.js');
+    const pdfjs = pdfjsImport.default || pdfjsImport;
     const pdf = await pdfjs.getDocument({ data: new Uint8Array(bytes), disableWorker: true, isEvalSupported: false, disableFontFace: true }).promise;
     const pages = [];
     for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
@@ -2713,7 +3348,7 @@ function parseAimsLegSeqRC7(flightNumber, seq, nextTokens = []) {
 
 function nextAimsContinuationRC7(tokens) {
   const out = [];
-  const stopCodes = new Set(['LA','DO','DOF','DR','OFF','HSB','HSBE','ASB','CBF','EMER','MT','CRM','CRMB','CRMBSB','NS','NSJ','IJ','DM','SAER']);
+  const stopCodes = new Set(['LA','DOPR','DOP','DOPR','DOP','DO','DOF','DR','OFF','VC','VC','HSB','HSBE','ASB','CBF','EMER','MT','CRM','CRMB','CRMBSB','NS','NSJ','IJ','DM','SAER']);
   for (const token of tokens || []) {
     const upper = String(token || '').toUpperCase();
     if (out.length && stopCodes.has(upper)) break;
@@ -2736,7 +3371,7 @@ function buildRosterBlocksRC7(fullText) {
       current = { day: Number(m[1]), month: monthNameToNum(m[2]), year: Number(m[3]), parts: [m[4] || ''] };
       continue;
     }
-    if (current && /\b(LA\s?\d{3,4}|DOF?|DR|OFF|HSBE?|ASB|CBF|EMER|MT|CRM|CRMB|CRMBSB|C\d{2,3}F|NSJ?|IJ|DM|SAER|[A-Z]{3}\s+\d{1,2}:\d{2}|\d{1,2}:\d{2}\(\+1\))\b/i.test(line)) current.parts.push(line);
+    if (current && /\b(LA\s?\d{3,4}|DOPR|DOP|DOF?|DR|OFF|VC|HSBE?|ASB|CBF|EMER|MT|CRM|CRMB|CRMBSB|C\d{2,3}F|NSJ?|IJ|DM|SAER|[A-Z]{3}\s+\d{1,2}:\d{2}|\d{1,2}:\d{2}\(\+1\))\b/i.test(line)) current.parts.push(line);
   }
   if (current) blocks.push(current);
   return blocks;
@@ -2786,7 +3421,7 @@ function parseBlockEventsRC7(day, month, year, base, raw) {
     events.push(flightDay);
   }
   if (!events.length) {
-    const rest = upper.match(/\b(DOF|DO|DR|OFF)\b/);
+    const rest = upper.match(/\b(DOPR|DOP|DOF|DO|DR|OFF|VC)\b/);
     if (rest) { const d = makeDay(day, month, year, base); d.rawText = raw; d.type = rest[1]; d.pairingCode = rest[1]; d.dutyHours = 0; d.flyingHours = 0; events.push(d); }
   }
   return events;
@@ -2873,7 +3508,7 @@ function parseAimsBlockRC7(block, nextBlock, base) {
     events.push(flightDay);
   }
   if (!events.length) {
-    const rest = upper.join(' ').match(/\b(DOF|DO|DR|OFF)\b/);
+    const rest = upper.join(' ').match(/\b(DOPR|DOP|DOF|DO|DR|OFF|VC)\b/);
     if (rest) { const d = makeDay(block.day, block.month, block.year, base); d.rawText = tokens.join(' '); d.type = rest[1]; d.pairingCode = rest[1]; d.dutyHours = 0; d.flyingHours = 0; events.push(d); }
   }
   return events;
@@ -2958,6 +3593,8 @@ function mergeActivitiesIntoFlightDaysRC7(days) {
         if (consumed.has(activity)) continue;
         const code = primaryCodeRC7(activity);
         if (!/^(C\d{2,3}F|CRM|CBF|EMER|MT)$/.test(code)) continue;
+        // C32F/check A32F deve permanecer como programação separada do voo.
+        if (/^C\d{2,3}F$/.test(code)) continue;
         if (raw.includes(code) || windowsOverlapRC7(flight, activity, 180)) {
           flight.rawText = [flight.rawText, activity.rawText || code].filter(Boolean).join('\n');
           flight.dutyReport = minTimeRC7(flight.dutyReport, activity.dutyReport) || flight.dutyReport;
@@ -3060,7 +3697,8 @@ parsePdfOnServer = async function parsePdfOnServerV10({ filename, dataBase64 }) 
   if (!bytes.length) throw new Error('PDF vazio.');
   const candidates = [];
   try {
-    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.js');
+    const pdfjsImport = await import('pdfjs-dist/legacy/build/pdf.js');
+    const pdfjs = pdfjsImport.default || pdfjsImport;
     const pdf = await pdfjs.getDocument({ data: new Uint8Array(bytes), disableWorker: true, isEvalSupported: false, disableFontFace: true }).promise;
     const pages = [];
     for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
@@ -3103,7 +3741,7 @@ parsePdfOnServer = async function parsePdfOnServerV10({ filename, dataBase64 }) 
 // --- end CrewCheck RC7 Precision Core ---
 
 // --- CrewCheck v10.4 Parser Matrix + Calendar Sync: server-only column parser for CrewRosterReport + AIMS ---
-const CREWCHECK_VERSION_V103 = '10.4.2 · Privacy + React Fix';
+const CREWCHECK_VERSION_V103 = '10.4.17 · Ticket servidor + fallback local';
 
 function normalizeTokenV103(value) {
   return String(value || '').replace(/\uFFFE/g, ' ').replace(/\s+/g, ' ').trim();
@@ -3219,7 +3857,7 @@ function buildRosterRowBlocksV103(pages, fullText = '', filename = '') {
       current = { day: Number(match[1]), month: monthNameToNum(match[2]), year: Number(match[3]), parts: [match[4] || ''], y: row.y, pageNo: row.pageNo };
       continue;
     }
-    if (current && /\b(LA\s?\d{3,4}|DOF?|DR|OFF|HSBE?|ASB|CBF|EMER|MT|CRM|CRMB|CRMBSB|C\d{2,3}F|NSJ?|IJ|DM|SAER|[A-Z]{3}\s+\d{1,2}:\d{2}|\d{1,2}:\d{2}\(\+1\))\b/i.test(text)) {
+    if (current && /\b(LA\s?\d{3,4}|DOPR|DOP|DOF?|DR|OFF|VC|HSBE?|ASB|CBF|EMER|MT|CRM|CRMB|CRMBSB|C\d{2,3}F|NSJ?|IJ|DM|SAER|[A-Z]{3}\s+\d{1,2}:\d{2}|\d{1,2}:\d{2}\(\+1\))\b/i.test(text)) {
       current.parts.push(text);
     }
   }
@@ -3267,6 +3905,16 @@ function normalizeRosterForDisplayV103(roster) {
       day.dutyDebrief = day.dutyDebrief || addMinutesRC7(last.arrivalTime, 30);
       day.flyingHours = day.legs.reduce((sum, leg) => sum + (leg.duration || diffHours(leg.departureTime, leg.arrivalTime)), 0);
       day.dutyHours = day.dutyReport && day.dutyDebrief ? diffHours(day.dutyReport, day.dutyDebrief) : day.dutyHours;
+      const raw = String(day.rawText || '') + ' ' + String(day.pairingCode || '');
+      const dutyHours = day.dutyReport && day.dutyDebrief ? diffHours(day.dutyReport, day.dutyDebrief) : 0;
+      const gapToFirst = day.dutyReport && first.departureTime ? ((toMin(first.departureTime) - toMin(day.dutyReport) + 1440) % 1440) : 0;
+      if (/\b(C\d{2,3}F|CRM|CBF|EMER)\b/i.test(raw) && (dutyHours > 16 || gapToFirst > 360)) {
+        day.dutyReport = first.departureTime;
+        day.dutyDebrief = last.arrivalTime;
+        day.isNextDay = Boolean(day.legs.some((leg) => leg.isNextDay) || toMin(last.arrivalTime) < toMin(first.departureTime));
+        day.dutyHours = diffHours(day.dutyReport, day.dutyDebrief);
+        day.rawText = [day.rawText, 'CrewCheck: voo pós-check normalizado para evitar jornada visual falsa.'].filter(Boolean).join('\n');
+      }
     }
   }
   fixed.days = finalizeDaysRC7(fixed.days, fixed.month, fixed.year, fixed.base);
@@ -3290,6 +3938,212 @@ function parseTextOnlyV103(text, filename = '') {
   return normalizeRosterForDisplayV103(roster);
 }
 
+
+
+// --- CrewCheck 10.4.17: parser servidor para escala em formato ticket ---
+const TICKET_MONTHS_SERVER = { JAN:1, FEB:2, MAR:3, APR:4, MAY:5, JUN:6, JUL:7, AUG:8, SEP:9, OCT:10, NOV:11, DEC:12 };
+const TICKET_WEEKDAYS_SERVER = /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/i;
+
+function cleanTicketServerToken(value) {
+  return String(value || '')
+    .normalize('NFC')
+    .replace(/[\uE000-\uF8FF]/g, ' ')
+    .replace(/[^\p{L}\p{N}:\/()+_\-.'\s]/gu, ' ')
+    .replace(/\bLA\s+(\d{3,4})\b/gi, 'LA$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function ticketLooksLikeServer(text, filename = '') {
+  const sample = cleanTicketServerToken(text);
+  return (/Tripulante\s*:/i.test(sample) && /(Apresenta|T[ée]?rmino\s*da\s*Jornada|T[ée]?rminodaJornada|\bLA\s?\d{3,4}\b)/i.test(sample)) || /ticket/i.test(filename || '');
+}
+
+function parseTicketServerDateBlocks(text, fallbackYear) {
+  const rawLines = String(text || '').split(/\r?\n/);
+  const lines = rawLines.map(cleanTicketServerToken).filter(Boolean);
+  const markers = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (!TICKET_WEEKDAYS_SERVER.test(lines[i])) continue;
+    const day = Number((lines[i + 1] || '').match(/^\d{1,2}$/)?.[0] || 0);
+    const month = TICKET_MONTHS_SERVER[String(lines[i + 2] || '').toUpperCase()] || 0;
+    if (day >= 1 && day <= 31 && month) markers.push({ index: i, weekday: lines[i], day, month, year: fallbackYear });
+  }
+  const deduped = markers.filter((m, idx, arr) => !arr.some((p, pi) => pi < idx && p.day === m.day && p.month === m.month && Math.abs(p.index - m.index) <= 3));
+  return { lines, markers: deduped };
+}
+
+function inferTicketServerHeader(text, filename = '') {
+  const clean = cleanTicketServerToken(text);
+  const name = clean.match(/Tripulante\s*:\s*([A-ZÀ-Ú][A-ZÀ-Ú\s.'-]{2,}?)(?=\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun|Apresenta|LA\d|$))/i)?.[1]
+    || clean.match(/Tripulante\s*:\s*([A-ZÀ-Ú][A-ZÀ-Ú\s.'-]{2,})/i)?.[1]
+    || 'Tripulante';
+  const yearFromFile = String(filename || '').match(/(20\d{2})/)?.[1];
+  const year = yearFromFile ? Number(yearFromFile) : new Date().getFullYear();
+  return { crewName: name.replace(/([a-zà-ú])([A-ZÀ-Ú])/g, '$1 $2').trim(), crewId: '', base: 'BSB', rank: 'CCM', airline: 'LATAM', year };
+}
+
+function ticketServerDate(day, month, year, base) {
+  return makeDay(day, month, year, base || 'BSB');
+}
+
+function normalizeTicketServerTime(value) {
+  const m = String(value || '').match(/(\d{1,2}):(\d{2})/);
+  if (!m) return null;
+  return `${String(Number(m[1])).padStart(2, '0')}:${m[2]}`;
+}
+
+function nextTicketServerDate(day, month, year) {
+  const d = new Date(year, month - 1, day + 1);
+  return { day: d.getDate(), month: d.getMonth() + 1, year: d.getFullYear() };
+}
+
+function stationTimePairsServer(segment) {
+  const prepared = cleanTicketServerToken(segment)
+    .replace(/\b([A-Z]{3})(\d{1,2}:\d{2})\b/g, '$1 $2')
+    .replace(/\b([A-Z]{3})\s+(\d{1,2}:\d{2})\b/g, '$1 $2');
+  const pairs = [];
+  const re = /\b([A-Z]{3})\s+(\d{1,2}:\d{2})\b/g;
+  let m;
+  while ((m = re.exec(prepared)) !== null) pairs.push({ station: m[1], time: normalizeTicketServerTime(m[2]) });
+  return pairs.filter((p) => p.time);
+}
+
+function parseTicketServerBlock(marker, blockLines, header) {
+  const raw = blockLines.join('\n');
+  const text = cleanTicketServerToken(blockLines.join(' ')).replace(/\b([A-Z]{3})(\d{1,2}:\d{2})\b/g, '$1 $2');
+  const days = [];
+  if (!text) return days;
+
+  const report = normalizeTicketServerTime(text.match(/Apresenta(?:ção|cao)?\s*:?\s*(\d{1,2}:\d{2})/i)?.[1]);
+  const debrief = normalizeTicketServerTime(text.match(/T[ée]?rmino\s*da\s*Jornada\s*:?\s*(\d{1,2}:\d{2})/i)?.[1] || text.match(/T[ée]?rminodaJornada\s*:?\s*(\d{1,2}:\d{2})/i)?.[1]);
+  const flightMatches = [...text.matchAll(/\bLA\s?(\d{3,4})\b/gi)];
+
+  if (flightMatches.length) {
+    const duty = ticketServerDate(marker.day, marker.month, marker.year, header.base);
+    duty.type = 'VOO';
+    duty.dutyReport = report;
+    duty.dutyDebrief = debrief;
+    duty.pairingCode = `LA${flightMatches[0][1]}`;
+    duty.rawText = raw;
+    duty.legs = [];
+
+    for (let i = 0; i < flightMatches.length; i++) {
+      const start = flightMatches[i].index || 0;
+      const end = i + 1 < flightMatches.length ? (flightMatches[i + 1].index || text.length) : (text.search(/T[ée]?rmino|T[ée]?rminodaJornada/i) >= 0 ? text.search(/T[ée]?rmino|T[ée]?rminodaJornada/i) : text.length);
+      const segment = text.slice(start, end);
+      const pairs = stationTimePairsServer(segment);
+      if (pairs.length < 2) continue;
+      const origin = pairs[0];
+      const dest = pairs[1];
+      const explicitNext = /\(\s*\d{1,2}\s*\/\s*\d{1,2}\s*\)/.test(segment) || toMin(dest.time) < toMin(origin.time);
+      duty.legs.push({
+        flightNumber: `LA${flightMatches[i][1]}`,
+        origin: origin.station,
+        destination: dest.station,
+        departureTime: origin.time,
+        arrivalTime: dest.time,
+        workType: /\bExtra\b/i.test(segment) ? 'PS' : 'OP',
+        isNextDay: explicitNext,
+        duration: diffHours(origin.time, dest.time),
+      });
+    }
+
+    if (duty.legs.length) {
+      const lastLeg = duty.legs[duty.legs.length - 1];
+      duty.dutyReport = duty.dutyReport || duty.legs[0].departureTime;
+      duty.dutyDebrief = duty.dutyDebrief || (lastLeg ? addMinutesServer(lastLeg.arrivalTime, 30) : null);
+      duty.isNextDay = Boolean(duty.legs.some((leg) => leg.isNextDay) || (duty.dutyReport && duty.dutyDebrief && toMin(duty.dutyDebrief) < toMin(duty.dutyReport)));
+      duty.flyingHours = duty.legs.reduce((sum, leg) => sum + (leg.duration || 0), 0);
+      duty.dutyHours = duty.dutyReport && duty.dutyDebrief ? diffHours(duty.dutyReport, duty.dutyDebrief) : null;
+      days.push(duty);
+
+      const overnightLeg = duty.legs.find((leg) => leg.isNextDay);
+      if (overnightLeg) {
+        const nd = nextTicketServerDate(marker.day, marker.month, marker.year);
+        const continuation = ticketServerDate(nd.day, nd.month, nd.year, header.base);
+        continuation.type = 'LAYOVER';
+        continuation.pairingCode = `${overnightLeg.destination} / Fim de jornada`;
+        continuation.dutyReport = overnightLeg.arrivalTime;
+        continuation.dutyDebrief = duty.dutyDebrief || addMinutesServer(overnightLeg.arrivalTime, 30);
+        continuation.hotel = overnightLeg.destination;
+        continuation.isNextDay = false;
+        continuation.rawText = `Continuação da jornada anterior: ${overnightLeg.flightNumber} ${overnightLeg.origin}-${overnightLeg.destination}`;
+        continuation.dutyHours = continuation.dutyReport && continuation.dutyDebrief ? diffHours(continuation.dutyReport, continuation.dutyDebrief) : null;
+        continuation.flyingHours = 0;
+        days.push(continuation);
+      }
+    }
+    return days;
+  }
+
+  const codeRe = /\b(HSBE|HSB|ASB|CBF|EMER|C\d{2,3}F|MT|CRM|DOF|DO|DR|OFF|VC|SICK|NSJ|NS|NSS|SWAP|TEMP)\b/g;
+  const codeMatches = [...text.toUpperCase().matchAll(codeRe)];
+  for (let i = 0; i < codeMatches.length; i++) {
+    const code = codeMatches[i][1];
+    const start = codeMatches[i].index || 0;
+    const end = i + 1 < codeMatches.length ? (codeMatches[i + 1].index || text.length) : text.length;
+    const segment = text.slice(start, end);
+    const event = ticketServerDate(marker.day, marker.month, marker.year, header.base);
+    event.pairingCode = code;
+    event.rawText = segment;
+    if (code === 'DO' || code === 'DOF' || code === 'DR' || code === 'OFF') event.type = code;
+    if (code === 'DOP' || code === 'DOPR' || code === 'VC') event.type = 'DO';
+    else if (code === 'VC') event.type = 'OFF';
+    else if (code === 'ASB') event.type = 'ASB';
+    else if (code === 'HSB' || code === 'HSBE') event.type = code;
+    else if (code === 'CRM' || code === 'CBF' || code === 'EMER' || /^C\d{2,3}F$/.test(code)) event.type = 'CRM';
+    else event.type = 'OTHER';
+
+    if (!['DOPR','DOP','DO','DOF','DR','OFF','VC','VC'].includes(code)) {
+      const pairs = stationTimePairsServer(segment);
+      const times = pairs.map((p) => p.time);
+      if (times.length >= 2) { event.dutyReport = times[0]; event.dutyDebrief = times[times.length - 1]; }
+      else if (times.length === 1) { event.dutyReport = times[0]; event.dutyDebrief = times[0]; }
+      event.dutyHours = event.dutyReport && event.dutyDebrief ? diffHours(event.dutyReport, event.dutyDebrief) : null;
+    }
+    days.push(event);
+  }
+  return days;
+}
+
+function addMinutesServer(time, minutes) {
+  const total = (toMin(time) + minutes) % 1440;
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+function dedupeTicketServerDays(days) {
+  const best = new Map();
+  const score = (d) => (d.legs?.length || 0) * 1000 + (d.dutyReport && d.dutyDebrief && d.dutyReport !== d.dutyDebrief ? diffHours(d.dutyReport, d.dutyDebrief) * 60 : 0) + String(d.rawText || '').length / 100;
+  for (const d of days) {
+    const legSig = (d.legs || []).map((l) => `${l.flightNumber}-${l.origin}-${l.destination}-${l.departureTime}`).join(',');
+    const key = `${d.date}|${d.pairingCode || d.type}|${legSig || d.dutyReport || 'allDay'}`;
+    if (!best.has(key) || score(d) > score(best.get(key))) best.set(key, d);
+  }
+  return [...best.values()].sort((a,b)=> new Date(a.year,a.month-1,a.dayNumber).getTime()-new Date(b.year,b.month-1,b.dayNumber).getTime() || (toMin(a.dutyReport || '23:59') - toMin(b.dutyReport || '23:59')));
+}
+
+function parseTicketServerRoster(text, filename = '') {
+  const header = inferTicketServerHeader(text, filename);
+  const { lines, markers } = parseTicketServerDateBlocks(text, header.year);
+  if (markers.length < 3) throw new Error('Marcadores de data do ticket não encontrados.');
+  const monthCounts = new Map();
+  for (const m of markers) monthCounts.set(m.month, (monthCounts.get(m.month) || 0) + 1);
+  const month = [...monthCounts.entries()].sort((a,b)=>b[1]-a[1])[0]?.[0] || markers[0].month;
+  header.month = month;
+  const days = [];
+  for (let i = 0; i < markers.length; i++) {
+    const marker = markers[i];
+    const end = i + 1 < markers.length ? markers[i + 1].index : lines.length;
+    const blockLines = lines.slice(marker.index + 3, end);
+    for (const day of parseTicketServerBlock(marker, blockLines, header)) days.push(day);
+  }
+  const roster = { ...header, month, days: dedupeTicketServerDays(days), rawText: text, totals: {} };
+  if (!roster.days.length) throw new Error('Nenhum evento ticket encontrado.');
+  return roster;
+}
+// --- end CrewCheck 10.4.17 ticket parser servidor ---
+
 parsePdfOnServer = async function parsePdfOnServerV103({ filename, dataBase64 }) {
   if (!dataBase64 || typeof dataBase64 !== 'string') throw new Error('PDF não recebido pelo servidor.');
   const bytes = Buffer.from(dataBase64, 'base64');
@@ -3300,7 +4154,8 @@ parsePdfOnServer = async function parsePdfOnServerV103({ filename, dataBase64 })
   let visual = '';
   let linear = '';
   try {
-    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.js');
+    const pdfjsImport = await import('pdfjs-dist/legacy/build/pdf.js');
+    const pdfjs = pdfjsImport.default || pdfjsImport;
     const pdf = await pdfjs.getDocument({ data: new Uint8Array(bytes), disableWorker: true, isEvalSupported: false, disableFontFace: true }).promise;
     for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
       const page = await pdf.getPage(pageNo);
@@ -3310,6 +4165,13 @@ parsePdfOnServer = async function parsePdfOnServerV103({ filename, dataBase64 })
     }
     visual = buildServerFullText(pages);
     linear = pages.map((page) => page.items.map((item) => item.str).join('\n')).join('\n');
+    if (ticketLooksLikeServer(visual + '\n' + linear, filename)) {
+      for (const [source, text] of [['ticket-pdfjs-visual', visual], ['ticket-pdfjs-linear', linear]]) {
+        if (text && text.trim().length > 50) {
+          try { candidates.push({ source, roster: parseTicketServerRoster(text, filename) }); } catch (error) { tried.push(`${source}: ${error?.message || error}`); }
+        }
+      }
+    }
     if (/Escala de Tripulante Convertida para padr/i.test(visual + linear)) {
       try { candidates.push({ source: 'aims-column-matrix', roster: parseAimsColumnsV103(pages, visual || linear, filename) }); } catch (error) { tried.push(`aims-column-matrix: ${error?.message || error}`); }
     }
@@ -3329,6 +4191,9 @@ parsePdfOnServer = async function parsePdfOnServerV103({ filename, dataBase64 })
     const pdfParse = mod.default || mod;
     const out = await pdfParse(bytes);
     if (out?.text && out.text.trim().length > 50) {
+      if (ticketLooksLikeServer(out.text, filename)) {
+        try { candidates.push({ source: 'ticket-pdf-parse', roster: parseTicketServerRoster(out.text, filename) }); } catch (error) { tried.push(`ticket-pdf-parse: ${error?.message || error}`); }
+      }
       try { candidates.push({ source: 'pdf-parse', roster: parseTextOnlyV103(out.text, filename) }); } catch (error) { tried.push(`pdf-parse: ${error?.message || error}`); }
     }
   } catch (error) {

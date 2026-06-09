@@ -133,3 +133,35 @@ O botão de e-mail já existe. Ele depende de variáveis no Render:
 ## APK offline
 
 Leia `APK_OFFLINE.md`.
+
+## CrewCheck v10.6.7 — temas, iFlight e Android Play Console
+
+### Tema claro/escuro
+
+- A preferência **Claro / Escuro / Sistema** fica salva em `crewcheck_theme_mode`.
+- A aplicação aplica `data-crew-theme="light|dark"` no `<html>`, garantindo o mesmo visual no site, PWA e Android WebView.
+- A camada CSS final corrige telas que ainda usavam classes escuras fixas, como login, iFlight, configurações, histórico e cards premium.
+
+### iFlight
+
+- O login e MFA continuam sempre manuais no portal oficial.
+- O Android usa WebView interna com ponte nativa `CrewCheckIFlight.openPortalAndImport`.
+- Após login, o app tenta abrir Roster/Calendar/Report, seleciona período, PDF e LT, aciona Run e captura o PDF.
+- A versão web não consegue clicar/ler automaticamente outro domínio por segurança do navegador; nela o fluxo correto é baixar o PDF no iFlight e importar manualmente.
+
+### Android / Play Console
+
+- `applicationId`: `com.crewcheck.app`
+- `versionCode`: `10607`
+- `versionName`: `10.6.7`
+- `minSdk`: `26`
+- `targetSdk`: `35`
+
+O projeto Android está em `android-wrapper/` e já inclui `app/build.gradle`. Para gerar AAB assinado, use o workflow **Build Android AAB** no GitHub Actions com os secrets de assinatura indicados em `RELEASE_10_6_0.md`.
+
+### Render recomendado
+
+```text
+Build Command: npm ci && npm run build
+Start Command: node server.mjs
+```

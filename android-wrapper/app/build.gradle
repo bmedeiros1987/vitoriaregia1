@@ -1,43 +1,47 @@
-plugins { id 'com.android.application' }
-
-def releaseKeystorePath = System.getenv('ANDROID_KEYSTORE_FILE')
-def hasReleaseSigning = releaseKeystorePath && file(releaseKeystorePath).exists()
+plugins {
+    id 'com.android.application'
+}
 
 android {
     namespace 'com.crewcheck.app'
     compileSdk 35
 
+    defaultConfig {
+        applicationId 'com.crewcheck.app'
+        minSdk 26
+        targetSdk 35
+        versionCode 10804
+        versionName '10.8.4'
+    }
+
     signingConfigs {
         release {
-            def keystoreFile = releaseKeystorePath
-            if (keystoreFile && file(keystoreFile).exists()) {
-                storeFile file(keystoreFile)
-                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
-                keyAlias System.getenv('ANDROID_KEY_ALIAS')
-                keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+            def storeFilePath = project.findProperty('CREWCHECK_STORE_FILE') ?: System.getenv('CREWCHECK_STORE_FILE')
+            def storePasswordValue = project.findProperty('CREWCHECK_STORE_PASSWORD') ?: System.getenv('CREWCHECK_STORE_PASSWORD')
+            def keyAliasValue = project.findProperty('CREWCHECK_KEY_ALIAS') ?: System.getenv('CREWCHECK_KEY_ALIAS')
+            def keyPasswordValue = project.findProperty('CREWCHECK_KEY_PASSWORD') ?: System.getenv('CREWCHECK_KEY_PASSWORD')
+            if (storeFilePath && storePasswordValue && keyAliasValue && keyPasswordValue) {
+                storeFile file(storeFilePath)
+                storePassword storePasswordValue
+                keyAlias keyAliasValue
+                keyPassword keyPasswordValue
             }
         }
     }
 
-    defaultConfig {
-        applicationId 'com.crewcheck.app'
-        minSdk 23
-        targetSdk 35
-        versionCode 10411
-        versionName '10.4.12'
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 
     buildTypes {
         release {
             minifyEnabled false
-            debuggable false
-            if (hasReleaseSigning) {
-                signingConfig signingConfigs.release
-            }
+            shrinkResources false
+            signingConfig signingConfigs.release
         }
         debug {
-            applicationIdSuffix '.debug'
-            versionNameSuffix '-debug'
+            debuggable true
         }
     }
 }
