@@ -33,19 +33,15 @@
     try { return JSON.parse(localStorage.getItem('vr_user') || 'null'); } catch { return null; }
   }
 
-  function allowedTabs() {
-    const role = String(currentUser()?.role || 'morador').toLowerCase();
-    return ROLE_TABS[role] || ROLE_TABS.morador;
-  }
+  function currentRole() { return String(currentUser()?.role || 'morador').toLowerCase(); }
+  function allowedTabs() { return ROLE_TABS[currentRole()] || ROLE_TABS.morador; }
 
   function defaultTab() {
     const allowed = allowedTabs();
     return allowed.includes('executivo') ? 'executivo' : allowed[0] || 'convites';
   }
 
-  function suiteApi() {
-    return window.VitoriaRegiaPremiumSuite || null;
-  }
+  function suiteApi() { return window.VitoriaRegiaPremiumSuite || null; }
 
   function openModule(tab = defaultTab()) {
     const allowed = allowedTabs();
@@ -58,10 +54,7 @@
     activeTab = target;
     api.open(target);
     document.body.dataset.vrIntegratedTab = target;
-    window.setTimeout(() => {
-      decorateShell();
-      syncActiveMenu();
-    }, 40);
+    window.setTimeout(() => { decorateShell(); syncActiveMenu(); }, 40);
   }
 
   function closeIntegrated() {
@@ -98,6 +91,12 @@
 
     const allowed = allowedTabs();
     const primary = defaultTab();
+    const signature = `${currentRole()}:${allowed.join(',')}:${primary}`;
+    if (section.dataset.signature === signature && section.children.length) {
+      syncActiveMenu();
+      return;
+    }
+    section.dataset.signature = signature;
     section.replaceChildren();
 
     const title = document.createElement('small');
@@ -119,14 +118,18 @@
 
   function syncActiveMenu() {
     document.querySelectorAll('[data-vr-integrated-tab]').forEach(button => {
-      button.classList.toggle('active', Boolean(activeTab) && button.dataset.vrIntegratedTab === activeTab);
-      if (activeTab && button.classList.contains('vr-integrated-mainbutton')) button.classList.add('active');
+      const shouldBeActive = Boolean(activeTab) && (button.dataset.vrIntegratedTab === activeTab || button.classList.contains('vr-integrated-mainbutton'));
+      button.classList.toggle('active', shouldBeActive);
     });
   }
 
   function hideLegacyLauncher() {
     const launcher = document.getElementById('vr-premium-suite-launcher');
-    if (launcher) launcher.setAttribute('aria-hidden','true');
+    if (launcher && launcher.getAttribute('aria-hidden') !== 'true') launcher.setAttribute('aria-hidden','true');
+  }
+
+  function setText(node, value) {
+    if (node && node.textContent !== value) node.textContent = value;
   }
 
   function decorateShell() {
@@ -136,18 +139,14 @@
     root.setAttribute('aria-label','Gestão integrada do condomínio');
 
     const header = root.querySelector('.vr-suite-header');
-    const title = header?.querySelector('h2');
-    const subtitle = header?.querySelector('small');
-    if (title) title.textContent = 'Gestão Integrada';
-    if (subtitle) subtitle.textContent = 'Visão executiva, operação, governança e transparência dentro do Vitória Régia.';
-
-    const footer = root.querySelector('.vr-suite-nav-footer small');
-    if (footer) footer.textContent = 'Vitória Régia Pro';
+    setText(header?.querySelector('h2'), 'Gestão Integrada');
+    setText(header?.querySelector('small'), 'Visão executiva, operação, governança e transparência dentro do Vitória Régia.');
+    setText(root.querySelector('.vr-suite-nav-footer small'), 'Vitória Régia Pro');
 
     const allowed = allowedTabs();
     root.querySelectorAll('[data-suite-tab]').forEach(button => {
-      const tab = button.dataset.suiteTab;
-      button.hidden = !allowed.includes(tab);
+      const shouldHide = !allowed.includes(button.dataset.suiteTab);
+      if (button.hidden !== shouldHide) button.hidden = shouldHide;
     });
 
     const closeButton = root.querySelector('[data-suite-close].vr-suite-icon-button');
@@ -179,7 +178,7 @@
     ensureIntegratedMenu();
     decorateShell();
     const root = document.getElementById('vr-premium-suite-root');
-    if (root?.hidden) closeIntegrated();
+    if (root?.hidden && activeTab) closeIntegrated();
   }
 
   function scheduleSync() {
