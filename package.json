@@ -2,20 +2,23 @@
   "name": "vitoria-regia-pro",
   "version": "12.8.4",
   "private": true,
-  "description": "Sistema Vitória Régia Pro v12.8.4 com menu limpo, configurações centralizadas e validação geral de rotas premium.",
+  "description": "Sistema Vitória Régia Pro v12.8.4 com Suite Premium e build estável para produção.",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "npm --prefix client run dev",
     "server": "npm --prefix server run dev",
-    "build": "npm --prefix client run build && npm --prefix server run build && rm -rf server/public && mkdir -p server/public && cp -a client/dist/. server/public/",
+    "install:client": "npm --prefix client install --include=dev --no-audit --no-fund --legacy-peer-deps",
+    "install:server": "npm --prefix server install --include=dev --no-audit --no-fund --legacy-peer-deps",
+    "build": "npm run install:client && npm run install:server && npm --prefix client run build && npm --prefix server run build && rm -rf server/public && mkdir -p server/public && cp -a client/dist/. server/public/",
+    "build:render": "sh render-build.sh",
     "start": "npm --prefix server start",
-    "postinstall": "npm --prefix client install --no-audit --no-fund && npm --prefix server install --omit=dev --no-audit --no-fund",
-    "install:all": "npm install --no-audit --no-fund"
+    "install:all": "npm install --ignore-scripts --no-audit --no-fund --legacy-peer-deps && npm run install:client && npm run install:server"
   },
   "dependencies": {
     "concurrently": "^8.2.2"
   },
   "engines": {
-    "node": "20.19.0"
+    "node": "20.19.0",
+    "npm": ">=10 <12"
   }
 }
