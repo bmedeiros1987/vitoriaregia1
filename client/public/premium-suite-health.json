@@ -1,0 +1,20 @@
+{
+  "suite": "Vitória Régia Pro Suite Premium 2026",
+  "version": "1.0.0",
+  "released_at": "2026-07-17",
+  "modules": [
+    "executive-dashboard",
+    "demo-mode",
+    "results",
+    "visitor-qr",
+    "preventive-maintenance",
+    "digital-logbook",
+    "audit",
+    "governance-pilot",
+    "services-center",
+    "finance-council",
+    "commercial-pricing",
+    "offline-queue"
+  ],
+  "database_migration_required": false
+}
