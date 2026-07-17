@@ -3,7 +3,7 @@ services:
     name: vitoria-regia-pro
     env: node
     plan: starter
-    buildCommand: npm install --no-audit --no-fund && npm run build
+    buildCommand: sh render-build.sh
     startCommand: npm start
     envVars:
       - key: NODE_VERSION
@@ -12,13 +12,15 @@ services:
         value: production
       - key: APP_VERSION
         value: Vitória Régia Pro v12.8.4
-      - key: DATABASE_SSL
-        value: auto
-      - key: DATABASE_SSL_MODE
-        value: auto
+      - key: NPM_CONFIG_REGISTRY
+        value: https://registry.npmjs.org/
       - key: NPM_CONFIG_AUDIT
         value: false
       - key: NPM_CONFIG_FUND
         value: false
       - key: NPM_CONFIG_UPDATE_NOTIFIER
         value: false
+      - key: DATABASE_SSL
+        value: auto
+      - key: DATABASE_SSL_MODE
+        value: auto
