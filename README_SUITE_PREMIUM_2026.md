@@ -1,12 +1,14 @@
-# Vitória Régia Pro — Suite Premium 2026
+# Vitória Régia Pro — Gestão Integrada 2026
 
 ## Entrega
 
-A Suite Premium foi adicionada como uma camada independente sobre o sistema atual. Ela não substitui as telas existentes nem modifica o esquema do PostgreSQL.
+Os recursos anteriormente agrupados sob o nome “Suite Premium” agora aparecem diretamente dentro do Vitória Régia, no menu principal **Gestão** e em atalhos definidos conforme o perfil do usuário.
+
+A implementação continua preservando as telas existentes e não modifica o esquema do PostgreSQL.
 
 ### Módulos implementados
 
-- central executiva com indicadores operacionais e financeiros;
+- visão executiva com indicadores operacionais e financeiros;
 - modo demonstração guiada com dados fictícios claramente identificados;
 - painel de resultados e metas para os primeiros 90 dias;
 - convite de visitante com QR Code, código alternativo, impressão e compartilhamento;
@@ -21,9 +23,18 @@ A Suite Premium foi adicionada como uma camada independente sobre o sistema atua
 - fila offline para operações compatíveis e sincronização após reconexão;
 - suporte à instalação PWA no celular.
 
+## Integração visual
+
+- o botão flutuante “Suite Premium” não é mais exibido;
+- a entrada principal aparece no menu lateral como **Gestão**;
+- atalhos como Convites, Manutenção, Governança, Serviços e Conselho aparecem de acordo com o perfil;
+- a central ocupa a área normal do conteúdo, mantendo o menu principal visível;
+- no celular, os módulos são apresentados como abas horizontais;
+- perfis sem acesso administrativo não visualizam Demonstração ou Planos e proposta.
+
 ## Segurança
 
-As ações reais reutilizam autenticação, token e permissões do backend. A Suite não amplia privilégios automaticamente. Perfis sem permissão de gestão recebem a resposta de acesso negado do servidor.
+As ações reais reutilizam autenticação, token e permissões do backend. A Gestão Integrada não amplia privilégios automaticamente. Perfis sem permissão recebem a resposta de acesso negado do servidor.
 
 ## Governança e integrações
 
@@ -33,4 +44,4 @@ A área de integração prepara URLs e parâmetros, mas câmeras, fechaduras e c
 
 ## Apresentação
 
-Depois do login, use o botão **Suite Premium** no canto inferior esquerdo. Para uma reunião, ative **Demonstração**, percorra as jornadas e finalize em **Planos e proposta**.
+Depois do login, abra **Gestão** no menu lateral. Para uma reunião, administradores e síndicos podem acessar **Demonstração**, percorrer as jornadas e finalizar em **Planos e proposta**.
