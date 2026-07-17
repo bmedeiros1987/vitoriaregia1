@@ -1,0 +1,57 @@
+/* Vitória Régia Pro — integração nativa dos módulos de gestão */
+#vr-premium-suite-launcher{display:none!important}
+
+.vr-integrated-menu{display:grid;gap:6px;margin:7px 0 8px;padding:12px 0 10px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.vr-integrated-menu-title{padding:0 12px 2px;color:var(--muted);font-size:9px;font-weight:950;letter-spacing:.15em;white-space:nowrap;overflow:hidden}
+.vr-integrated-mainbutton,.vr-integrated-subbutton{border:0;font:inherit;cursor:pointer}
+.vr-integrated-mainbutton{width:100%;display:flex;align-items:center;gap:12px;text-align:left;padding:12px;border-radius:16px;background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 12%,var(--panel2)),var(--panel2));color:var(--accent);font-weight:900;border:1px solid color-mix(in srgb,var(--accent) 18%,var(--line))}
+.vr-integrated-mainbutton i{width:27px;height:27px;display:grid;place-items:center;border-radius:10px;background:var(--accent);color:#fff;font-style:normal;font-size:13px;box-shadow:0 8px 18px color-mix(in srgb,var(--accent) 26%,transparent)}
+.vr-integrated-mainbutton:hover,.vr-integrated-mainbutton.active{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;transform:translateY(-1px);box-shadow:0 12px 28px color-mix(in srgb,var(--accent) 24%,transparent)}
+.vr-integrated-mainbutton.active i,.vr-integrated-mainbutton:hover i{background:rgba(255,255,255,.16)}
+.vr-integrated-shortcuts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;padding:0 2px}
+.vr-integrated-subbutton{min-width:0;display:flex;align-items:center;gap:6px;padding:7px 8px;border-radius:11px;background:transparent;color:var(--muted);font-size:10px;font-weight:850;text-align:left}
+.vr-integrated-subbutton i{font-style:normal;color:var(--accent);font-weight:950;flex:0 0 auto}
+.vr-integrated-subbutton span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vr-integrated-subbutton:hover,.vr-integrated-subbutton.active{background:color-mix(in srgb,var(--accent) 12%,var(--panel2));color:var(--accent)}
+.menu-closed .vr-integrated-menu{padding:8px 0;border-bottom:0}
+.menu-closed .vr-integrated-menu-title,.menu-closed .vr-integrated-shortcuts{display:none}
+.menu-closed .vr-integrated-mainbutton{justify-content:center;padding:11px}
+.menu-closed .vr-integrated-mainbutton i{width:32px;height:32px}
+.menu-horizontal .vr-integrated-menu,.menu-floating .vr-integrated-menu{border:0;margin:0;padding:0}
+.menu-horizontal .vr-integrated-menu-title,.menu-horizontal .vr-integrated-shortcuts,.menu-floating .vr-integrated-menu-title,.menu-floating .vr-integrated-shortcuts{display:none}
+.menu-horizontal .vr-integrated-mainbutton{white-space:nowrap}
+
+/* A central passa a ocupar a área normal de conteúdo; o menu principal permanece visível. */
+.vr-integrated-root .vr-suite-backdrop{display:none!important}
+.vr-integrated-root .vr-suite-shell{inset:18px 18px 18px 326px;z-index:19;border-radius:28px;border:1px solid var(--line);box-shadow:var(--shadow)}
+.vr-integrated-root.vr-menu-closed .vr-suite-shell{left:122px}
+.vr-integrated-root.vr-menu-floating .vr-suite-shell{left:136px}
+.vr-integrated-root.vr-menu-horizontal .vr-suite-shell{left:18px;top:122px}
+.vr-integrated-root .vr-suite-header{padding:18px 22px;background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 92%,#043c34),var(--accent2));}
+.vr-integrated-root .vr-suite-header h2{font-size:27px}
+.vr-integrated-root .vr-suite-layout{grid-template-columns:238px minmax(0,1fr)}
+.vr-integrated-root #vr-suite-content{padding:22px}
+.vr-integrated-root .vr-suite-nav-footer small{font-weight:900;color:var(--vrs-brand)}
+.vr-integrated-root [data-suite-tab][hidden]{display:none!important}
+
+@media (max-width:1100px){
+  .vr-integrated-root .vr-suite-layout{grid-template-columns:210px minmax(0,1fr)}
+  .vr-integrated-root .vr-suite-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+
+@media (max-width:860px){
+  .vr-integrated-menu{margin-top:4px}
+  .vr-integrated-root .vr-suite-shell,
+  .vr-integrated-root.vr-menu-closed .vr-suite-shell,
+  .vr-integrated-root.vr-menu-floating .vr-suite-shell,
+  .vr-integrated-root.vr-menu-horizontal .vr-suite-shell{inset:8px;z-index:99991;border-radius:22px}
+  .vr-integrated-root .vr-suite-layout{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr)}
+  .vr-integrated-root .vr-suite-layout>nav{display:flex;flex-direction:row;overflow:auto;border-right:0;border-bottom:1px solid var(--vrs-line);padding:9px}
+  .vr-integrated-root .vr-suite-layout>nav>button{flex:0 0 auto;padding:9px 10px}
+  .vr-integrated-root .vr-suite-layout>nav>button span{display:inline}
+  .vr-integrated-root .vr-suite-mode-card,.vr-integrated-root .vr-suite-nav-footer{display:none}
+  .vr-integrated-root .vr-suite-header{padding:14px 15px}
+  .vr-integrated-root .vr-suite-header h2{font-size:22px}
+  .vr-integrated-root .vr-suite-header small{display:none}
+  .vr-integrated-root #vr-suite-content{padding:14px}
+}
