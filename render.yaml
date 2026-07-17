@@ -11,7 +11,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: APP_VERSION
-        value: Vitória Régia Pro v12.6.1
+        value: Vitória Régia Pro v12.8.4
       - key: DATABASE_SSL
         value: auto
       - key: DATABASE_SSL_MODE
