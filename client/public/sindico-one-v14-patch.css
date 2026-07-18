@@ -1,0 +1,8 @@
+body.vr-one-drawer-open{overflow:hidden!important;overscroll-behavior:none}
+body.vr-one-drawer-open .bottomNav,
+body.vr-one-drawer-open .floatingEmergency,
+.bottomNav.vr-one-hidden-by-drawer{display:none!important;visibility:hidden!important;pointer-events:none!important}
+.moduleCard.premium{display:none!important}
+.appShell aside,.appShell aside nav,.appShell aside nav>button{overflow-x:hidden!important;max-width:100%!important}
+.appShell aside nav{scrollbar-width:none!important;-ms-overflow-style:none!important}
+.appShell aside nav::-webkit-scrollbar{width:0!important;height:0!important;display:none!important}
