@@ -1,7 +1,8 @@
 {
-  "name": "Vitória Régia Pro",
+  "id": "/",
+  "name": "Vitória Régia One",
   "short_name": "Vitória Régia",
-  "description": "Gestão condominial premium para moradores, portaria e administração.",
+  "description": "Gestão condominial simples, acessível e confiável para moradores, portaria e administração.",
   "lang": "pt-BR",
   "start_url": "/",
   "scope": "/",
@@ -9,6 +10,7 @@
   "orientation": "any",
   "background_color": "#eef4f1",
   "theme_color": "#0b5f54",
+  "categories": ["business", "productivity", "utilities"],
   "icons": [
     {
       "src": "/logo-vitoria-regia.png",
