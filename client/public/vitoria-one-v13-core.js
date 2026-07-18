@@ -2,6 +2,10 @@
   'use strict';
   let timer=0;
   function currentUser(){try{return JSON.parse(localStorage.getItem('vr_user')||'null')||{};}catch{return {};}}
+  function brand(){
+    if(document.title!=='Vitória Régia One')document.title='Vitória Régia One';
+    document.querySelectorAll('.logoVersion').forEach(node=>{if(node.textContent!=='Vitória Régia One v13.0.0')node.textContent='Vitória Régia One v13.0.0';});
+  }
   function cleanup(){
     ['vr-integrated-menu','vr-presentation-tools','vr-telegram-nudge','vr-telegram-call-native-entry','vr-telegram-call-menu','vr-telegram-call-fallback-entry'].forEach(id=>document.getElementById(id)?.remove());
     document.querySelector('.mobileViewportHint')?.remove();
@@ -29,6 +33,7 @@
     node.innerHTML='<span>Vitória Régia One v13</span><span>Ambiente seguro · dados protegidos</span>';
   }
   function sync(){
+    brand();
     const shell=document.querySelector('.appShell');if(!shell)return;
     const current=currentUser(),nextRole=String(current.role||'morador').toLowerCase();
     document.body.classList.add('vr-one-active');document.body.dataset.vrOne='13.0.0';
