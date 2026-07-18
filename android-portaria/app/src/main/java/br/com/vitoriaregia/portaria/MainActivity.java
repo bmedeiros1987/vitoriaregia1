@@ -33,7 +33,8 @@ public class MainActivity extends Activity {
     private ProgressBar progressBar;
     private ValueCallback<Uri[]> filePathCallback;
     private PermissionRequest pendingPermissionRequest;
-    private static final String BASE_URL = "https://vitoriaregia1.onrender.com/?app=portaria#/portaria";
+    private static final String BASE_URL = "https://vitoriaregia-pro.onrender.com/?app=portaria#/portaria/encomendas";
+    private static final String TRUSTED_HOST = "vitoriaregia-pro.onrender.com";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -100,14 +101,29 @@ public class MainActivity extends Activity {
                 return true;
             }
             @Override public void onPermissionRequest(PermissionRequest request) {
+                if (request.getOrigin() == null || !"https".equalsIgnoreCase(request.getOrigin().getScheme()) || !TRUSTED_HOST.equalsIgnoreCase(request.getOrigin().getHost())) {
+                    request.deny();
+                    return;
+                }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
                     pendingPermissionRequest = request;
                     requestPermissions(new String[]{Manifest.permission.CAMERA}, REQ_CAMERA);
                     return;
                 }
-                request.grant(request.getResources());
+                grantCameraOnly(request);
             }
         });
+    }
+
+    private void grantCameraOnly(PermissionRequest request) {
+        if (request == null) return;
+        for (String resource : request.getResources()) {
+            if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) {
+                request.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+                return;
+            }
+        }
+        request.deny();
     }
 
     private boolean handleExternal(String url) {
@@ -126,10 +142,14 @@ public class MainActivity extends Activity {
     }
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQ_CAMERA && pendingPermissionRequest != null) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) pendingPermissionRequest.grant(pendingPermissionRequest.getResources());
-            else pendingPermissionRequest.deny();
+        if (requestCode == REQ_CAMERA) {
+            boolean granted=grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            if (pendingPermissionRequest != null) {
+                if (granted) grantCameraOnly(pendingPermissionRequest);
+                else pendingPermissionRequest.deny();
+            }
             pendingPermissionRequest = null;
+            if (!granted) Toast.makeText(this, "Permissão negada. Abra Configurações > Aplicativos > Vitória Régia Portaria > Câmera e permita o acesso.", Toast.LENGTH_LONG).show();
         }
     }
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
