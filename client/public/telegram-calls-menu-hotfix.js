@@ -144,12 +144,13 @@
 
 (() => {
   'use strict';
-  const version = '20260718e';
+  const version = '20260718f';
   const styles = [
     ['/presentation-ready.css', 'base'],
     ['/presentation-ready-patch.css', 'patch'],
     ['/mobile-stability-v12-9-2.css', 'mobile'],
-    ['/mobile-premium-v12-9-4.css', 'mobile-premium']
+    ['/mobile-premium-v12-9-4.css', 'mobile-premium'],
+    ['/mobile-premium-v12-9-4-patch.css', 'mobile-premium-patch']
   ];
   for (const [href, key] of styles) {
     if (document.querySelector(`link[data-vr-presentation-ready="${key}"]`)) continue;
