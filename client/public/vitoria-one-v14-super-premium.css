@@ -1,0 +1,694 @@
+/* Vitória Régia One v14 — Super Premium Design System
+   Camada final, responsiva e não invasiva sobre o sistema existente. */
+
+:root{
+  --vrp-navy-950:#031c2d;
+  --vrp-navy-900:#062b45;
+  --vrp-navy-800:#0a3d59;
+  --vrp-emerald-700:#087461;
+  --vrp-emerald-600:#0b8f78;
+  --vrp-emerald-500:#16a58d;
+  --vrp-cyan-500:#249bc2;
+  --vrp-gold-500:#b58b47;
+  --vrp-bg:#eef4f3;
+  --vrp-bg-soft:#f7faf9;
+  --vrp-surface:#ffffff;
+  --vrp-surface-2:#f5f8f7;
+  --vrp-text:#102722;
+  --vrp-muted:#61746f;
+  --vrp-line:#d9e6e2;
+  --vrp-line-strong:#c8d9d4;
+  --vrp-danger:#c92f3c;
+  --vrp-warning:#a9650b;
+  --vrp-success:#08705e;
+  --vrp-shadow-sm:0 8px 22px rgba(3,35,49,.055);
+  --vrp-shadow-md:0 16px 42px rgba(3,35,49,.085);
+  --vrp-shadow-lg:0 28px 78px rgba(3,35,49,.14);
+  --vrp-radius-sm:14px;
+  --vrp-radius-md:20px;
+  --vrp-radius-lg:28px;
+  --vrp-focus:0 0 0 4px rgba(11,143,120,.17);
+}
+
+body[data-appearance="dark"]{
+  --vrp-bg:#071410;
+  --vrp-bg-soft:#0d1c17;
+  --vrp-surface:#10221c;
+  --vrp-surface-2:#162a23;
+  --vrp-text:#eff8f5;
+  --vrp-muted:#a9bdb7;
+  --vrp-line:#29443a;
+  --vrp-line-strong:#36574b;
+  --vrp-shadow-sm:0 8px 22px rgba(0,0,0,.16);
+  --vrp-shadow-md:0 16px 42px rgba(0,0,0,.22);
+  --vrp-shadow-lg:0 28px 78px rgba(0,0,0,.31);
+}
+
+html{background:var(--vrp-bg)}
+body.vr-one-active{
+  color:var(--vrp-text)!important;
+  background:
+    radial-gradient(circle at 8% -8%,rgba(22,165,141,.12),transparent 31%),
+    radial-gradient(circle at 94% 8%,rgba(36,155,194,.09),transparent 27%),
+    linear-gradient(160deg,var(--vrp-bg-soft),var(--vrp-bg))!important;
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;
+  font-feature-settings:"ss01" 1,"cv02" 1,"cv03" 1;
+  text-rendering:optimizeLegibility;
+}
+
+body.vr-one-active .appShell.vr-one-shell{
+  color:var(--vrp-text)!important;
+  background:transparent!important;
+}
+
+/* Navegação lateral */
+body.vr-one-active .appShell.vr-one-shell>aside{
+  width:288px!important;
+  left:18px!important;
+  top:18px!important;
+  bottom:18px!important;
+  padding:13px!important;
+  overflow:hidden!important;
+  border:1px solid rgba(255,255,255,.12)!important;
+  border-radius:30px!important;
+  color:#f4fbf9!important;
+  background:
+    radial-gradient(circle at 55% -4%,rgba(36,155,194,.22),transparent 34%),
+    radial-gradient(circle at 8% 70%,rgba(22,165,141,.17),transparent 38%),
+    linear-gradient(160deg,var(--vrp-navy-800),var(--vrp-navy-950) 72%)!important;
+  box-shadow:var(--vrp-shadow-lg)!important;
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
+}
+
+body.vr-one-active .appShell.vr-one-shell>aside:before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  border-radius:inherit;
+  background:linear-gradient(125deg,rgba(255,255,255,.08),transparent 28%,transparent 72%,rgba(255,255,255,.035));
+}
+
+body.vr-one-active .appShell.vr-one-shell>aside .brand{
+  position:relative!important;
+  min-height:96px!important;
+  padding:8px 45px 12px 8px!important;
+  border-bottom:1px solid rgba(255,255,255,.11)!important;
+  background:transparent!important;
+}
+
+body.vr-one-active .appShell.vr-one-shell>aside .brandLogo{
+  width:78px!important;
+  height:78px!important;
+  max-width:78px!important;
+  max-height:78px!important;
+  filter:drop-shadow(0 14px 24px rgba(0,0,0,.26));
+}
+
+body.vr-one-active .vr-one-profile-card{
+  position:relative;
+  margin:11px 2px 5px!important;
+  padding:11px!important;
+  border:1px solid rgba(255,255,255,.12)!important;
+  border-radius:18px!important;
+  background:rgba(255,255,255,.07)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.055)!important;
+}
+
+body.vr-one-active .vr-one-profile-avatar{
+  background:linear-gradient(145deg,#22b79f,#208fbc)!important;
+  box-shadow:0 9px 22px rgba(0,0,0,.17)!important;
+}
+
+body.vr-one-active .appShell.vr-one-shell>aside nav{
+  position:relative;
+  gap:5px!important;
+  padding:9px 2px 12px!important;
+}
+
+body.vr-one-active .appShell.vr-one-shell>aside nav>button,
+body.vr-one-active .appShell.vr-one-shell>aside .sideBottom>button{
+  min-height:49px!important;
+  padding:11px 13px!important;
+  border-radius:15px!important;
+  color:rgba(238,249,247,.78)!important;
+  font-size:14px!important;
+  font-weight:760!important;
+  letter-spacing:-.01em!important;
+  transition:background .18s ease,color .18s ease,transform .18s ease,box-shadow .18s ease!important;
+}
+
+body.vr-one-active .appShell.vr-one-shell>aside nav>button.active{
+  color:#fff!important;
+  border-color:rgba(255,255,255,.16)!important;
+  background:linear-gradient(135deg,var(--vrp-emerald-500),#218fba)!important;
+  box-shadow:0 12px 28px rgba(0,121,128,.26),inset 0 1px 0 rgba(255,255,255,.17)!important;
+}
+
+body.vr-one-active .appShell.vr-one-shell>aside .sideBottom{
+  position:relative;
+  padding:9px 2px 1px!important;
+  border-top:1px solid rgba(255,255,255,.11)!important;
+  background:transparent!important;
+}
+
+/* Área principal e cabeçalho: permanecem no fluxo da página. */
+body.vr-one-active .appShell.vr-one-shell>.content{
+  width:100%!important;
+  max-width:none!important;
+  padding:28px 28px 52px 324px!important;
+  color:var(--vrp-text)!important;
+  background:transparent!important;
+}
+
+body.vr-one-active .appShell.vr-one-shell>.content:before{display:none!important}
+
+body.vr-one-active .appShell.vr-one-shell>.content>.topbar{
+  position:relative!important;
+  top:auto!important;
+  z-index:2!important;
+  min-height:80px!important;
+  margin:0 0 20px!important;
+  padding:14px 16px 14px 20px!important;
+  border:1px solid var(--vrp-line)!important;
+  border-radius:24px!important;
+  color:var(--vrp-text)!important;
+  background:color-mix(in srgb,var(--vrp-surface) 97%,transparent)!important;
+  box-shadow:var(--vrp-shadow-md)!important;
+  backdrop-filter:blur(18px) saturate(1.12)!important;
+  -webkit-backdrop-filter:blur(18px) saturate(1.12)!important;
+}
+
+body.vr-one-active .appShell.vr-one-shell>.content>.topbar:before{
+  content:"";
+  position:absolute;
+  left:0;
+  top:17px;
+  bottom:17px;
+  width:4px;
+  border-radius:0 999px 999px 0;
+  background:linear-gradient(var(--vrp-emerald-500),var(--vrp-cyan-500));
+}
+
+body.vr-one-active .topbar h1{
+  margin:1px 0 0!important;
+  color:var(--vrp-text)!important;
+  font-size:clamp(25px,2.2vw,34px)!important;
+  line-height:1!important;
+  letter-spacing:-.045em!important;
+  font-weight:820!important;
+}
+
+body.vr-one-active .topbar>div>small{
+  color:var(--vrp-muted)!important;
+  font-size:10.5px!important;
+  font-weight:850!important;
+  letter-spacing:.075em!important;
+}
+
+body.vr-one-active .topActions{align-items:center!important;gap:9px!important}
+body.vr-one-active .topActions button,
+body.vr-one-active .vr-one-trust{
+  min-height:42px!important;
+  border:1px solid var(--vrp-line)!important;
+  color:var(--vrp-text)!important;
+  background:var(--vrp-surface-2)!important;
+  box-shadow:none!important;
+}
+
+body.vr-one-active .topActions .topBell{
+  width:44px!important;
+  height:44px!important;
+  padding:0!important;
+  color:#fff!important;
+  border-color:transparent!important;
+  background:linear-gradient(145deg,var(--vrp-emerald-500),var(--vrp-cyan-500))!important;
+  box-shadow:0 10px 24px rgba(11,143,120,.19)!important;
+}
+
+/* Superfícies e cards */
+body.vr-one-active .panel,
+body.vr-one-active .subpanel,
+body.vr-one-active .settingsCard,
+body.vr-one-active .tableWrap,
+body.vr-one-active .calendarBox,
+body.vr-one-active .cards article,
+body.vr-one-active .appCards article,
+body.vr-one-active .emergency,
+body.vr-one-active .metric,
+body.vr-one-active .moduleCard,
+body.vr-one-active .feedCard,
+body.vr-one-active .financeCard{
+  border-color:var(--vrp-line)!important;
+  color:var(--vrp-text)!important;
+  background:var(--vrp-surface)!important;
+  box-shadow:var(--vrp-shadow-sm)!important;
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
+}
+
+body.vr-one-active .panel{
+  margin-bottom:18px!important;
+  padding:22px!important;
+  overflow:visible!important;
+  border-radius:var(--vrp-radius-lg)!important;
+  box-shadow:var(--vrp-shadow-md)!important;
+}
+
+body.vr-one-active .subpanel,
+body.vr-one-active .settingsCard{
+  padding:18px!important;
+  border-radius:var(--vrp-radius-md)!important;
+}
+
+body.vr-one-active .panelHead{margin-bottom:18px!important;gap:14px!important}
+body.vr-one-active .panelHead h2,
+body.vr-one-active .panel h2{
+  color:var(--vrp-text)!important;
+  font-weight:820!important;
+  letter-spacing:-.035em!important;
+}
+body.vr-one-active .panelHead p,
+body.vr-one-active .panel p,
+body.vr-one-active small{color:var(--vrp-muted)}
+
+body.vr-one-active .hero,
+body.vr-one-active .dashboardHero,
+body.vr-one-active .buildingHero,
+body.vr-one-active .financeHeroPremium{
+  overflow:hidden!important;
+  border:1px solid rgba(255,255,255,.16)!important;
+  border-radius:30px!important;
+  color:#fff!important;
+  background:
+    radial-gradient(circle at 88% 8%,rgba(255,255,255,.18),transparent 26%),
+    linear-gradient(135deg,var(--vrp-navy-900),#0a5367 62%,var(--vrp-emerald-700))!important;
+  box-shadow:var(--vrp-shadow-lg)!important;
+}
+
+body.vr-one-active .hero h2,
+body.vr-one-active .dashboardHero h2,
+body.vr-one-active .buildingHero h2,
+body.vr-one-active .financeHeroPremium h3,
+body.vr-one-active .hero p,
+body.vr-one-active .dashboardHero p,
+body.vr-one-active .buildingHero p,
+body.vr-one-active .hero small,
+body.vr-one-active .buildingHero small{color:#fff!important}
+
+body.vr-one-active .weather{
+  border:1px solid rgba(255,255,255,.2)!important;
+  color:#fff!important;
+  background:rgba(255,255,255,.11)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.11)!important;
+  backdrop-filter:blur(12px)!important;
+  -webkit-backdrop-filter:blur(12px)!important;
+}
+body.vr-one-active .weather small{color:rgba(255,255,255,.76)!important}
+
+body.vr-one-active .metric,
+body.vr-one-active .moduleCard,
+body.vr-one-active .cards article,
+body.vr-one-active .feedCard{
+  position:relative!important;
+  overflow:hidden!important;
+  border-radius:22px!important;
+}
+
+body.vr-one-active .metric:after,
+body.vr-one-active .moduleCard:after{
+  content:"";
+  position:absolute;
+  inset:0 auto 0 0;
+  width:3px;
+  background:linear-gradient(var(--vrp-emerald-500),var(--vrp-cyan-500));
+  opacity:.75;
+}
+
+body.vr-one-active .metric span,
+body.vr-one-active .moduleCard>span,
+body.vr-one-active .cards article>svg,
+body.vr-one-active .appCards article>svg{
+  color:var(--vrp-emerald-600)!important;
+}
+
+body.vr-one-active .metric span,
+body.vr-one-active .moduleCard>span{
+  border:1px solid color-mix(in srgb,var(--vrp-emerald-500) 17%,var(--vrp-line))!important;
+  background:color-mix(in srgb,var(--vrp-emerald-500) 10%,var(--vrp-surface-2))!important;
+}
+
+body.vr-one-active .metric b,
+body.vr-one-active .moduleCard b,
+body.vr-one-active .cards article h3,
+body.vr-one-active .feedCard h4{color:var(--vrp-text)!important}
+
+/* Abas internas: elegantes, horizontais e sempre no fluxo da página. */
+body.vr-one-active .appShell.vr-one-shell .subTabs,
+body.vr-one-active .appShell.vr-one-shell .configTabs,
+body.vr-one-active .appShell.vr-one-shell #vr-sindico-one-v14 .vr-s14-tabs{
+  position:relative!important;
+  top:auto!important;
+  z-index:1!important;
+  display:flex!important;
+  gap:7px!important;
+  max-width:100%!important;
+  margin:0 0 16px!important;
+  padding:6px!important;
+  overflow-x:auto!important;
+  overflow-y:hidden!important;
+  border:1px solid var(--vrp-line)!important;
+  border-radius:18px!important;
+  background:var(--vrp-surface-2)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.42)!important;
+  scrollbar-width:none!important;
+  mask-image:none!important;
+  -webkit-mask-image:none!important;
+}
+
+body.vr-one-active .subTabs::-webkit-scrollbar,
+body.vr-one-active .configTabs::-webkit-scrollbar,
+body.vr-one-active .vr-s14-tabs::-webkit-scrollbar{display:none!important}
+
+body.vr-one-active .subTabs>button,
+body.vr-one-active .configTabs>button,
+body.vr-one-active .vr-s14-tabs>button{
+  flex:0 0 auto!important;
+  min-height:42px!important;
+  padding:9px 14px!important;
+  border:1px solid transparent!important;
+  border-radius:13px!important;
+  color:var(--vrp-muted)!important;
+  background:transparent!important;
+  font-size:13px!important;
+  font-weight:800!important;
+  white-space:nowrap!important;
+  box-shadow:none!important;
+}
+
+body.vr-one-active .subTabs>button.active,
+body.vr-one-active .configTabs>button.active,
+body.vr-one-active .vr-s14-tabs>button.active{
+  color:#fff!important;
+  border-color:transparent!important;
+  background:linear-gradient(135deg,var(--vrp-emerald-600),var(--vrp-cyan-500))!important;
+  box-shadow:0 9px 20px rgba(11,143,120,.18)!important;
+}
+
+/* Formulários, botões e tabelas */
+body.vr-one-active input,
+body.vr-one-active select,
+body.vr-one-active textarea{
+  min-height:50px!important;
+  border:1px solid var(--vrp-line-strong)!important;
+  border-radius:14px!important;
+  color:var(--vrp-text)!important;
+  background:var(--vrp-surface-2)!important;
+  box-shadow:inset 0 1px 2px rgba(3,35,49,.025)!important;
+  transition:border-color .18s ease,box-shadow .18s ease,background .18s ease!important;
+}
+
+body.vr-one-active textarea{min-height:112px!important;line-height:1.5!important}
+body.vr-one-active input:focus,
+body.vr-one-active select:focus,
+body.vr-one-active textarea:focus{
+  outline:none!important;
+  border-color:var(--vrp-emerald-500)!important;
+  background:var(--vrp-surface)!important;
+  box-shadow:var(--vrp-focus)!important;
+}
+
+body.vr-one-active .primary,
+body.vr-one-active .saveConfig,
+body.vr-one-active .formGrid>button,
+body.vr-one-active .buttonlike,
+body.vr-one-active .confirmAction{
+  min-height:48px!important;
+  border:1px solid transparent!important;
+  border-radius:14px!important;
+  color:#fff!important;
+  background:linear-gradient(135deg,var(--vrp-emerald-600),var(--vrp-cyan-500))!important;
+  box-shadow:0 10px 24px rgba(11,143,120,.17)!important;
+  font-weight:850!important;
+}
+
+body.vr-one-active .secondaryAction,
+body.vr-one-active .actions button:not(.confirmAction),
+body.vr-one-active .fileButton{
+  min-height:46px!important;
+  border:1px solid var(--vrp-line)!important;
+  border-radius:14px!important;
+  color:var(--vrp-emerald-700)!important;
+  background:var(--vrp-surface-2)!important;
+  box-shadow:none!important;
+  font-weight:800!important;
+}
+
+body.vr-one-active button:focus-visible,
+body.vr-one-active a:focus-visible,
+body.vr-one-active input:focus-visible,
+body.vr-one-active select:focus-visible,
+body.vr-one-active textarea:focus-visible{
+  outline:2px solid var(--vrp-emerald-500)!important;
+  outline-offset:3px!important;
+}
+
+body.vr-one-active .noticeBox{
+  border:1px solid var(--vrp-line)!important;
+  border-radius:16px!important;
+  color:var(--vrp-text)!important;
+  background:var(--vrp-surface-2)!important;
+}
+body.vr-one-active .noticeBox.ok{border-color:#b9ddd5!important;background:#f3fbf8!important}
+body[data-appearance="dark"].vr-one-active .noticeBox.ok{border-color:#285c4e!important;background:#102c24!important}
+body.vr-one-active .noticeBox.warn{border-color:#ead3ad!important;background:#fff9ef!important}
+body[data-appearance="dark"].vr-one-active .noticeBox.warn{border-color:#5d4727!important;background:#2c2213!important}
+
+body.vr-one-active .tableWrap{overflow:auto!important;border-radius:18px!important}
+body.vr-one-active table{color:var(--vrp-text)!important}
+body.vr-one-active td{border-color:var(--vrp-line)!important}
+body.vr-one-active tbody tr{transition:background .16s ease}
+body.vr-one-active tbody tr:nth-child(even){background:color-mix(in srgb,var(--vrp-surface-2) 68%,transparent)}
+
+body.vr-one-active .status{
+  border:1px solid currentColor!important;
+  border-radius:999px!important;
+  font-size:10.5px!important;
+  letter-spacing:.055em!important;
+}
+
+/* Painel nativo do síndico */
+body.vr-one-active #vr-sindico-one-v14{color:var(--vrp-text)!important}
+body.vr-one-active .vr-s14-hero{
+  border:1px solid rgba(255,255,255,.14)!important;
+  background:
+    radial-gradient(circle at 86% 3%,rgba(255,255,255,.18),transparent 27%),
+    linear-gradient(135deg,var(--vrp-navy-900),#0a5065 62%,var(--vrp-emerald-700))!important;
+  box-shadow:var(--vrp-shadow-lg)!important;
+}
+body.vr-one-active .vr-s14-card,
+body.vr-one-active .vr-s14-metric,
+body.vr-one-active .vr-s14-toolbar,
+body.vr-one-active .vr-s14-present,
+body.vr-one-active .vr-s14-audit-hero,
+body.vr-one-active .vr-s14-sub-hero{
+  border-color:var(--vrp-line)!important;
+  color:var(--vrp-text)!important;
+  background:var(--vrp-surface)!important;
+  box-shadow:var(--vrp-shadow-sm)!important;
+}
+body.vr-one-active .vr-s14-card h3,
+body.vr-one-active .vr-s14-toolbar h3,
+body.vr-one-active .vr-s14-present h3,
+body.vr-one-active .vr-s14-sub-hero h3,
+body.vr-one-active .vr-s14-metric b{color:var(--vrp-navy-900)!important}
+body[data-appearance="dark"].vr-one-active .vr-s14-card h3,
+body[data-appearance="dark"].vr-one-active .vr-s14-toolbar h3,
+body[data-appearance="dark"].vr-one-active .vr-s14-present h3,
+body[data-appearance="dark"].vr-one-active .vr-s14-sub-hero h3,
+body[data-appearance="dark"].vr-one-active .vr-s14-metric b{color:var(--vrp-text)!important}
+
+/* Rodapé, emergência e navegação inferior */
+body.vr-one-active .appFooter.vr-one-footer{
+  color:var(--vrp-muted)!important;
+  border:0!important;
+  background:transparent!important;
+}
+
+body.vr-one-active .floatingEmergency{
+  border:4px solid rgba(255,255,255,.82)!important;
+  color:#fff!important;
+  background:linear-gradient(145deg,#e13332,var(--vrp-danger))!important;
+  box-shadow:0 18px 40px rgba(201,47,60,.28)!important;
+}
+
+body.vr-one-active .bottomNav{
+  border:1px solid var(--vrp-line)!important;
+  color:var(--vrp-text)!important;
+  background:color-mix(in srgb,var(--vrp-surface) 96%,transparent)!important;
+  box-shadow:0 20px 56px rgba(3,35,49,.17)!important;
+}
+
+/* Login coerente com o produto */
+body .loginPage.buildingLogin{
+  background:
+    linear-gradient(125deg,rgba(3,28,45,.91),rgba(6,43,69,.63)),
+    url('/building-vitoria-regia.jpg') center/cover fixed!important;
+}
+body .loginPage .loginCard{
+  border:1px solid rgba(255,255,255,.55)!important;
+  border-radius:30px!important;
+  background:color-mix(in srgb,var(--vrp-surface) 94%,transparent)!important;
+  box-shadow:0 32px 90px rgba(0,20,34,.25)!important;
+  backdrop-filter:blur(24px) saturate(1.12)!important;
+  -webkit-backdrop-filter:blur(24px) saturate(1.12)!important;
+}
+
+@media (hover:hover) and (pointer:fine){
+  body.vr-one-active .appShell.vr-one-shell>aside nav>button:hover,
+  body.vr-one-active .appShell.vr-one-shell>aside .sideBottom>button:hover{
+    color:#fff!important;
+    background:rgba(255,255,255,.09)!important;
+    transform:translateX(2px)!important;
+  }
+  body.vr-one-active .shortcutCards article:hover,
+  body.vr-one-active .moduleCard:hover,
+  body.vr-one-active .appCards article:hover{
+    border-color:color-mix(in srgb,var(--vrp-emerald-500) 28%,var(--vrp-line))!important;
+    box-shadow:var(--vrp-shadow-md)!important;
+    transform:translateY(-2px)!important;
+  }
+  body.vr-one-active .primary:hover,
+  body.vr-one-active .saveConfig:hover,
+  body.vr-one-active .buttonlike:hover{filter:brightness(1.035);transform:translateY(-1px)}
+}
+
+@media (max-width:1180px) and (min-width:861px){
+  body.vr-one-active .appShell.vr-one-shell>.content{padding-right:18px!important}
+  body.vr-one-active .metricStrip.aligned{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+}
+
+@media (max-width:860px){
+  body.vr-one-active .appShell.vr-one-shell>.content{
+    padding-top:calc(var(--vr-mobile-safe-top,env(safe-area-inset-top,0px)) + 9px)!important;
+    padding-right:12px!important;
+    padding-left:12px!important;
+    padding-bottom:calc(var(--vr-mobile-nav-height,92px) + 126px + var(--vr-mobile-safe-bottom,env(safe-area-inset-bottom,0px)))!important;
+  }
+
+  body.vr-one-active .appShell.vr-one-shell>.content>.topbar{
+    position:relative!important;
+    top:auto!important;
+    min-height:74px!important;
+    margin-bottom:14px!important;
+    padding:10px 10px 10px 70px!important;
+    border-radius:20px!important;
+  }
+
+  body.vr-one-active .topbar h1{font-size:22px!important}
+  body.vr-one-active .topbar>div>small{font-size:9.5px!important}
+
+  body.vr-one-active .appShell.vr-one-shell>.mobileMenu{
+    top:calc(var(--vr-mobile-safe-top,env(safe-area-inset-top,0px)) + 18px)!important;
+    left:19px!important;
+    width:46px!important;
+    height:46px!important;
+    min-height:46px!important;
+    border-radius:15px!important;
+    border:1px solid rgba(255,255,255,.16)!important;
+    color:#fff!important;
+    background:linear-gradient(145deg,var(--vrp-navy-800),var(--vrp-navy-950))!important;
+    box-shadow:0 12px 28px rgba(3,28,45,.25)!important;
+  }
+
+  body.vr-one-active .appShell.vr-one-shell>aside{
+    left:0!important;
+    top:0!important;
+    bottom:0!important;
+    width:min(88vw,360px)!important;
+    max-width:min(88vw,360px)!important;
+    height:100dvh!important;
+    border-radius:0 28px 28px 0!important;
+  }
+
+  body.vr-one-active .panel{padding:16px!important;border-radius:22px!important}
+  body.vr-one-active .subpanel,
+  body.vr-one-active .settingsCard{padding:15px!important;border-radius:18px!important}
+
+  body.vr-one-active .hero,
+  body.vr-one-active .dashboardHero,
+  body.vr-one-active .buildingHero,
+  body.vr-one-active .financeHeroPremium{padding:21px!important;border-radius:24px!important}
+
+  body.vr-one-active .metricStrip,
+  body.vr-one-active .metricStrip.aligned,
+  body.vr-one-active .moduleGrid,
+  body.vr-one-active .cards,
+  body.vr-one-active .appCards{gap:11px!important}
+
+  body.vr-one-active .subTabs,
+  body.vr-one-active .configTabs,
+  body.vr-one-active .vr-s14-tabs{
+    position:relative!important;
+    top:auto!important;
+    margin-bottom:14px!important;
+    border-radius:16px!important;
+  }
+
+  body.vr-one-active .vrReservaToolbar,
+  body.vr-one-active .vrReservaToolbar.vr-stable-nav{
+    position:relative!important;
+    top:auto!important;
+    z-index:1!important;
+  }
+
+  body.vr-one-active .bottomNav{
+    left:9px!important;
+    right:9px!important;
+    bottom:calc(8px + var(--vr-mobile-safe-bottom,env(safe-area-inset-bottom,0px)))!important;
+    min-height:78px!important;
+    padding:7px!important;
+    border-radius:24px!important;
+  }
+
+  body.vr-one-active .bottomNav button{border-radius:17px!important}
+  body.vr-one-active .bottomNav button.active{
+    color:var(--vrp-emerald-700)!important;
+    background:color-mix(in srgb,var(--vrp-emerald-500) 10%,var(--vrp-surface))!important;
+  }
+}
+
+@media (max-width:520px){
+  body.vr-one-active .appShell.vr-one-shell>.content{padding-right:10px!important;padding-left:10px!important}
+  body.vr-one-active .appShell.vr-one-shell>.content>.topbar{padding-left:66px!important;padding-right:8px!important}
+  body.vr-one-active .topbar h1{font-size:20px!important}
+  body.vr-one-active .panelHead h2,body.vr-one-active .panel h2{font-size:21px!important}
+  body.vr-one-active .hero h2,body.vr-one-active .dashboardHero h2{font-size:29px!important}
+  body.vr-one-active .metricStrip,body.vr-one-active .metricStrip.aligned{grid-template-columns:1fr!important}
+  body.vr-one-active .moduleGrid{grid-template-columns:1fr 1fr!important}
+  body.vr-one-active .vr-s14-grid.metrics,
+  body.vr-one-active .vr-s14-grid.two,
+  body.vr-one-active .vr-s14-grid.three{grid-template-columns:1fr!important}
+}
+
+@media (prefers-reduced-motion:reduce){
+  body.vr-one-active *,body.vr-one-active *:before,body.vr-one-active *:after{
+    scroll-behavior:auto!important;
+    animation-duration:.01ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:.01ms!important;
+  }
+}
+
+@media print{
+  body.vr-one-active{background:#fff!important;color:#111!important}
+  body.vr-one-active .appShell>aside,
+  body.vr-one-active .mobileMenu,
+  body.vr-one-active .bottomNav,
+  body.vr-one-active .floatingEmergency{display:none!important}
+  body.vr-one-active .appShell>.content{padding:0!important}
+  body.vr-one-active .panel,
+  body.vr-one-active .settingsCard,
+  body.vr-one-active .subpanel{box-shadow:none!important;background:#fff!important}
+}
