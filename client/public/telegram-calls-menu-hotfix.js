@@ -141,3 +141,18 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
   else boot();
 })();
+
+(() => {
+  'use strict';
+  const version = '20260718a';
+  if (!document.querySelector('link[data-vr-presentation-ready]')) {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = `/presentation-ready.css?v=${version}`;
+    link.dataset.vrPresentationReady = 'true';
+    document.head.appendChild(link);
+  }
+  import(`/presentation-ready.js?v=${version}`).catch(error => {
+    console.error('[presentation-ready] Falha ao carregar experiência premium:', error);
+  });
+})();
