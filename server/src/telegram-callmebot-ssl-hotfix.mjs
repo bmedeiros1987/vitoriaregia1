@@ -21,5 +21,6 @@ if (sanitizedDatabaseUrl && sanitizedDatabaseUrl !== originalDatabaseUrl) {
   console.log('[telegram-calls] Parâmetros SSL da DATABASE_URL normalizados para compatibilidade com o Render.');
 }
 
+await import('./telegram-concierge-preload.mjs');
 await import('./telegram-call-details-preload.mjs');
 await import('./telegram-callmebot-preload.mjs');
