@@ -11,9 +11,9 @@ services:
       - key: NODE_ENV
         value: production
       - key: APP_VERSION
-        value: Vitória Régia Pro v12.9.1
+        value: Vitória Régia Pro v12.9.2
       - key: VITE_APP_VERSION
-        value: Vitória Régia Pro v12.9.1
+        value: Vitória Régia Pro v12.9.2
       - key: LANG
         value: C.UTF-8
       - key: LC_ALL
@@ -34,6 +34,26 @@ services:
         value: auto
       - key: DATABASE_SSL_MODE
         value: auto
+      - key: VR_TELEGRAM_CONCIERGE_ENABLED
+        value: true
+      - key: VR_TELEGRAM_CONCIERGE_AUDIO_ENABLED
+        value: true
+      - key: VR_TELEGRAM_CONCIERGE_MAX_ITEMS
+        value: 5
+      - key: VR_TTS_RESPONSE_FORMAT
+        value: opus
+      - key: VR_TTS_VOICE
+        value: pt-BR-FranciscaNeural
+      - key: VR_STT_MODEL
+        value: whisper-1
+      - key: VR_TTS_BASE_URL
+        sync: false
+      - key: VR_TTS_API_KEY
+        sync: false
+      - key: VR_STT_BASE_URL
+        sync: false
+      - key: VR_STT_API_KEY
+        sync: false
       - key: VR_TELEGRAM_CALL_ENABLED
         value: true
       - key: VR_CALLMEBOT_BASE_URL

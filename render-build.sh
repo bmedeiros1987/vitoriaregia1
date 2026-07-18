@@ -21,10 +21,14 @@ npm --prefix server install --include=dev --no-audit --no-fund --legacy-peer-dep
 printf '\n==> Compilando cliente...\n'
 npm --prefix client run build
 
-printf '\n==> Validando chamadas contextuais e UTF-8...\n'
+printf '\n==> Validando chamadas contextuais, concierge e UTF-8...\n'
 node --check server/src/telegram-call-context.mjs
 node --check server/src/telegram-call-details-preload.mjs
+node --check server/src/telegram-concierge-data.mjs
+node --check server/src/telegram-concierge-audio.mjs
+node --check server/src/telegram-concierge-preload.mjs
 node --check client/public/telegram-call-details-ui.js
+node --check client/public/mobile-stability-v12-9-2.js
 
 printf '\n==> Validando servidor...\n'
 npm --prefix server run build
