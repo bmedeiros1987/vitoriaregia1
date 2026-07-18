@@ -141,3 +141,23 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
   else boot();
 })();
+
+(() => {
+  'use strict';
+  const version = '20260718b';
+  const styles = [
+    ['/presentation-ready.css', 'base'],
+    ['/presentation-ready-patch.css', 'patch']
+  ];
+  for (const [href, key] of styles) {
+    if (document.querySelector(`link[data-vr-presentation-ready="${key}"]`)) continue;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = `${href}?v=${version}`;
+    link.dataset.vrPresentationReady = key;
+    document.head.appendChild(link);
+  }
+  import(`/presentation-ready.js?v=${version}`).catch(error => {
+    console.error('[presentation-ready] Falha ao carregar experiência premium:', error);
+  });
+})();
