@@ -11,6 +11,7 @@ function duplicate(updateId){if(!updateId)return false;prune();const key=String(
 function chatIdFrom(update={}){return String(update.message?.chat?.id||update.callback_query?.message?.chat?.id||update.callback_query?.from?.id||'')}
 function inputKind(message={}){return message.voice?'voice':message.audio?'audio':message.video_note?'video_note':'text'}
 function callbackIntent(value=''){const match=String(value||'').match(/^concierge:(summary|packages|reservations|finance|notices|occurrences|visitors|menu)$/i);return match?.[1]||''}
+function hasAudio(update={}){const message=update.message||update.edited_message||{};return Boolean(message.voice||message.audio||message.video_note)}
 
 async function secretAllowed(req){
   const expected=String(await setting('TELEGRAM_WEBHOOK_SECRET',process.env.TELEGRAM_WEBHOOK_SECRET||'')).trim();
@@ -44,21 +45,21 @@ async function handleCallback(update={}){
 }
 
 async function handleMessage(update={}){
-  const message=update.message;
+  const message=update.message||update.edited_message;
   if(!message?.chat?.id)return false;
   const rawText=String(message.text||message.caption||'').trim();
   if(/^\/start(?:@\w+)?(?:\s|$)/i.test(rawText))return false;
-  const hasAudio=Boolean(message.voice||message.audio||message.video_note);
-  if(!rawText&&!hasAudio)return false;
+  const audio=Boolean(message.voice||message.audio||message.video_note);
+  if(!rawText&&!audio)return false;
   const chatId=String(message.chat.id);
   const person=await resolveResident(chatId);
-  if(!person){await unlinked(chatId,hasAudio);return true}
+  if(!person){await unlinked(chatId,audio);return true}
 
   let input=rawText;
-  if(hasAudio){
+  if(audio){
     try{input=await transcribeTelegramAudio(message)}
     catch(error){
-      const result={text:`Recebi seu áudio, mas não consegui transcrevê-lo agora. ${error.message}`,spoken:`Recebi seu áudio, mas não consegui entender a mensagem agora. Você pode tentar novamente ou escrever sua pergunta.`,keyboard:null};
+      const result={text:`Recebi seu áudio, mas não consegui transcrevê-lo agora. ${error.message}`,spoken:'Recebi seu áudio, mas não consegui entender a mensagem agora. Você pode tentar novamente ou escrever sua pergunta.',keyboard:null};
       const delivery=await sendConciergeReply(chatId,result,true);
       await logConcierge({updateId:update.update_id,chatId,person,inputKind:inputKind(message),inputText:'[áudio não transcrito]',intent:'audio_error',responseText:result.text,responseMode:delivery.mode,status:'erro'});
       return true;
@@ -67,9 +68,15 @@ async function handleMessage(update={}){
 
   const intent=detectIntent(input);
   const result=await conciergeReply(person,intent);
-  const delivery=await sendConciergeReply(chatId,result,hasAudio);
+  const delivery=await sendConciergeReply(chatId,result,audio);
   await logConcierge({updateId:update.update_id,chatId,person,inputKind:inputKind(message),inputText:input,intent:result.intent,responseText:result.text,responseMode:delivery.mode,status:delivery.ok?'respondido':'erro'});
   return true;
+}
+
+function processAudioInBackground(update={}){
+  setImmediate(()=>{
+    void handleMessage(update).catch(error=>console.error('[telegram-concierge] Falha no áudio em segundo plano:',error));
+  });
 }
 
 async function conciergeMiddleware(req,res,next){
@@ -78,6 +85,10 @@ async function conciergeMiddleware(req,res,next){
     if(!(await secretAllowed(req)))return res.status(403).json({ok:false,error:'Webhook Telegram não autorizado.'});
     const update=req.body||{};
     if(duplicate(update.update_id))return res.json({ok:true,deduped:true});
+    if(hasAudio(update)){
+      processAudioInBackground(update);
+      return res.json({ok:true,type:'concierge_audio_queued'});
+    }
     if(await handleCallback(update))return res.json({ok:true,type:'concierge_callback'});
     if(await handleMessage(update))return res.json({ok:true,type:'concierge_message'});
     return next();

@@ -1,8 +1,8 @@
 {
   "name": "vitoria-regia-pro",
-  "version": "12.9.2",
+  "version": "12.9.3",
   "private": true,
-  "description": "Sistema Vitória Régia Pro v12.9.2 com mobile estabilizado, cards responsivos e concierge Telegram com texto e áudio.",
+  "description": "Sistema Vitória Régia Pro v12.9.3 com concierge Telegram e voz gratuita Kokoro em português brasileiro.",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "npm --prefix client run dev",
