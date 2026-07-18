@@ -13,7 +13,7 @@
   async function ensureEngine() {
     if (window.VitoriaRegiaTelegramCalls?.open) return window.VitoriaRegiaTelegramCalls;
     if (!enginePromise) {
-      enginePromise = import('/telegram-calls.js?v=20260718-menu-hotfix')
+      enginePromise = import('/telegram-calls.js?v=20260718a')
         .then(() => window.VitoriaRegiaTelegramCalls || null)
         .catch(error => {
           console.error('[telegram-calls-menu] Falha ao carregar central:', error);
