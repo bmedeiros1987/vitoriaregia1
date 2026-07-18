@@ -1,0 +1,31 @@
+# Exemplo de variáveis do Render — Vitória Régia Pro v12.8.5
+# Copie apenas os nomes necessários para Render > Environment.
+
+VR_TELEGRAM_CALL_ENABLED=true
+VR_CALLMEBOT_BASE_URL=https://api.callmebot.com/start.php
+VR_CALLMEBOT_LANG=pt-BR-Standard-A
+VR_CALLMEBOT_REPEAT=2
+VR_CALLMEBOT_TEXT_COPY=missed
+VR_CALLMEBOT_TIMEOUT_SECONDS=45
+VR_CALLMEBOT_REQUEST_TIMEOUT_MS=12000
+VR_TELEGRAM_CALL_DEDUPE_TTL_MS=180000
+
+VR_TELEGRAM_CALL_EMERGENCY_DELAY_SECONDS=2
+VR_TELEGRAM_CALL_VISITOR_DELAY_SECONDS=20
+VR_TELEGRAM_CALL_INTERCOM_DELAY_SECONDS=10
+VR_TELEGRAM_CALL_URGENT_PACKAGE_DELAY_SECONDS=5
+VR_TELEGRAM_CALL_PACKAGE_DELAY_SECONDS=0
+VR_TELEGRAM_CALL_NOTICE_DELAY_SECONDS=0
+
+ENABLE_TELEGRAM=true
+PUBLIC_APP_URL=https://exemplo.onrender.com
+VR_TELEGRAM_CALL_USE_EDGE_TTS=false
+
+# Opcional para voz neural MP3:
+# VR_TELEGRAM_CALL_USE_EDGE_TTS=true
+# VR_TTS_BASE_URL=https://tts-exemplo.onrender.com
+# VR_TTS_VOICE=pt-BR-FranciscaNeural
+# VR_TTS_SPEED=0.95
+
+# Credenciais privadas do bot e do TTS devem ser adicionadas diretamente no Render,
+# sem serem salvas neste arquivo ou no repositório.
