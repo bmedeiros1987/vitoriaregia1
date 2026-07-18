@@ -7,7 +7,7 @@
     financeiro:new Set(['inicio','financeiro','comunicacao','suporte','configuracoes'])
   };
   const labels={inicio:'Início',portaria:'Portaria',reservas:'Reservas',financeiro:'Financeiro',cadastros:'Cadastros',comunicacao:'Comunicação',ocorrencias:'Ocorrências',emergencia:'Emergência',suporte:'Suporte',configuracoes:'Configurações'};
-  const titles={inicio:'Visão geral',portaria:'Portaria e entregas',reservas:'Reservas',financeiro:'Financeiro',cadastros:'Pessoas e acessos',comunicacao:'Comunicados',ocorrencias:'Ocorrências',emergencia:'Emergência',suporte:'Ajuda e suporte',configuracoes:'Configurações'};
+  const titles={inicio:'Visão geral',portaria:'Portaria e entregas',reservas:'Reservas',financeiro:'Financeiro',cadastros:'Pessoas e acessos',comunicacao:'Comunicados',ocorrencias:'Ocorrências',emergencia:'Emergência',suporte:'Ajuda e suporte',configuracoes:'Configurações',perfil:'Meu perfil'};
   const clean=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase();
   function user(){try{return JSON.parse(localStorage.getItem('vr_user')||'null')||{};}catch{return {};}}
   function role(){return String(user().role||'morador').toLowerCase();}
@@ -49,7 +49,10 @@
     host.insertBefore(button,host.firstChild);
   }
   function heading(shell){
-    const active=shell.querySelector('aside nav>button.active'),key=active?keyOf(active):'',h1=shell.querySelector('.topbar h1'),next=titles[key];
+    const hash=clean(location.hash),active=shell.querySelector('aside nav>button.active');
+    let key=active?keyOf(active):'';
+    if(hash.includes('perfil'))key='perfil';
+    const h1=shell.querySelector('.topbar h1'),next=titles[key];
     if(h1&&next&&h1.textContent!==next)h1.textContent=next;
   }
   function sync(){const shell=document.querySelector('.appShell'),aside=shell?.querySelector(':scope>aside');if(!shell||!aside)return;profile(aside);filter(aside);help(aside);heading(shell);}
