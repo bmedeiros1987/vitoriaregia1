@@ -144,12 +144,17 @@
 
 (() => {
   'use strict';
-  const version = '20260718a';
-  if (!document.querySelector('link[data-vr-presentation-ready]')) {
+  const version = '20260718b';
+  const styles = [
+    ['/presentation-ready.css', 'base'],
+    ['/presentation-ready-patch.css', 'patch']
+  ];
+  for (const [href, key] of styles) {
+    if (document.querySelector(`link[data-vr-presentation-ready="${key}"]`)) continue;
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = `/presentation-ready.css?v=${version}`;
-    link.dataset.vrPresentationReady = 'true';
+    link.href = `${href}?v=${version}`;
+    link.dataset.vrPresentationReady = key;
     document.head.appendChild(link);
   }
   import(`/presentation-ready.js?v=${version}`).catch(error => {
