@@ -144,11 +144,12 @@
 
 (() => {
   'use strict';
-  const version = '20260718d';
+  const version = '20260718e';
   const styles = [
     ['/presentation-ready.css', 'base'],
     ['/presentation-ready-patch.css', 'patch'],
-    ['/mobile-stability-v12-9-2.css', 'mobile']
+    ['/mobile-stability-v12-9-2.css', 'mobile'],
+    ['/mobile-premium-v12-9-4.css', 'mobile-premium']
   ];
   for (const [href, key] of styles) {
     if (document.querySelector(`link[data-vr-presentation-ready="${key}"]`)) continue;
@@ -163,5 +164,8 @@
   });
   import(`/mobile-stability-v12-9-2.js?v=${version}`).catch(error => {
     console.error('[mobile-stability] Falha ao carregar estabilização mobile:', error);
+  });
+  import(`/mobile-premium-v12-9-4.js?v=${version}`).catch(error => {
+    console.error('[mobile-premium] Falha ao carregar viewport premium:', error);
   });
 })();
