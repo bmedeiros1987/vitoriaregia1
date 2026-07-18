@@ -1,12 +1,12 @@
 {
   "name": "vitoria-regia-pro-server",
-  "version": "12.8.4",
+  "version": "12.8.5",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --watch src/index.js",
-    "build": "node --check src/index.js",
-    "start": "node src/index.js"
+    "dev": "node --watch --import ./src/telegram-callmebot-preload.mjs src/index.js",
+    "build": "node --check src/telegram-callmebot-preload.mjs && node --check src/index.js",
+    "start": "node --import ./src/telegram-callmebot-preload.mjs src/index.js"
   },
   "dependencies": {
     "@sendgrid/mail": "8.1.6",
@@ -24,5 +24,5 @@
   "engines": {
     "node": "20.19.0"
   },
-  "description": "Sistema Vitória Régia Pro v12.8.4 com menu limpo, configurações centralizadas e validação geral de rotas premium."
+  "description": "Sistema Vitória Régia Pro v12.8.5 com chamadas inteligentes pelo Telegram via CallMeBot."
 }
