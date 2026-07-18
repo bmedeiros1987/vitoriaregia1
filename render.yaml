@@ -11,9 +11,11 @@ services:
       - key: NODE_ENV
         value: production
       - key: APP_VERSION
-        value: Vitória Régia Pro v12.9.4
+        value: Vitória Régia One v13.0.1
       - key: VITE_APP_VERSION
-        value: Vitória Régia Pro v12.9.4
+        value: Vitória Régia One v13.0.1
+      - key: VR_BUILD_REVISION
+        value: 20260718h
       - key: LANG
         value: C.UTF-8
       - key: LC_ALL
