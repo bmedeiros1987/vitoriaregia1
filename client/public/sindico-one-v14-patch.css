@@ -6,3 +6,189 @@ body.vr-one-drawer-open .floatingEmergency,
 .appShell aside,.appShell aside nav,.appShell aside nav>button{overflow-x:hidden!important;max-width:100%!important}
 .appShell aside nav{scrollbar-width:none!important;-ms-overflow-style:none!important}
 .appShell aside nav::-webkit-scrollbar{width:0!important;height:0!important;display:none!important}
+
+/* Vitória Régia One v14.0.1 — cabeçalho móvel e menus internos sem sobreposição. */
+@media (max-width:860px){
+  :root{
+    --vr-one-mobile-header-gap:8px;
+    --vr-one-mobile-header-height:76px;
+    --vr-one-mobile-header-bottom:calc(
+      var(--vr-mobile-safe-top, env(safe-area-inset-top,0px)) +
+      var(--vr-one-mobile-header-gap) +
+      var(--vr-one-mobile-header-height)
+    );
+  }
+
+  /* O cabeçalho é o primeiro elemento da rolagem; não existe mais a faixa vazia de 82px. */
+  body.vr-one-active .appShell.vr-one-shell>.content{
+    padding-top:calc(var(--vr-mobile-safe-top, env(safe-area-inset-top,0px)) + var(--vr-one-mobile-header-gap))!important;
+    padding-bottom:calc(var(--vr-mobile-nav-height,92px) + 126px + var(--vr-mobile-safe-bottom, env(safe-area-inset-bottom,0px)))!important;
+    scroll-padding-top:calc(var(--vr-one-mobile-header-bottom) + 68px)!important;
+    scroll-padding-bottom:calc(var(--vr-mobile-nav-height,92px) + 38px + var(--vr-mobile-safe-bottom, env(safe-area-inset-bottom,0px)))!important;
+  }
+
+  body.vr-one-active .appShell.vr-one-shell>.content>.topbar{
+    position:sticky!important;
+    top:calc(var(--vr-mobile-safe-top, env(safe-area-inset-top,0px)) + var(--vr-one-mobile-header-gap))!important;
+    z-index:100400!important;
+    width:100%!important;
+    min-height:var(--vr-one-mobile-header-height)!important;
+    margin:0 0 14px!important;
+    padding:10px 12px 10px 74px!important;
+    display:flex!important;
+    align-items:center!important;
+    gap:10px!important;
+    overflow:visible!important;
+    border-radius:20px!important;
+    background:color-mix(in srgb,var(--one-surface,var(--panel)) 98%,transparent)!important;
+    box-shadow:0 12px 30px rgba(4,31,52,.13)!important;
+    backdrop-filter:blur(18px) saturate(1.12)!important;
+    -webkit-backdrop-filter:blur(18px) saturate(1.12)!important;
+    isolation:isolate!important;
+  }
+
+  body.vr-one-active .appShell.vr-one-shell>.content>.topbar>div:first-child{
+    min-width:0!important;
+  }
+
+  body.vr-one-active .appShell.vr-one-shell>.content>.topbar h1{
+    margin:0!important;
+    font-size:clamp(21px,5.8vw,25px)!important;
+    line-height:1.05!important;
+    white-space:nowrap!important;
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+  }
+
+  body.vr-one-active .appShell.vr-one-shell>.content>.topbar>div:first-child>small{
+    font-size:10px!important;
+    line-height:1.2!important;
+    white-space:nowrap!important;
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+  }
+
+  body.vr-one-active .appShell.vr-one-shell>.content>.topbar .topActions{
+    flex:0 0 auto!important;
+    margin-left:auto!important;
+    overflow:visible!important;
+  }
+
+  body.vr-one-active .appShell.vr-one-shell>.content>.topbar .notificationBell{
+    width:44px!important;
+    height:44px!important;
+    min-height:44px!important;
+    padding:0!important;
+  }
+
+  /* O botão hambúrguer passa a ocupar visualmente a mesma barra do cabeçalho. */
+  body.vr-one-active .appShell.vr-one-shell>.mobileMenu{
+    position:fixed!important;
+    top:calc(var(--vr-mobile-safe-top, env(safe-area-inset-top,0px)) + 18px)!important;
+    left:20px!important;
+    right:auto!important;
+    bottom:auto!important;
+    z-index:100450!important;
+    width:48px!important;
+    height:48px!important;
+    min-height:48px!important;
+    border-radius:16px!important;
+  }
+
+  body.vr-one-drawer-open .appShell.vr-one-shell>.mobileMenu{
+    opacity:0!important;
+    visibility:hidden!important;
+    pointer-events:none!important;
+  }
+
+  /* Abas de contexto ficam em uma segunda linha fixa, sem disputar a posição do cabeçalho. */
+  body.vr-one-active .appShell.vr-one-shell .subTabs,
+  body.vr-one-active .appShell.vr-one-shell .configTabs,
+  body.vr-one-active .appShell.vr-one-shell #vr-sindico-one-v14 .vr-s14-tabs{
+    position:sticky!important;
+    top:calc(var(--vr-one-mobile-header-bottom) + 8px)!important;
+    z-index:100300!important;
+    width:100%!important;
+    max-width:100%!important;
+    min-height:54px!important;
+    margin:0 0 14px!important;
+    padding:6px!important;
+    display:flex!important;
+    flex-wrap:nowrap!important;
+    gap:6px!important;
+    overflow-x:auto!important;
+    overflow-y:hidden!important;
+    border:1px solid color-mix(in srgb,var(--accent) 15%,var(--one-line,var(--line)))!important;
+    border-radius:18px!important;
+    background:color-mix(in srgb,var(--one-surface,var(--panel)) 98%,transparent)!important;
+    box-shadow:0 10px 24px rgba(4,31,52,.10)!important;
+    backdrop-filter:blur(16px) saturate(1.08)!important;
+    -webkit-backdrop-filter:blur(16px) saturate(1.08)!important;
+    mask-image:none!important;
+    -webkit-mask-image:none!important;
+    scrollbar-width:none!important;
+  }
+
+  body.vr-one-active .appShell.vr-one-shell .subTabs::-webkit-scrollbar,
+  body.vr-one-active .appShell.vr-one-shell .configTabs::-webkit-scrollbar,
+  body.vr-one-active .appShell.vr-one-shell #vr-sindico-one-v14 .vr-s14-tabs::-webkit-scrollbar{
+    width:0!important;
+    height:0!important;
+    display:none!important;
+  }
+
+  body.vr-one-active .appShell.vr-one-shell .subTabs>button,
+  body.vr-one-active .appShell.vr-one-shell .configTabs>button,
+  body.vr-one-active .appShell.vr-one-shell #vr-sindico-one-v14 .vr-s14-tabs>button{
+    flex:0 0 auto!important;
+    min-height:42px!important;
+    white-space:nowrap!important;
+  }
+
+  /* Controles grandes permanecem no fluxo da página e nunca cobrem o conteúdo. */
+  body.vr-one-active .appShell.vr-one-shell .vrReservaToolbar,
+  body.vr-one-active .appShell.vr-one-shell .vrReservaToolbar.vr-stable-nav{
+    position:relative!important;
+    top:auto!important;
+    z-index:auto!important;
+  }
+
+  /* O rodapé era irmão da área rolável e aparecia sobre o topo no celular. */
+  body.vr-one-active .appShell.vr-one-shell>.appFooter{
+    display:none!important;
+  }
+
+  body.vr-one-active .appShell.vr-one-shell>.floatingEmergency{
+    width:56px!important;
+    height:56px!important;
+    min-height:56px!important;
+    right:14px!important;
+    bottom:calc(var(--vr-mobile-nav-height,92px) + 22px + var(--vr-mobile-safe-bottom, env(safe-area-inset-bottom,0px)))!important;
+    padding:0!important;
+    border-radius:50%!important;
+  }
+
+  body.vr-one-active .appShell.vr-one-shell>.floatingEmergency span{
+    display:none!important;
+  }
+}
+
+@media (max-width:430px){
+  :root{--vr-one-mobile-header-height:72px}
+
+  body.vr-one-active .appShell.vr-one-shell>.content>.topbar{
+    padding-left:68px!important;
+    padding-right:9px!important;
+  }
+
+  body.vr-one-active .appShell.vr-one-shell>.content>.topbar h1{
+    font-size:21px!important;
+  }
+
+  body.vr-one-active .appShell.vr-one-shell>.mobileMenu{
+    left:17px!important;
+    width:46px!important;
+    height:46px!important;
+    min-height:46px!important;
+  }
+}
