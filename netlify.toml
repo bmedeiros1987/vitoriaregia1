@@ -1,0 +1,13 @@
+[build]
+  command = "npm run install:client && npm --prefix client run build"
+  publish = "client/dist"
+
+[build.environment]
+  NODE_VERSION = "20.19.0"
+  NPM_CONFIG_AUDIT = "false"
+  NPM_CONFIG_FUND = "false"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
