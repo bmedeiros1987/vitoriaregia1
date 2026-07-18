@@ -1,6 +1,6 @@
 {
   "name": "vitoria-regia-pro-client",
-  "version": "12.8.4",
+  "version": "12.8.5",
   "private": true,
   "type": "module",
   "scripts": {
@@ -20,5 +20,5 @@
   "engines": {
     "node": "20.19.0"
   },
-  "description": "Sistema Vitória Régia Pro v12.8.4 com menu limpo, configurações centralizadas e validação geral de rotas premium."
+  "description": "Sistema Vitória Régia Pro v12.8.5 com central de chamadas pelo Telegram."
 }
