@@ -43,21 +43,23 @@ async function latestEmergency(){
   try{return (await pool.query(`SELECT to_jsonb(e) data FROM emergency_requests e WHERE COALESCE(e.status,'pendente')<>'rejeitada' ORDER BY e.id DESC LIMIT 1`)).rows[0]?.data||{}}catch{return {}}
 }
 function emergency(person,row,original,max){
-  const parts=[];add(parts,`Atenção${first(person.name)?`, ${first(person.name)}`:''}`);add(parts,`Emergência identificada: ${pick(row,['type_label','type','emergency_type','title','type_code'])||field(original,['emergência','tipo'])||'situação de emergência'}`);
-  const place=[floor(pick(row,['floor','andar','pavimento'])),pick(row,['occurrence_location','location','local','location_type']),unit(pick(row,['neighbor_unit','unit','unidade']))].filter(Boolean).join(', ');if(place)add(parts,`Local: ${place}`);
-  add(parts,pick(row,['details','description','notes','body','decision_note']));const at=time(pick(row,['created_at','approved_at','decided_at']));if(at)add(parts,`Registro às ${at}`);add(parts,'Afaste-se da área de risco e contate a portaria imediatamente');return fit(parts,max);
+  const parts=[];add(parts,`Atenção${first(person.name)?`, ${first(person.name)}`:''}`);
+  const type=field(original,['tipo','emergência'])||pick(row,['type_label','type','emergency_type','title','type_code'])||'situação de emergência';add(parts,`Emergência identificada: ${type}`);
+  const informedFloor=field(original,['andar','pavimento']);const informedLocation=field(original,['local','local exato']);const informedUnit=field(original,['unidade de referência','unidade']);
+  const place=[floor(informedFloor||pick(row,['floor','andar','pavimento'])),informedLocation||pick(row,['occurrence_location','location','local','location_type']),unit(informedUnit||pick(row,['neighbor_unit','unit','unidade']))].filter(Boolean).join(', ');if(place)add(parts,`Local: ${place}`);
+  add(parts,field(original,['detalhes','orientações'])||pick(row,['details','description','notes','body','decision_note']));const at=time(pick(row,['created_at','approved_at','decided_at']));if(at)add(parts,`Registro às ${at}`);add(parts,'Afaste-se da área de risco e contate a portaria imediatamente');return fit(parts,max);
 }
 function packageCall(person,row,original,max,urgent){
   const parts=[];add(parts,`${first(person.name)||'Morador'}, a portaria recebeu ${urgent?'uma encomenda urgente':'uma encomenda'}${person.unit?` para a ${unit(person.unit)}`:''}`);
-  const sender=pick(row,['sender','remetente','merchant','store','seller','origin'])||field(original,['remetente','loja']);if(sender)add(parts,`Remetente: ${sender}`);
-  const carrier=pick(row,['carrier','transportadora','delivery_company','courier'])||field(original,['transportadora']);if(carrier)add(parts,`Transportadora: ${carrier}`);
-  const tracking=pick(row,['tracking','tracking_code','code','barcode'])||field(original,['rastreamento','código']);if(tracking)add(parts,`Rastreamento final ${digits(tracking)}`);
-  const receiver=pick(row,['received_by','received_by_name','porteiro','created_by_name']);if(receiver)add(parts,`Recebida por ${receiver}`);const at=time(pick(row,['received_at','created_at','updated_at']));if(at)add(parts,`Registro às ${at}`);add(parts,urgent?'Abra o Telegram agora para ver as orientações':'Abra o Telegram para confirmar a retirada');return fit(parts,max);
+  const sender=field(original,['remetente','loja'])||pick(row,['sender','remetente','merchant','store','seller','origin']);if(sender)add(parts,`Remetente: ${sender}`);
+  const carrier=field(original,['transportadora'])||pick(row,['carrier','transportadora','delivery_company','courier']);if(carrier)add(parts,`Transportadora: ${carrier}`);
+  const tracking=field(original,['rastreamento','código'])||pick(row,['tracking','tracking_code','code','barcode']);if(tracking)add(parts,`Rastreamento final ${digits(tracking)}`);
+  const receiver=field(original,['recebida por','recebedor'])||pick(row,['received_by','received_by_name','porteiro','created_by_name']);if(receiver)add(parts,`Recebida por ${receiver}`);const at=time(pick(row,['received_at','created_at','updated_at']));if(at)add(parts,`Registro às ${at}`);add(parts,urgent?'Abra o Telegram agora para ver as orientações':'Abra o Telegram para confirmar a retirada');return fit(parts,max);
 }
 function visitor(person,row,original,max){
-  const parts=[];const visitorName=pick(row,['name','visitor_name','visitor','convidado'])||field(original,['visitante','convidado'])||'Um visitante';add(parts,`${first(person.name)||'Morador'}, ${visitorName} está aguardando na portaria${person.unit?` para a ${unit(person.unit)}`:''}`);
-  const company=pick(row,['company','empresa','service_company']);if(company)add(parts,`Empresa: ${company}`);const purpose=pick(row,['purpose','reason','motivo','notes','visitor_type']);if(purpose)add(parts,`Motivo: ${purpose}`);
-  const document=pick(row,['document','document_number','documento']);if(document)add(parts,`Documento final ${digits(document)}`);const plate=pick(row,['plate','vehicle_plate','placa']);if(plate)add(parts,`Veículo placa ${clean(plate,20).toUpperCase()}`);const at=time(pick(row,['arrived_at','checkin_at','created_at']));if(at)add(parts,`Chegada às ${at}`);add(parts,'Abra o Telegram para autorizar ou recusar a entrada');return fit(parts,max);
+  const parts=[];const visitorName=field(original,['visitante','convidado'])||pick(row,['name','visitor_name','visitor','convidado'])||'Um visitante';add(parts,`${first(person.name)||'Morador'}, ${visitorName} está aguardando na portaria${person.unit?` para a ${unit(person.unit)}`:''}`);
+  const company=field(original,['empresa'])||pick(row,['company','empresa','service_company']);if(company)add(parts,`Empresa: ${company}`);const purpose=field(original,['motivo'])||pick(row,['purpose','reason','motivo','notes','visitor_type']);if(purpose)add(parts,`Motivo: ${purpose}`);
+  const document=field(original,['documento'])||pick(row,['document','document_number','documento']);if(document)add(parts,`Documento final ${digits(document)}`);const plate=field(original,['placa'])||pick(row,['plate','vehicle_plate','placa']);if(plate)add(parts,`Veículo placa ${clean(plate,20).toUpperCase()}`);const at=time(pick(row,['arrived_at','checkin_at','created_at']));if(at)add(parts,`Chegada às ${at}`);add(parts,'Abra o Telegram para autorizar ou recusar a entrada');return fit(parts,max);
 }
 export async function enrichTelegramCallText(username,original,max=256){
   const person=await target(username).catch(()=>({}));const kind=typeOf(original);
@@ -65,6 +67,6 @@ export async function enrichTelegramCallText(username,original,max=256){
   if(kind==='visitor')return visitor(person,await latestVisitor(person),original,max);
   if(kind==='urgent_package')return packageCall(person,await latestPackage(person),original,max,true);
   if(kind==='package')return packageCall(person,await latestPackage(person),original,max,false);
-  if(kind==='intercom')return fit([`${first(person.name)||'Morador'}, a portaria está tentando falar com você${person.unit?` sobre a ${unit(person.unit)}`:''}`,clean(original,130),'Abra o Telegram ou contate a portaria'],max);
-  return fit([`${first(person.name)||'Morador'}, você recebeu um aviso do Condomínio Vitória Régia`,clean(original,150),'Abra o Telegram para consultar os detalhes'],max);
+  if(kind==='intercom')return fit([`${first(person.name)||'Morador'}, a portaria está tentando falar com você${person.unit?` sobre a ${unit(person.unit)}`:''}`,field(original,['motivo'])||clean(original,130),'Abra o Telegram ou contate a portaria'],max);
+  return fit([`${first(person.name)||'Morador'}, você recebeu um aviso do Condomínio Vitória Régia`,field(original,['título'])||clean(original,150),field(original,['detalhes']),'Abra o Telegram para consultar os detalhes'],max);
 }
