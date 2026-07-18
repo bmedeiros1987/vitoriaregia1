@@ -1,0 +1,30 @@
+/* Vitória Régia Pro v12.9.4 — ancoragem final do viewport móvel */
+@media(max-width:860px){
+  .appShell,
+  .appShell>.content,
+  .appShell.menu-closed>.content,
+  .appShell.menu-floating>.content,
+  .appShell.menu-horizontal>.content,
+  .appShell.menu-top>.content{
+    contain:none!important;
+    transform:none!important;
+    translate:none!important;
+    perspective:none!important;
+    filter:none!important;
+  }
+
+  .bottomNav,.mobileMenu,.floatingEmergency,.overlay{
+    transform:none!important;
+    translate:none!important;
+    perspective:none!important;
+    filter:none!important;
+    backface-visibility:hidden!important;
+  }
+
+  .vrReservaToolbar,.vrReservaViewBtns,.vrReservaViewBtns button{
+    writing-mode:horizontal-tb!important;
+    text-orientation:mixed!important;
+    word-break:normal!important;
+    overflow-wrap:normal!important;
+  }
+}
