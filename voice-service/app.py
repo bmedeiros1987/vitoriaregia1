@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 SAMPLE_RATE = 24_000
 SUPPORTED_VOICES = {"pf_dora", "pm_alex", "pm_santa"}
 SUPPORTED_FORMATS = {"opus", "ogg", "mp3", "wav"}
-DEFAULT_VOICE = os.getenv("VOICE_DEFAULT", "pf_dora").strip() or "pf_dora"
+DEFAULT_VOICE = os.getenv("VOICE_DEFAULT", "pf_dora").strip().lower() or "pf_dora"
 MAX_CHARS = max(200, min(3_000, int(os.getenv("VOICE_MAX_CHARS", "1800"))))
 CACHE_SIZE = max(0, min(50, int(os.getenv("VOICE_CACHE_ITEMS", "16"))))
 CONCURRENCY = max(1, min(2, int(os.getenv("VOICE_MAX_CONCURRENCY", "1"))))
@@ -169,7 +169,7 @@ async def health() -> dict[str, object]:
         "ok": True,
         "ready": _pipeline is not None,
         "provider": "kokoro",
-        "voice": DEFAULT_VOICE,
+        "voice": DEFAULT_VOICE if DEFAULT_VOICE in SUPPORTED_VOICES else "pf_dora",
         "protected": bool(os.getenv("VOICE_API_KEY", "").strip()),
     }
 
@@ -187,9 +187,8 @@ async def speech(payload: SpeechRequest, authorization: str | None = Header(defa
     text = _normalized_text(payload.input)
     if not text:
         raise HTTPException(status_code=400, detail="Texto vazio para gerar áudio.")
-    voice = payload.voice.strip().lower()
-    if voice not in SUPPORTED_VOICES:
-        raise HTTPException(status_code=400, detail=f"Voz inválida. Use: {', '.join(sorted(SUPPORTED_VOICES))}.")
+    requested_voice = payload.voice.strip().lower()
+    voice = requested_voice if requested_voice in SUPPORTED_VOICES else (DEFAULT_VOICE if DEFAULT_VOICE in SUPPORTED_VOICES else "pf_dora")
     output_format = payload.response_format.strip().lower()
     if output_format not in SUPPORTED_FORMATS:
         raise HTTPException(status_code=400, detail="Formato inválido. Use opus, mp3 ou wav.")
@@ -200,7 +199,7 @@ async def speech(payload: SpeechRequest, authorization: str | None = Header(defa
     cached = await _cache_get(cache_key)
     if cached is not None:
         audio, content_type, filename = cached
-        return Response(audio, media_type=content_type, headers={"Content-Disposition": f'inline; filename="{filename}"', "X-Voice-Cache": "HIT"})
+        return Response(audio, media_type=content_type, headers={"Content-Disposition": f'inline; filename="{filename}"', "X-Voice-Cache": "HIT", "X-Voice-Name": voice})
 
     try:
         async with _generation_gate:
@@ -220,6 +219,7 @@ async def speech(payload: SpeechRequest, authorization: str | None = Header(defa
             "Cache-Control": "no-store",
             "X-Voice-Provider": "kokoro",
             "X-Voice-Name": voice,
+            "X-Voice-Requested": requested_voice,
             "X-Voice-Cache": "MISS",
         },
     )
