@@ -1,0 +1,10 @@
+/* Ajustes finais da camada Presentation Ready */
+body.vr-presentation-modal-open,
+body.vr-mobile-menu-lock{touch-action:auto!important}
+
+@media(min-width:861px) and (max-width:1100px){
+  .vr-presentation-shell{left:326px!important}
+  #vr-presentation-modal.vr-menu-closed .vr-presentation-shell{left:122px!important}
+  #vr-presentation-modal.vr-menu-floating .vr-presentation-shell{left:136px!important}
+  #vr-presentation-modal.vr-menu-horizontal .vr-presentation-shell{left:18px!important;top:122px!important}
+}
