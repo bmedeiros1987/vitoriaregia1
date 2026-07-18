@@ -4,6 +4,7 @@ const nativeFetch=globalThis.fetch.bind(globalThis);
 const clean=(value='',max=4090)=>String(value??'').normalize('NFKC').replace(/[\u0000-\u001F\u007F]/g,' ').replace(/\s+/g,' ').trim().slice(0,max);
 const bool=(value,fallback=false)=>value===undefined||value===null||value===''?fallback:['1','true','yes','sim','on','enabled','ativo'].includes(String(value).trim().toLowerCase());
 const join=(base,path)=>`${String(base||'').replace(/\/$/,'')}/${String(path||'').replace(/^\//,'')}`;
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 
 async function token(){return String(await setting('TELEGRAM_BOT_TOKEN',process.env.TELEGRAM_BOT_TOKEN||'')).trim()}
 async function apiBase(){return String(await setting('TELEGRAM_API_BASE_URL',process.env.TELEGRAM_API_BASE_URL||'https://api.telegram.org')).replace(/\/$/,'')}
@@ -74,30 +75,64 @@ export async function transcribeTelegramAudio(message={}){
   return text;
 }
 
+async function fetchWithTimeout(url,options={},timeoutMs=180000){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),timeoutMs);
+  timer.unref?.();
+  try{return await nativeFetch(url,{...options,signal:controller.signal})}
+  finally{clearTimeout(timer)}
+}
+
+async function decodeSpeechResponse(response,format){
+  const contentType=String(response.headers.get('content-type')||'').toLowerCase();
+  if(contentType.includes('application/json')){
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok||data.ok===false)throw new Error(clean(data.detail||data.error||data.message||`Erro ${response.status}`,400));
+    const encoded=String(data.audioBase64||data.audio_base64||'');
+    if(!encoded)throw new Error('O serviço de voz não devolveu o áudio.');
+    return {buffer:Buffer.from(encoded,'base64'),format,contentType:data.contentType||(format==='opus'?'audio/ogg':'audio/mpeg')};
+  }
+  if(!response.ok){
+    const raw=await response.text().catch(()=>`Erro ${response.status}`);
+    throw new Error(clean(raw,400)||`Erro ${response.status}`);
+  }
+  const buffer=Buffer.from(await response.arrayBuffer());
+  if(!buffer.length)throw new Error('O serviço de voz devolveu um arquivo vazio.');
+  return {buffer,format,contentType:contentType||((format==='opus'||format==='ogg')?'audio/ogg':format==='wav'?'audio/wav':'audio/mpeg')};
+}
+
 async function synthesize(text){
   const base=String(process.env.VR_TTS_BASE_URL||'').replace(/\/$/,'');
   if(!base||!bool(process.env.VR_TELEGRAM_CONCIERGE_AUDIO_ENABLED,true))return null;
   const formats=[process.env.VR_TTS_RESPONSE_FORMAT||'opus','mp3'];
+  const attempts=Math.max(1,Math.min(3,Number(process.env.VR_TTS_MAX_ATTEMPTS||2)));
+  const timeoutMs=Math.max(30000,Math.min(300000,Number(process.env.VR_TTS_REQUEST_TIMEOUT_SECONDS||180)*1000));
+  const retryDelay=Math.max(1000,Math.min(15000,Number(process.env.VR_TTS_RETRY_DELAY_SECONDS||5)*1000));
   let lastError='';
+
   for(const format of [...new Set(formats)]){
-    const response=await nativeFetch(join(base,'v1/audio/speech'),{
-      method:'POST',
-      headers:{'content-type':'application/json',...(process.env.VR_TTS_API_KEY?{authorization:`Bearer ${process.env.VR_TTS_API_KEY}`}:{})},
-      body:JSON.stringify({
-        model:process.env.VR_TTS_MODEL||'tts-1',
-        input:String(text||'').slice(0,3500),
-        voice:process.env.VR_TTS_VOICE||'pt-BR-FranciscaNeural',
-        response_format:format,
-        speed:Number(process.env.VR_TTS_SPEED||0.95)
-      })
-    });
-    if(response.ok){
-      const contentType=response.headers.get('content-type')||(format==='opus'?'audio/ogg':'audio/mpeg');
-      return {buffer:Buffer.from(await response.arrayBuffer()),format,contentType};
+    for(let attempt=1;attempt<=attempts;attempt+=1){
+      try{
+        const response=await fetchWithTimeout(join(base,'v1/audio/speech'),{
+          method:'POST',
+          headers:{'content-type':'application/json',...(process.env.VR_TTS_API_KEY?{authorization:`Bearer ${process.env.VR_TTS_API_KEY}`}:{})},
+          body:JSON.stringify({
+            model:process.env.VR_TTS_MODEL||'kokoro-82m',
+            input:String(text||'').slice(0,1800),
+            voice:process.env.VR_TTS_VOICE||'pf_dora',
+            response_format:format,
+            language:'pt-BR',
+            speed:Number(process.env.VR_TTS_SPEED||0.96)
+          })
+        },timeoutMs);
+        return await decodeSpeechResponse(response,format);
+      }catch(error){
+        lastError=error?.name==='AbortError'?'O serviço gratuito demorou para despertar.':clean(error?.message||error,400);
+        if(attempt<attempts)await sleep(retryDelay*attempt);
+      }
     }
-    lastError=await response.text().catch(()=>`Erro ${response.status}`);
   }
-  throw new Error(clean(lastError,300)||'Serviço de voz indisponível.');
+  throw new Error(lastError||'Serviço de voz indisponível.');
 }
 
 async function sendVoice(chatId,audio,keyboard=null){
