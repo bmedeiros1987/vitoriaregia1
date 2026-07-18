@@ -139,7 +139,7 @@ function isQuietHours(prefs, date = new Date()) {
 }
 function classifyMessage(text = '') {
   const value = clean(text, 3500).toLowerCase();
-  if (/emerg[eê]ncia|socorro|p[aâ]nico|inc[eê]ndio|vazamento|alarme|risco imediato|urgente/.test(value)) return 'emergency';
+  if (/emerg[eê]ncia|socorro|p[aâ]nico|inc[eê]ndio|vazamento|alarme|risco imediato|alerta urgente|prioridade cr[ií]tica/.test(value)) return 'emergency';
   if (/visitante|convidad[oa]|aguardando.*portaria|portaria.*aguardando/.test(value)) return 'visitor';
   if (/interfone|chamada da portaria|contato da portaria/.test(value)) return 'intercom';
   if (/encomenda|pacote|correios|mercado livre|amazon|entrega/.test(value) && /urgente|medicamento|perec[ií]vel|refrigerad|prioridade/.test(value)) return 'urgent_package';
@@ -189,7 +189,9 @@ function pruneRecentCalls() {
   for (const [key, timestamp] of recentCalls.entries()) if (now - timestamp > ttl) recentCalls.delete(key);
 }
 function dedupeKey(target, category, message) {
-  return createHash('sha256').update(`${target}|${category}|${clean(message, 256)}`).digest('hex');
+  const ttl = number(process.env.VR_TELEGRAM_CALL_DEDUPE_TTL_MS, 180000, 30000, 3600000);
+  const bucket = Math.floor(Date.now() / ttl);
+  return createHash('sha256').update(`${target}|${category}|${clean(message, 256)}|${bucket}`).digest('hex');
 }
 
 async function findTargetByChat(chatId = '') {
@@ -249,6 +251,9 @@ async function findManualTarget(body = {}) {
       WHERE upper(replace(coalesce(r.unit,''),' ',''))=$1 AND COALESCE(r.active,true)=true ORDER BY u.id DESC NULLS LAST,r.id DESC LIMIT 1`, [unit]);
     const row = result.rows[0];
     if (row) return { ...row, chat_id:row.user_telegram_chat_id || row.telegram_chat_id || '', telegram_username:row.user_telegram_username || row.telegram_username || '', preferences:row.user_preferences || row.notification_preferences || {} };
+    const fallback = await q(`SELECT id AS user_id,resident_id,name,email,unit,role,telegram_chat_id,telegram_username,notification_preferences
+      FROM users WHERE upper(replace(coalesce(unit,''),' ',''))=$1 AND COALESCE(active,true)=true ORDER BY id DESC LIMIT 1`, [unit]);
+    if (fallback.rows[0]) return { ...fallback.rows[0], chat_id:fallback.rows[0].telegram_chat_id || '', preferences:fallback.rows[0].notification_preferences || {} };
   }
   return null;
 }
@@ -330,10 +335,18 @@ async function performCall({ target, category = 'notification', message, reason 
 
 async function processTelegramDelivery(url, init, response) {
   if (!CALL_ENABLED || !response?.ok) return;
-  const targetUrl = String(typeof url === 'string' ? url : url?.url || '');
+  const targetUrl = String(typeof url === 'string' ? url : url?.url || url || '');
   if (!/\/bot[^/]+\/sendMessage(?:\?|$)/i.test(targetUrl)) return;
+  const telegramResult = await response.json().catch(() => ({}));
+  if (telegramResult?.ok === false) return;
   let body = null;
-  try { body = typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body; } catch { return; }
+  try { body = typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body; } catch {}
+  if (!body?.chat_id || !body?.text) {
+    try {
+      const parsed = new URL(targetUrl);
+      body = { chat_id:parsed.searchParams.get('chat_id') || '', text:parsed.searchParams.get('text') || '' };
+    } catch { return; }
+  }
   if (!body?.chat_id || !body?.text) return;
   const category = classifyMessage(body.text);
   if (category === 'notification') return;
@@ -464,7 +477,8 @@ function installRoutes(app) {
 
   const originalUse = installRoutes.originalUse || express.application.use;
   originalUse.call(app, '/api/telegram-calls', router);
-  void ensureSchema();
+  const schemaTimer = setTimeout(() => void ensureSchema(), 5000);
+  schemaTimer.unref?.();
   console.log('[telegram-calls] Integração CallMeBot carregada.');
 }
 
