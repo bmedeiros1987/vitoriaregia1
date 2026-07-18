@@ -11,9 +11,17 @@ services:
       - key: NODE_ENV
         value: production
       - key: APP_VERSION
-        value: Vitória Régia Pro v12.9.0
+        value: Vitória Régia Pro v12.9.1
       - key: VITE_APP_VERSION
-        value: Vitória Régia Pro v12.9.0
+        value: Vitória Régia Pro v12.9.1
+      - key: LANG
+        value: C.UTF-8
+      - key: LC_ALL
+        value: C.UTF-8
+      - key: PGCLIENTENCODING
+        value: UTF8
+      - key: TZ
+        value: America/Sao_Paulo
       - key: NPM_CONFIG_REGISTRY
         value: https://registry.npmjs.org/
       - key: NPM_CONFIG_AUDIT
@@ -38,6 +46,8 @@ services:
         value: missed
       - key: VR_CALLMEBOT_TIMEOUT_SECONDS
         value: 45
+      - key: VR_TELEGRAM_CALL_MAX_TTS_CHARS
+        value: 256
       - key: VR_TELEGRAM_CALL_EMERGENCY_DELAY_SECONDS
         value: 2
       - key: VR_TELEGRAM_CALL_VISITOR_DELAY_SECONDS
