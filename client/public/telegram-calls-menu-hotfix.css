@@ -1,0 +1,11 @@
+/* Hotfix v12.8.7 — acesso nativo e resiliente à central de chamadas */
+#vr-telegram-call-menu[hidden]{display:none!important}
+.vr-call-native-entry{width:100%;display:flex;align-items:center;gap:12px;text-align:left}
+.vr-call-native-entry .vr-call-native-icon{width:22px;height:22px;display:grid;place-items:center;flex:0 0 auto;font-size:17px;line-height:1;font-weight:900}
+.vr-call-native-entry .vr-call-native-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.menu-closed .vr-call-native-entry{justify-content:center}
+.menu-closed .vr-call-native-entry .vr-call-native-label{display:none}
+.vr-call-fallback-entry{position:fixed;right:18px;bottom:88px;z-index:99940;display:flex;align-items:center;gap:9px;padding:12px 15px;border:0;border-radius:16px;background:linear-gradient(135deg,#064e45,#0f766e);color:#fff;font:inherit;box-shadow:0 14px 34px rgba(3,31,28,.28);cursor:pointer}
+.vr-call-fallback-entry span{width:27px;height:27px;display:grid;place-items:center;border-radius:9px;background:rgba(255,255,255,.16);font-size:16px}
+.vr-call-fallback-entry b{font-size:12px}
+@media(max-width:860px){.vr-call-fallback-entry{right:12px;bottom:82px;padding:11px 13px}.vr-call-fallback-entry b{display:none}.vr-call-fallback-entry span{width:30px;height:30px}}
