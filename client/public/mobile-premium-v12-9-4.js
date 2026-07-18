@@ -11,14 +11,21 @@
 
   function forceFixed(node, rules) {
     if (!(node instanceof HTMLElement)) return;
-    for (const [name, value] of Object.entries(rules)) node.style.setProperty(name, value, 'important');
+    for (const [name, value] of Object.entries(rules)) {
+      if (node.style.getPropertyValue(name) !== value || node.style.getPropertyPriority(name) !== 'important') {
+        node.style.setProperty(name, value, 'important');
+      }
+    }
   }
 
   function sync() {
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(() => {
       const mobile = matchMedia(MOBILE_QUERY).matches;
-      document.documentElement.style.setProperty('--vr-mobile-height', mobile ? `${viewportHeight()}px` : '100dvh');
+      const height = mobile ? `${viewportHeight()}px` : '100dvh';
+      if (document.documentElement.style.getPropertyValue('--vr-mobile-height') !== height) {
+        document.documentElement.style.setProperty('--vr-mobile-height', height);
+      }
       document.body.classList.toggle('vr-mobile-premium-fixed', mobile);
       if (!mobile) return;
 
@@ -54,7 +61,7 @@
   }
 
   const observer = new MutationObserver(sync);
-  observer.observe(document.documentElement, { childList:true, subtree:true, attributes:true, attributeFilter:['class','style'] });
+  observer.observe(document.documentElement, { childList:true, subtree:true, attributes:true, attributeFilter:['class'] });
   addEventListener('resize', sync, { passive:true });
   addEventListener('orientationchange', sync, { passive:true });
   addEventListener('pageshow', sync, { passive:true });
