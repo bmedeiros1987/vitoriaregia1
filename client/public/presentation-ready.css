@@ -1,0 +1,236 @@
+/* Vitória Régia Pro v12.9.0 — Presentation Ready / navegação premium */
+
+:root{
+  --vr-present-brand:#0b5f54;
+  --vr-present-brand2:#168c79;
+  --vr-present-ink:#0b211c;
+  --vr-present-glass:color-mix(in srgb,var(--panel) 88%,transparent);
+  --vr-present-safe-top:env(safe-area-inset-top,0px);
+  --vr-present-safe-bottom:env(safe-area-inset-bottom,0px);
+}
+
+body.vr-presentation-modal-open,
+body.vr-mobile-menu-lock{overflow:hidden!important;touch-action:none!important}
+
+/* Menu principal: uma única entrada para Gestão, sem atalhos espremidos. */
+#vr-integrated-menu.vr-management-single{
+  display:block!important;
+  margin:5px 0!important;
+  padding:0!important;
+  border:0!important;
+}
+#vr-integrated-menu.vr-management-single .vr-integrated-menu-title,
+#vr-integrated-menu.vr-management-single .vr-integrated-shortcuts{display:none!important}
+#vr-integrated-menu.vr-management-single .vr-integrated-mainbutton{
+  min-height:46px!important;
+  padding:11px 12px!important;
+  border-radius:16px!important;
+  border:1px solid transparent!important;
+  background:transparent!important;
+  color:var(--muted)!important;
+  box-shadow:none!important;
+  transform:none!important;
+}
+#vr-integrated-menu.vr-management-single .vr-integrated-mainbutton i{
+  width:22px!important;height:22px!important;border-radius:8px!important;
+  background:color-mix(in srgb,var(--accent) 13%,var(--panel2))!important;
+  color:var(--accent)!important;box-shadow:none!important
+}
+#vr-integrated-menu.vr-management-single .vr-integrated-mainbutton:hover,
+#vr-integrated-menu.vr-management-single .vr-integrated-mainbutton.active{
+  background:linear-gradient(135deg,var(--vr-present-brand),var(--vr-present-brand2))!important;
+  color:#fff!important;border-color:rgba(255,255,255,.12)!important;
+  box-shadow:0 12px 28px rgba(11,95,84,.22)!important
+}
+#vr-integrated-menu.vr-management-single .vr-integrated-mainbutton:hover i,
+#vr-integrated-menu.vr-management-single .vr-integrated-mainbutton.active i{
+  background:rgba(255,255,255,.14)!important;color:#fff!important
+}
+
+/* Substitui os lançadores antigos por um bloco limpo de conexões. */
+#vr-telegram-call-native-entry,
+#vr-telegram-call-menu,
+#vr-telegram-call-fallback-entry{display:none!important}
+
+.vr-premium-tools-menu{
+  display:grid;gap:7px;margin:8px 0;padding:10px 0;
+  border-top:1px solid var(--line);border-bottom:1px solid var(--line)
+}
+.vr-premium-tools-menu>small{
+  padding:0 12px;color:var(--muted);font-size:9px;font-weight:950;
+  letter-spacing:.15em
+}
+.vr-premium-tools-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.vr-premium-tool-button{
+  min-width:0;display:flex;align-items:center;gap:7px;padding:9px 8px;
+  border:1px solid color-mix(in srgb,var(--accent) 12%,var(--line));
+  border-radius:13px;background:color-mix(in srgb,var(--accent) 5%,var(--panel2));
+  color:var(--text);font:inherit;text-align:left
+}
+.vr-premium-tool-button span{
+  width:27px;height:27px;display:grid;place-items:center;flex:0 0 auto;
+  border-radius:9px;background:linear-gradient(135deg,var(--vr-present-brand),var(--vr-present-brand2));
+  color:#fff;font-weight:950
+}
+.vr-premium-tool-button b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}
+.vr-premium-tool-button:hover{transform:translateY(-1px);border-color:color-mix(in srgb,var(--accent) 30%,var(--line));box-shadow:0 10px 22px rgba(9,43,37,.09)}
+.menu-closed .vr-premium-tools-menu>small{display:none}
+.menu-closed .vr-premium-tools-grid{grid-template-columns:1fr}
+.menu-closed .vr-premium-tool-button{justify-content:center;padding:9px}
+.menu-closed .vr-premium-tool-button b{display:none}
+.menu-horizontal .vr-premium-tools-menu,.menu-floating .vr-premium-tools-menu{border:0;margin:0;padding:0}
+.menu-horizontal .vr-premium-tools-menu>small,.menu-floating .vr-premium-tools-menu>small{display:none}
+.menu-horizontal .vr-premium-tools-grid{display:flex}
+.menu-horizontal .vr-premium-tool-button b{display:none}
+
+/* Reduz o cabeçalho exagerado do menu e melhora a leitura dos itens. */
+.appShell>aside .brand.brandLogoOnly{min-height:132px!important;padding:12px 46px 14px 12px!important}
+.appShell>aside .brandLogoOnly .brandLogo{width:108px!important;height:108px!important;max-width:118px!important;max-height:118px!important}
+.appShell>aside nav{padding-top:10px!important;scrollbar-width:thin}
+.appShell>aside nav>button,.appShell>aside .sideBottom>button{min-height:44px!important;padding:10px 12px!important}
+.menu-closed .appShell>aside .brand.brandLogoOnly{min-height:96px!important;padding:10px 6px!important}
+.menu-closed .appShell>aside .brandLogoOnly .brandLogo{width:62px!important;height:62px!important}
+
+/* Menus internos ficam ancorados no topo do próprio conteúdo. */
+.subTabs,.configTabs{
+  position:sticky!important;top:-1px!important;z-index:18!important;
+  margin:0 0 14px!important;padding:8px!important;
+  border:1px solid color-mix(in srgb,var(--accent) 13%,var(--line));
+  border-radius:18px!important;background:var(--vr-present-glass)!important;
+  backdrop-filter:blur(18px)!important;box-shadow:0 10px 28px rgba(9,43,37,.08)!important
+}
+.subTabs button,.configTabs button{flex:0 0 auto;white-space:nowrap}
+.vrReservaToolbar{position:sticky!important;top:-1px!important;z-index:17!important;backdrop-filter:blur(18px)!important}
+.vr-integrated-root .vr-suite-layout>nav{
+  position:sticky!important;top:0!important;z-index:24!important;
+  background:color-mix(in srgb,var(--vrs-panel) 94%,transparent)!important;
+  backdrop-filter:blur(18px)!important
+}
+
+/* Central modal compartilhada para Telegram e Android. */
+#vr-presentation-modal{position:fixed;inset:0;z-index:100250}
+#vr-presentation-modal[hidden]{display:none!important}
+.vr-presentation-backdrop{position:absolute;inset:0;background:rgba(2,18,15,.72);backdrop-filter:blur(14px)}
+.vr-presentation-shell{
+  position:absolute;inset:18px 18px 18px 326px;display:grid;grid-template-rows:auto minmax(0,1fr);
+  overflow:hidden;border:1px solid color-mix(in srgb,var(--accent) 18%,var(--line));
+  border-radius:30px;background:var(--bg);color:var(--text);box-shadow:0 34px 120px rgba(3,31,26,.34)
+}
+#vr-presentation-modal.vr-menu-closed .vr-presentation-shell{left:122px}
+#vr-presentation-modal.vr-menu-floating .vr-presentation-shell{left:136px}
+#vr-presentation-modal.vr-menu-horizontal .vr-presentation-shell{left:18px;top:122px}
+.vr-presentation-header{
+  display:flex;align-items:center;justify-content:space-between;gap:20px;padding:20px 24px;
+  background:linear-gradient(135deg,#063f37,#0b6d60 64%,#178f7b);color:#fff
+}
+.vr-presentation-header span{font-size:10px;font-weight:950;letter-spacing:.16em;opacity:.76}
+.vr-presentation-header h2{margin:4px 0;font-size:28px;letter-spacing:-.04em}
+.vr-presentation-header p{margin:0;color:rgba(255,255,255,.76)}
+.vr-presentation-header>button{width:43px;height:43px;border-radius:14px;border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.12);color:#fff;font-size:27px}
+#vr-presentation-content{overflow:auto;padding:22px;overscroll-behavior:contain}
+.vr-presentation-loading{min-height:55vh;display:grid;place-items:center;align-content:center;gap:10px;color:var(--muted)}
+.vr-presentation-loading span{width:42px;height:42px;border:4px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:vrPresentSpin .8s linear infinite}
+@keyframes vrPresentSpin{to{transform:rotate(360deg)}}
+.vr-presentation-error{display:grid;place-items:center;gap:14px;min-height:45vh;text-align:center}
+.vr-presentation-error button,.vr-setup-step button,.vr-apk-actions button{padding:11px 14px;border-radius:13px;font-weight:900}
+.vr-presentation-error button,.vr-setup-step .primary,.vr-apk-actions .primary{background:linear-gradient(135deg,var(--vr-present-brand),var(--vr-present-brand2));color:#fff}
+.vr-setup-step .secondary,.vr-apk-actions .secondary{background:var(--panel2);color:var(--accent);border:1px solid var(--line)}
+
+.vr-setup-hero{
+  display:grid;grid-template-columns:minmax(0,1fr) auto;gap:22px;align-items:center;
+  padding:26px;border-radius:26px;background:linear-gradient(125deg,#06483f,#0b6e60 64%,#149481);color:#fff;
+  box-shadow:0 22px 58px rgba(6,72,63,.24);margin-bottom:18px
+}
+.vr-setup-hero span,.vr-apk-hero>div:nth-child(2)>span{font-size:10px;font-weight:950;letter-spacing:.15em;opacity:.76}
+.vr-setup-hero h3{font-size:30px;line-height:1.05;margin:7px 0;letter-spacing:-.045em}
+.vr-setup-hero p{margin:0;color:rgba(255,255,255,.74)}
+.vr-setup-progress{min-width:165px;padding:16px;border-radius:20px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);text-align:center}
+.vr-setup-progress b,.vr-setup-progress small{display:block}.vr-setup-progress b{font-size:38px}.vr-setup-progress small{color:rgba(255,255,255,.72)}
+.vr-setup-progress i{display:block;height:8px;margin-top:10px;border-radius:999px;background:rgba(255,255,255,.16);overflow:hidden}
+.vr-setup-progress i span{display:block;height:100%;background:#fff;border-radius:inherit}
+.vr-setup-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.vr-setup-step{display:grid;grid-template-columns:auto minmax(0,1fr);gap:13px;padding:19px;border:1px solid var(--line);border-radius:22px;background:var(--panel);box-shadow:0 12px 34px rgba(9,43,37,.06)}
+.vr-setup-step>span{width:38px;height:38px;display:grid;place-items:center;border-radius:13px;background:var(--panel2);color:var(--accent);font-weight:950}
+.vr-setup-step.complete{border-color:color-mix(in srgb,var(--ok) 26%,var(--line))}.vr-setup-step.complete>span{background:#dcfce7;color:#166534}
+.vr-setup-step small{font-size:9px;font-weight:950;letter-spacing:.12em;color:var(--accent)}
+.vr-setup-step h4{margin:4px 0;font-size:19px}.vr-setup-step p{margin:0 0 13px;color:var(--muted);line-height:1.5}
+.vr-step-actions{display:flex;gap:8px;flex-wrap:wrap}
+.vr-setup-note,.vr-setup-admin{margin-top:14px;padding:16px 18px;border-radius:18px;border:1px solid var(--line);background:var(--panel2)}
+.vr-setup-note p,.vr-setup-admin p{margin:5px 0 0;color:var(--muted)}
+
+.vr-apk-hero{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:18px;align-items:center;padding:22px;border:1px solid var(--line);border-radius:26px;background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 15%,var(--panel)),var(--panel2));box-shadow:0 18px 48px rgba(9,43,37,.08)}
+.vr-apk-logo{width:96px;height:96px;border-radius:26px;background:linear-gradient(180deg,#06263f,#031728);display:grid;place-items:center;overflow:hidden;box-shadow:0 18px 36px rgba(0,28,52,.22)}
+.vr-apk-logo img{width:78px;height:78px;object-fit:contain}
+.vr-apk-hero h3{margin:5px 0;font-size:27px}.vr-apk-hero p{margin:0;color:var(--muted)}
+.vr-apk-hero em{font-style:normal;padding:7px 10px;border-radius:999px;font-size:11px;font-weight:950}.vr-apk-hero em.ok{background:#dcfce7;color:#166534}.vr-apk-hero em.warn{background:#fef3c7;color:#92400e}
+.vr-apk-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;margin:16px 0}
+.vr-apk-grid article{display:flex;gap:12px;align-items:flex-start;padding:17px;border:1px solid var(--line);border-radius:20px;background:var(--panel)}
+.vr-apk-grid article>span{width:37px;height:37px;display:grid;place-items:center;flex:0 0 auto;border-radius:12px;background:color-mix(in srgb,var(--accent) 12%,var(--panel2));color:var(--accent);font-weight:950}
+.vr-apk-grid b,.vr-apk-grid small{display:block}.vr-apk-grid small{margin-top:4px;color:var(--muted);line-height:1.45}
+.vr-apk-actions-card{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:20px;border-radius:22px;background:var(--panel);border:1px solid var(--line)}
+.vr-apk-actions-card p{margin:5px 0 0;color:var(--muted)}.vr-apk-actions{display:flex;gap:9px;flex-wrap:wrap}.vr-apk-actions button:disabled{opacity:.5;cursor:not-allowed}
+
+.vr-telegram-nudge{
+  position:relative;display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:13px;
+  margin:-4px 0 16px;padding:14px 16px;border-radius:20px;border:1px solid color-mix(in srgb,#229ED9 28%,var(--line));
+  background:linear-gradient(135deg,color-mix(in srgb,#229ED9 10%,var(--panel)),var(--panel));box-shadow:0 12px 32px rgba(34,158,217,.10)
+}
+.vr-telegram-nudge>span{width:39px;height:39px;display:grid;place-items:center;border-radius:13px;background:#229ED9;color:#fff;font-weight:950}
+.vr-telegram-nudge b,.vr-telegram-nudge small{display:block}.vr-telegram-nudge small{margin-top:3px}
+.vr-telegram-nudge button{padding:10px 13px;border-radius:12px;font-weight:900}.vr-telegram-nudge [data-vr-nudge-open]{background:#229ED9;color:#fff}.vr-telegram-nudge [data-vr-nudge-close]{width:34px;height:34px;padding:0;background:var(--panel2);color:var(--muted);font-size:20px}
+
+.vr-presentation-toast{position:fixed;right:20px;bottom:20px;z-index:100400;max-width:min(440px,calc(100vw - 24px));padding:13px 16px;border-radius:14px;background:#12322e;color:#fff;box-shadow:0 18px 48px rgba(0,0,0,.28);font-weight:850}
+.vr-presentation-toast.error{background:#991b1b}.vr-presentation-toast[hidden]{display:none}
+
+@media(max-width:1100px){
+  .vr-setup-grid{grid-template-columns:1fr}
+  .vr-presentation-shell{left:122px}
+}
+
+@media(max-width:860px){
+  /* Drawer mobile realmente fixo: somente o conteúdo interno rola. */
+  .appShell>aside{
+    position:fixed!important;inset:0 auto 0 0!important;top:0!important;bottom:0!important;
+    width:min(88vw,350px)!important;max-width:min(88vw,350px)!important;
+    height:100vh!important;height:100dvh!important;max-height:100dvh!important;
+    border-radius:0 28px 28px 0!important;z-index:100180!important;
+    transform:translate3d(-106%,0,0)!important;transition:transform .24s cubic-bezier(.2,.8,.2,1)!important;
+    overflow:hidden!important;padding:12px!important;display:flex!important;flex-direction:column!important
+  }
+  .appShell.mobile-open>aside{transform:translate3d(0,0,0)!important}
+  .appShell>.overlay{display:none!important}
+  .appShell.mobile-open>.overlay{display:block!important;position:fixed!important;inset:0!important;z-index:100170!important;background:rgba(3,21,18,.64)!important;backdrop-filter:blur(8px)!important}
+  .appShell>aside .brand.brandLogoOnly{position:sticky!important;top:0!important;z-index:3!important;min-height:104px!important;padding:9px 46px 10px 8px!important;background:inherit!important;flex:0 0 auto!important}
+  .appShell>aside .brandLogoOnly .brandLogo{width:82px!important;height:82px!important;max-width:88px!important;max-height:88px!important}
+  .appShell>aside nav{flex:1 1 auto!important;min-height:0!important;overflow-y:auto!important;overflow-x:hidden!important;padding:9px 2px!important;overscroll-behavior:contain!important}
+  .appShell>aside .sideBottom{position:sticky!important;bottom:0!important;z-index:3!important;flex:0 0 auto!important;margin-top:0!important;padding:9px 0 max(4px,var(--vr-present-safe-bottom))!important;background:inherit!important}
+  .mobileMenu{position:fixed!important;top:calc(10px + var(--vr-present-safe-top))!important;left:12px!important;z-index:100160!important}
+  .appShell.mobile-open .mobileMenu{opacity:0!important;pointer-events:none!important}
+
+  .subTabs,.configTabs{top:0!important;margin-left:-2px!important;margin-right:-2px!important;border-radius:16px!important}
+  .vrReservaToolbar{top:0!important}
+  .vr-integrated-root .vr-suite-shell,.vr-presentation-shell{inset:0!important;border-radius:0!important;z-index:100260!important}
+  .vr-integrated-root .vr-suite-layout{grid-template-columns:1fr!important;grid-template-rows:auto minmax(0,1fr)!important}
+  .vr-integrated-root .vr-suite-layout>nav{display:flex!important;flex-direction:row!important;overflow-x:auto!important;overflow-y:hidden!important;padding:8px!important;border-right:0!important;border-bottom:1px solid var(--vrs-line)!important}
+  .vr-integrated-root .vr-suite-layout>nav>button{flex:0 0 auto!important}
+  .vr-presentation-header{padding:calc(12px + var(--vr-present-safe-top)) 14px 13px!important}
+  .vr-presentation-header h2{font-size:22px}.vr-presentation-header p{display:none}
+  #vr-presentation-content{padding:13px 13px calc(24px + var(--vr-present-safe-bottom))}
+  .vr-setup-hero{grid-template-columns:1fr;padding:19px;border-radius:22px}.vr-setup-hero h3{font-size:24px}.vr-setup-progress{min-width:0;text-align:left}
+  .vr-apk-hero{grid-template-columns:auto 1fr}.vr-apk-hero em{grid-column:1/-1;width:max-content}.vr-apk-grid{grid-template-columns:1fr}.vr-apk-actions-card{display:grid}
+  .vr-telegram-nudge{grid-template-columns:auto minmax(0,1fr) auto;padding:12px}.vr-telegram-nudge [data-vr-nudge-open]{grid-column:2}.vr-telegram-nudge [data-vr-nudge-close]{position:absolute;right:8px;top:8px}
+  .vr-premium-tools-menu{margin-top:6px}.vr-premium-tool-button{min-height:44px}
+  .vr-presentation-toast{right:12px;left:12px;bottom:calc(86px + var(--vr-present-safe-bottom));max-width:none}
+}
+
+@media(max-width:480px){
+  .vr-premium-tools-grid{grid-template-columns:1fr 1fr}
+  .vr-setup-step{padding:15px}.vr-step-actions{display:grid}.vr-step-actions button{width:100%}
+  .vr-apk-logo{width:78px;height:78px}.vr-apk-logo img{width:62px;height:62px}.vr-apk-hero h3{font-size:22px}
+  .vr-apk-actions{display:grid}.vr-apk-actions button{width:100%}
+  .vr-telegram-nudge{grid-template-columns:auto 1fr}.vr-telegram-nudge>span{width:36px;height:36px}.vr-telegram-nudge [data-vr-nudge-open]{grid-column:1/-1;width:100%}
+}
+
+@media print{
+  .vr-premium-tools-menu,#vr-presentation-modal,.vr-telegram-nudge,.vr-presentation-toast{display:none!important}
+}
