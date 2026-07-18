@@ -156,6 +156,12 @@ aside nav{gap:7px;padding:8px 0;scrollbar-width:thin}aside nav button,.sideBotto
   .menu-closed .brandCompact .brandLogo{width:58px!important}
 }
 
+/* v14.0.1 — auditoria de estabilidade: feedback compacto e modais previsíveis */
+.confirmModal[aria-busy="true"]{cursor:progress}
+.confirmModal[aria-busy="true"] .confirmList{opacity:.66}
+.confirmModal button:disabled{opacity:.62!important;cursor:progress!important}
+.cameraFallbackButton{min-height:46px!important}
+
 /* v10.4 — hotfix: menu integrado ao layout, sem máscara/card segregado */
 :root{
   --sidebarW:286px;
@@ -1171,3 +1177,8 @@ body{
 .apkUpdatePolicy{grid-column:1/-1;background:var(--panel);border:1px solid var(--line);border-radius:24px;padding:18px;}
 .apkUpdatePolicy code{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:3px 7px;}
 @media(max-width:860px){.offlineApkGuide{grid-template-columns:1fr;}}
+
+/* A posição do toast precisa ser a última regra para não combinar top + bottom. */
+.toast{top:24px!important;right:26px!important;bottom:auto!important;left:auto!important;width:max-content!important;max-width:min(430px,calc(100vw - 52px))!important;min-width:0!important;min-height:0!important;height:auto!important;max-height:min(180px,45dvh)!important;overflow:auto!important;display:flex!important;align-items:center!important;line-height:1.35!important;overflow-wrap:anywhere!important;pointer-events:none!important}
+.toast.toast-error{background:linear-gradient(135deg,#b4232e,#d13d47)!important;color:#fff!important;box-shadow:0 18px 42px rgba(180,35,46,.28)!important}
+@media(max-width:920px){.toast{top:auto!important;right:12px!important;bottom:calc(var(--vr-mobile-nav-height,92px) + 18px + env(safe-area-inset-bottom,0px))!important;left:12px!important;width:auto!important;max-width:none!important;max-height:132px!important}}

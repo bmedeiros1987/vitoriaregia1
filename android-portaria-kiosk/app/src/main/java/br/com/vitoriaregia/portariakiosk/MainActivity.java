@@ -25,6 +25,7 @@ import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -39,6 +40,9 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+
 public class MainActivity extends Activity {
     private static final int REQ_CAMERA = 801;
     private static final int REQ_FILE_CHOOSER = 802;
@@ -49,7 +53,7 @@ public class MainActivity extends Activity {
      */
     private static final String APP_URL = "https://vitoriaregia-pro.onrender.com/?app=portaria#/portaria/encomendas";
     private static final String BOT_URL = "https://t.me/vitoriaregia_bot";
-    private static final String DEFAULT_PIN = "1987";
+    private static final String TRUSTED_HOST = "vitoriaregia-pro.onrender.com";
 
     private WebView webView;
     private ProgressBar progressBar;
@@ -60,6 +64,7 @@ public class MainActivity extends Activity {
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         prefs = getSharedPreferences("portaria_kiosk", MODE_PRIVATE);
+        migrateLegacyPin();
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -115,6 +120,7 @@ public class MainActivity extends Activity {
         s.setLoadWithOverviewMode(true);
         s.setBuiltInZoomControls(false);
         s.setDisplayZoomControls(false);
+        webView.addJavascriptInterface(new KioskBridge(), "VitoriaKiosk");
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
             CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
@@ -152,12 +158,16 @@ public class MainActivity extends Activity {
                 return true;
             }
             @Override public void onPermissionRequest(PermissionRequest request) {
+                if (!isTrustedOrigin(request.getOrigin())) {
+                    request.deny();
+                    return;
+                }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
                     pendingPermissionRequest = request;
                     requestPermissions(new String[]{Manifest.permission.CAMERA}, REQ_CAMERA);
                     return;
                 }
-                request.grant(request.getResources());
+                grantCameraOnly(request);
             }
         });
     }
@@ -168,10 +178,55 @@ public class MainActivity extends Activity {
             openExternal(url);
             return true;
         }
+        if ((url.startsWith("http://") || url.startsWith("https://")) && !isTrustedAppUrl(url)) {
+            openExternal(url);
+            return true;
+        }
         return false;
     }
 
+    private final class KioskBridge {
+        @JavascriptInterface public void setAdminPin(String pin) {
+            final String candidate = pin == null ? "" : pin.trim();
+            runOnUiThread(() -> {
+                if (!isTrustedAppUrl(webView.getUrl()) || !candidate.matches("\\d{4,12}")) {
+                    Toast.makeText(MainActivity.this, "PIN não aceito. Use de 4 a 12 números.", Toast.LENGTH_LONG).show();
+                    return;
+                }
+                saveAdminPin(candidate);
+                Toast.makeText(MainActivity.this, "PIN do kiosk atualizado neste aparelho", Toast.LENGTH_LONG).show();
+            });
+        }
+    }
+
+    private boolean isTrustedAppUrl(String url) {
+        if (url == null) return false;
+        try {
+            Uri uri = Uri.parse(url);
+            return "https".equalsIgnoreCase(uri.getScheme()) && TRUSTED_HOST.equalsIgnoreCase(uri.getHost());
+        } catch (Exception ignored) { return false; }
+    }
+
+    private boolean isTrustedOrigin(Uri origin) {
+        return origin != null && "https".equalsIgnoreCase(origin.getScheme()) && TRUSTED_HOST.equalsIgnoreCase(origin.getHost());
+    }
+
+    private void grantCameraOnly(PermissionRequest request) {
+        if (request == null) return;
+        for (String resource : request.getResources()) {
+            if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) {
+                request.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+                return;
+            }
+        }
+        request.deny();
+    }
+
     private void askPinAndOpenAdminMenu() {
+        if (!prefs.contains("admin_pin_sha256")) {
+            showPinSetupInstructions();
+            return;
+        }
         final EditText input = new EditText(this);
         input.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
         input.setHint("PIN de administrador");
@@ -184,9 +239,9 @@ public class MainActivity extends Activity {
                 .setMessage("Informe o PIN para trocar de app, abrir Telegram, Wi-Fi ou sair do modo kiosk.")
                 .setView(input)
                 .setPositiveButton("Entrar", (d, w) -> {
-                    String savedPin = prefs.getString("admin_pin", DEFAULT_PIN);
+                    String savedPinHash = prefs.getString("admin_pin_sha256", "");
                     String typed = input.getText().toString().trim();
-                    if (savedPin.equals(typed)) showAdminMenu();
+                    if (secureEquals(savedPinHash, hashPin(typed))) showAdminMenu();
                     else Toast.makeText(this, "PIN inválido", Toast.LENGTH_LONG).show();
                 })
                 .setNegativeButton("Cancelar", null)
@@ -235,13 +290,45 @@ public class MainActivity extends Activity {
                 .setPositiveButton("Salvar", (d, w) -> {
                     String a = pin1.getText().toString().trim();
                     String b = pin2.getText().toString().trim();
-                    if (a.length() < 4) { Toast.makeText(this, "Use pelo menos 4 números", Toast.LENGTH_LONG).show(); return; }
+                    if (!a.matches("\\d{4,12}")) { Toast.makeText(this, "Use de 4 a 12 números", Toast.LENGTH_LONG).show(); return; }
                     if (!a.equals(b)) { Toast.makeText(this, "PINs diferentes", Toast.LENGTH_LONG).show(); return; }
-                    prefs.edit().putString("admin_pin", a).apply();
+                    saveAdminPin(a);
                     Toast.makeText(this, "PIN atualizado", Toast.LENGTH_LONG).show();
                 })
                 .setNegativeButton("Cancelar", null)
                 .show();
+    }
+
+    private void showPinSetupInstructions() {
+        new AlertDialog.Builder(this)
+                .setTitle("PIN precisa ser vinculado")
+                .setMessage("Entre no sistema com o perfil de síndico ou administrador neste aparelho. Depois abra Configurações > Notificações > Redefinir PIN neste aparelho. Não existe mais PIN universal.")
+                .setPositiveButton("Entendi", null)
+                .setNegativeButton("Recarregar sistema", (d, w) -> webView.loadUrl(APP_URL))
+                .show();
+    }
+
+    private void migrateLegacyPin() {
+        String legacy = prefs.getString("admin_pin", "");
+        if (legacy.matches("\\d{4,12}")) saveAdminPin(legacy);
+        if (prefs.contains("admin_pin")) prefs.edit().remove("admin_pin").apply();
+    }
+
+    private void saveAdminPin(String pin) {
+        prefs.edit().putString("admin_pin_sha256", hashPin(pin)).remove("admin_pin").apply();
+    }
+
+    private String hashPin(String pin) {
+        try {
+            byte[] hash = MessageDigest.getInstance("SHA-256").digest(String.valueOf(pin).getBytes(StandardCharsets.UTF_8));
+            StringBuilder out = new StringBuilder(hash.length * 2);
+            for (byte value : hash) out.append(String.format("%02x", value & 0xff));
+            return out.toString();
+        } catch (Exception ignored) { return ""; }
+    }
+
+    private boolean secureEquals(String a, String b) {
+        return a != null && b != null && !a.isEmpty() && MessageDigest.isEqual(a.getBytes(StandardCharsets.UTF_8), b.getBytes(StandardCharsets.UTF_8));
     }
 
     private void openTelegram() {
@@ -259,6 +346,10 @@ public class MainActivity extends Activity {
     }
 
     private void openCamera() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.CAMERA}, REQ_CAMERA);
+            return;
+        }
         pauseKioskModeSilently();
         try { startActivity(new Intent(MediaStore.ACTION_IMAGE_CAPTURE)); }
         catch (Exception e) { Toast.makeText(this, "Câmera não disponível", Toast.LENGTH_LONG).show(); }
@@ -329,11 +420,28 @@ public class MainActivity extends Activity {
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQ_CAMERA && pendingPermissionRequest != null) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) pendingPermissionRequest.grant(pendingPermissionRequest.getResources());
-            else pendingPermissionRequest.deny();
+        if (requestCode == REQ_CAMERA) {
+            boolean granted=grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            if (pendingPermissionRequest != null) {
+                if (granted) grantCameraOnly(pendingPermissionRequest);
+                else pendingPermissionRequest.deny();
+            }
             pendingPermissionRequest = null;
+            if (!granted) showCameraPermissionHelp();
         }
+    }
+
+    private void showCameraPermissionHelp() {
+        new AlertDialog.Builder(this)
+                .setTitle("Permissão de câmera bloqueada")
+                .setMessage("Libere Câmera nas configurações do aplicativo Vitória Régia Portaria e volte para tentar novamente.")
+                .setPositiveButton("Abrir configurações", (d, w) -> {
+                    Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()));
+                    pauseKioskModeSilently();
+                    startActivity(intent);
+                })
+                .setNegativeButton("Agora não", null)
+                .show();
     }
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
