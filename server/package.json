@@ -1,12 +1,12 @@
 {
   "name": "vitoria-regia-one-server",
-  "version": "13.1.0",
+  "version": "14.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --watch --import ./src/telegram-callmebot-ssl-hotfix.mjs --import ./src/visitor-qr-preload.mjs src/index.js",
-    "build": "node --check src/telegram-callmebot-ssl-hotfix.mjs && node --check src/telegram-concierge-data.mjs && node --check src/telegram-concierge-audio.mjs && node --check src/telegram-concierge-preload.mjs && node --check src/telegram-callmebot-preload.mjs && node --check src/visitor-qr-preload.mjs && node --check src/index.js",
-    "start": "node --import ./src/telegram-callmebot-ssl-hotfix.mjs --import ./src/visitor-qr-preload.mjs src/index.js"
+    "dev": "node --watch --import ./src/telegram-callmebot-ssl-hotfix.mjs --import ./src/visitor-qr-preload.mjs --import ./src/platform-preload.mjs src/index.js",
+    "build": "node --check src/telegram-callmebot-ssl-hotfix.mjs && node --check src/telegram-concierge-data.mjs && node --check src/telegram-concierge-audio.mjs && node --check src/telegram-concierge-preload.mjs && node --check src/telegram-callmebot-preload.mjs && node --check src/visitor-qr-preload.mjs && node --check src/platform-core.mjs && node --check src/platform-contract.mjs && node --check src/platform-asaas.mjs && node --check src/platform-preload.mjs && node --check src/index.js",
+    "start": "node --import ./src/telegram-callmebot-ssl-hotfix.mjs --import ./src/visitor-qr-preload.mjs --import ./src/platform-preload.mjs src/index.js"
   },
   "dependencies": {
     "@sendgrid/mail": "8.1.6",
@@ -25,5 +25,5 @@
   "engines": {
     "node": "20.19.0"
   },
-  "description": "Backend do Vitória Régia One v13.1 com convites QR assinados e recorrentes."
+  "description": "Backend Vitória Régia One v14 com assinatura, contrato, ASAAS, auditoria e privacidade administrativa."
 }
