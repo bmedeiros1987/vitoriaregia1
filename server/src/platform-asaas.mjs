@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { clean,onlyDigits,dateISO,addDays,sha256,q,TENANT_KEY,publicBase,subscription } from './platform-core.mjs';
 
 const apiKey=()=>clean(process.env.ASAAS_API_KEY);
@@ -15,12 +16,13 @@ async function requestAsaas(path,options={}){
   }finally{clearTimeout(timer);}
 }
 
-export function asaasConfigView(){return{configured:Boolean(apiKey()),environment:clean(process.env.ASAAS_ENVIRONMENT).toLowerCase()==='production'?'produção':'sandbox',monthly_value:Number(process.env.ASAAS_MONTHLY_VALUE||0),plan_name:process.env.ASAAS_PLAN_NAME||'Vitória Régia One'};}
+export function asaasConfigView(){return{configured:Boolean(apiKey()),webhook_configured:Boolean(webhookToken()),environment:clean(process.env.ASAAS_ENVIRONMENT).toLowerCase()==='production'?'produção':'sandbox',monthly_value:Number(process.env.ASAAS_MONTHLY_VALUE||0),plan_name:process.env.ASAAS_PLAN_NAME||'Vitória Régia One'};}
 
 export async function createCheckout(req,user){
   const row=await subscription();
   if(!row.contract_accepted_at)throw Object.assign(new Error('Aceite o contrato eletrônico antes de iniciar a assinatura.'),{status:409});
   const amount=Number(process.env.ASAAS_MONTHLY_VALUE||0);if(!(amount>0))throw Object.assign(new Error('Configure ASAAS_MONTHLY_VALUE para liberar a contratação.'),{status:503});
+  if(!webhookToken())throw Object.assign(new Error('Configure ASAAS_WEBHOOK_TOKEN antes de liberar pagamentos.'),{status:503});
   const body=req.body||{},name=clean(body.name||user.name),email=clean(body.email||user.email),cpfCnpj=onlyDigits(body.cpf_cnpj||body.document),phone=onlyDigits(body.phone||user.phone);
   if(!name||!email||cpfCnpj.length<11)throw Object.assign(new Error('Informe nome, e-mail e CPF/CNPJ do contratante.'),{status:400});
   const firstDue=Math.max(new Date(row.trial_ends_at).getTime(),addDays(new Date(),1).getTime()),nextDueDate=dateISO(firstDue),base=publicBase(req),externalReference=`vr-one:${TENANT_KEY}:${row.id}`;
@@ -32,13 +34,18 @@ export async function createCheckout(req,user){
 }
 
 function receivedToken(req){return clean(req.headers['asaas-access-token']||req.headers['x-asaas-token']||req.headers.authorization).replace(/^Bearer\s+/i,'');}
-export function webhookAuthorized(req){const expected=webhookToken();if(!expected)return true;const received=receivedToken(req);return expected.length===received.length&&expected===received;}
+export function webhookAuthorized(req){const expected=webhookToken(),received=receivedToken(req);if(!expected||!received)return false;const a=Buffer.from(expected),b=Buffer.from(received);return a.length===b.length&&timingSafeEqual(a,b);}
 
 export async function processWebhook(event={}){
   const eventName=clean(event.event||event.type),eventKey=clean(event.id)||sha256(JSON.stringify(event)),reference=clean(event.payment?.externalReference||event.subscription?.externalReference||event.checkout?.externalReference||event.externalReference);
   const inserted=await q('INSERT INTO platform_webhook_events(event_key,event_name,external_reference,payload_hash,processed_status) VALUES($1,$2,$3,$4,$5) ON CONFLICT(event_key) DO NOTHING RETURNING id',[eventKey,eventName,reference,sha256(JSON.stringify(event)),'received']);
   if(!inserted.rowCount)return{ok:true,duplicate:true};
-  let status='';if(/PAYMENT_(RECEIVED|CONFIRMED)|CHECKOUT_PAID|SUBSCRIPTION_CREATED/i.test(eventName))status='active';else if(/OVERDUE|RECEIVABLE_ANTICIPATION_CANCELLED/i.test(eventName))status='past_due';else if(/REFUND|CHARGEBACK/i.test(eventName))status='attention';else if(/SUBSCRIPTION_(DELETED|INACTIVATED)|CHECKOUT_CANCELLED/i.test(eventName))status='cancelled';
+  let status='';
+  if(/PAYMENT_(RECEIVED|CONFIRMED)|CHECKOUT_PAID/i.test(eventName))status='active';
+  else if(/PAYMENT_OVERDUE|OVERDUE/i.test(eventName))status='past_due';
+  else if(/REFUND|CHARGEBACK/i.test(eventName))status='attention';
+  else if(/SUBSCRIPTION_(DELETED|INACTIVATED)|CHECKOUT_CANCELLED/i.test(eventName))status='cancelled';
+  else if(/SUBSCRIPTION_CREATED|CHECKOUT_CREATED/i.test(eventName))status='awaiting_payment';
   await q("UPDATE platform_subscriptions SET status=COALESCE(NULLIF($1,''),status),asaas_customer_id=COALESCE(NULLIF($2,''),asaas_customer_id),asaas_subscription_id=COALESCE(NULLIF($3,''),asaas_subscription_id),last_payment_status=$4,last_payment_at=CASE WHEN $1='active' THEN now() ELSE last_payment_at END,last_event=$5,last_event_at=now(),updated_at=now() WHERE tenant_key=$6",[status,clean(event.payment?.customer||event.subscription?.customer),clean(event.subscription?.id||event.payment?.subscription),clean(event.payment?.status||event.status||eventName),eventName,TENANT_KEY]);
   await q('UPDATE platform_webhook_events SET processed_status=$1 WHERE event_key=$2',['processed',eventKey]);
   return{ok:true};
