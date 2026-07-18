@@ -1,8 +1,8 @@
 {
   "name": "vitoria-regia-pro",
-  "version": "12.9.0",
+  "version": "12.9.1",
   "private": true,
-  "description": "Sistema Vitória Régia Pro v12.9.0 Presentation Ready com navegação premium, Telegram assistido e instalação Android.",
+  "description": "Sistema Vitória Régia Pro v12.9.1 com chamadas contextuais detalhadas, personalização por morador e UTF-8 ponta a ponta.",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "npm --prefix client run dev",

@@ -1,11 +1,11 @@
 {
   "name": "vitoria-regia-pro-client",
-  "version": "12.9.0",
+  "version": "12.9.1",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "node --check public/presentation-ready.js && node --check public/telegram-calls-menu-hotfix.js && vite build",
+    "build": "node --check public/presentation-ready.js && node --check public/telegram-calls-menu-hotfix.js && node --check public/telegram-call-details-ui.js && vite build",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
@@ -20,5 +20,5 @@
   "engines": {
     "node": "20.19.0"
   },
-  "description": "Sistema Vitória Régia Pro v12.9.0 com navegação premium, menus fixos, Telegram assistido e instalação Android."
+  "description": "Sistema Vitória Régia Pro v12.9.1 com formulário contextual de chamadas e interface UTF-8."
 }
