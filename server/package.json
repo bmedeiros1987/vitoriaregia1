@@ -1,6 +1,6 @@
 {
   "name": "vitoria-regia-pro-server",
-  "version": "12.9.2",
+  "version": "12.9.3",
   "private": true,
   "type": "module",
   "scripts": {
@@ -24,5 +24,5 @@
   "engines": {
     "node": "20.19.0"
   },
-  "description": "Sistema Vitória Régia Pro v12.9.2 com concierge Telegram, transcrição e resposta por áudio."
+  "description": "Sistema Vitória Régia Pro v12.9.3 com concierge assíncrono e resposta por voz Kokoro gratuita."
 }
