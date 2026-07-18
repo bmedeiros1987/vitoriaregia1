@@ -1,6 +1,6 @@
 {
   "name": "vitoria-regia-pro-client",
-  "version": "12.9.2",
+  "version": "12.9.3",
   "private": true,
   "type": "module",
   "scripts": {
@@ -20,5 +20,5 @@
   "engines": {
     "node": "20.19.0"
   },
-  "description": "Sistema Vitória Régia Pro v12.9.2 com navegação mobile fixa e cards responsivos."
+  "description": "Sistema Vitória Régia Pro v12.9.3 com concierge Telegram e voz gratuita Kokoro."
 }
