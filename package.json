@@ -1,8 +1,8 @@
 {
   "name": "vitoria-regia-pro",
-  "version": "12.8.5",
+  "version": "12.8.6",
   "private": true,
-  "description": "Sistema Vitória Régia Pro v12.8.5 com chamadas inteligentes pelo Telegram via CallMeBot.",
+  "description": "Sistema Vitória Régia Pro v12.8.6 com hotfix SSL para chamadas inteligentes pelo Telegram via CallMeBot.",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "npm --prefix client run dev",

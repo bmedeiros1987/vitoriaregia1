@@ -1,12 +1,12 @@
 {
   "name": "vitoria-regia-pro-server",
-  "version": "12.8.5",
+  "version": "12.8.6",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --watch --import ./src/telegram-callmebot-preload.mjs src/index.js",
-    "build": "node --check src/telegram-callmebot-preload.mjs && node --check src/index.js",
-    "start": "node --import ./src/telegram-callmebot-preload.mjs src/index.js"
+    "dev": "node --watch --import ./src/telegram-callmebot-ssl-hotfix.mjs src/index.js",
+    "build": "node --check src/telegram-callmebot-ssl-hotfix.mjs && node --check src/telegram-callmebot-preload.mjs && node --check src/index.js",
+    "start": "node --import ./src/telegram-callmebot-ssl-hotfix.mjs src/index.js"
   },
   "dependencies": {
     "@sendgrid/mail": "8.1.6",
@@ -24,5 +24,5 @@
   "engines": {
     "node": "20.19.0"
   },
-  "description": "Sistema Vitória Régia Pro v12.8.5 com chamadas inteligentes pelo Telegram via CallMeBot."
+  "description": "Sistema Vitória Régia Pro v12.8.6 com hotfix SSL para chamadas inteligentes pelo Telegram via CallMeBot."
 }
