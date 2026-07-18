@@ -7,7 +7,15 @@ body.vr-one-drawer-open .floatingEmergency,
 .appShell aside nav{scrollbar-width:none!important;-ms-overflow-style:none!important}
 .appShell aside nav::-webkit-scrollbar{width:0!important;height:0!important;display:none!important}
 
-/* Vitória Régia One v14.0.1 — cabeçalho móvel e menus internos sem sobreposição. */
+/* Vitória Régia One v14.0.1 — cabeçalhos pertencem à página e não acompanham a rolagem. */
+body.vr-one-active .appShell.vr-one-shell>.content>.topbar,
+body.vr-one-active .appShell.vr-one-shell .subTabs,
+body.vr-one-active .appShell.vr-one-shell .configTabs,
+body.vr-one-active .appShell.vr-one-shell #vr-sindico-one-v14 .vr-s14-tabs{
+  position:relative!important;
+  top:auto!important;
+}
+
 @media (max-width:860px){
   :root{
     --vr-one-mobile-header-gap:8px;
@@ -23,14 +31,14 @@ body.vr-one-drawer-open .floatingEmergency,
   body.vr-one-active .appShell.vr-one-shell>.content{
     padding-top:calc(var(--vr-mobile-safe-top, env(safe-area-inset-top,0px)) + var(--vr-one-mobile-header-gap))!important;
     padding-bottom:calc(var(--vr-mobile-nav-height,92px) + 126px + var(--vr-mobile-safe-bottom, env(safe-area-inset-bottom,0px)))!important;
-    scroll-padding-top:calc(var(--vr-one-mobile-header-bottom) + 68px)!important;
+    scroll-padding-top:16px!important;
     scroll-padding-bottom:calc(var(--vr-mobile-nav-height,92px) + 38px + var(--vr-mobile-safe-bottom, env(safe-area-inset-bottom,0px)))!important;
   }
 
   body.vr-one-active .appShell.vr-one-shell>.content>.topbar{
-    position:sticky!important;
-    top:calc(var(--vr-mobile-safe-top, env(safe-area-inset-top,0px)) + var(--vr-one-mobile-header-gap))!important;
-    z-index:100400!important;
+    position:relative!important;
+    top:auto!important;
+    z-index:2!important;
     width:100%!important;
     min-height:var(--vr-one-mobile-header-height)!important;
     margin:0 0 14px!important;
@@ -101,13 +109,13 @@ body.vr-one-drawer-open .floatingEmergency,
     pointer-events:none!important;
   }
 
-  /* Abas de contexto ficam em uma segunda linha fixa, sem disputar a posição do cabeçalho. */
+  /* Abas de contexto permanecem no fluxo da página e saem da tela durante a rolagem. */
   body.vr-one-active .appShell.vr-one-shell .subTabs,
   body.vr-one-active .appShell.vr-one-shell .configTabs,
   body.vr-one-active .appShell.vr-one-shell #vr-sindico-one-v14 .vr-s14-tabs{
-    position:sticky!important;
-    top:calc(var(--vr-one-mobile-header-bottom) + 8px)!important;
-    z-index:100300!important;
+    position:relative!important;
+    top:auto!important;
+    z-index:1!important;
     width:100%!important;
     max-width:100%!important;
     min-height:54px!important;
