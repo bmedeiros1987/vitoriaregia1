@@ -3,6 +3,8 @@ import { ensureSchema,currentUser,managerRole,condoSigner,subscription,subscript
 import { contractView,acceptContract } from './platform-contract.mjs';
 import { asaasConfigView,createCheckout,webhookAuthorized,processWebhook } from './platform-asaas.mjs';
 
+ensureSchema().catch(error=>console.error('Inicialização da plataforma:',error.message));
+
 async function handle(req,res,next){
   if(!req.path.startsWith('/api/platform'))return privacyGuard(req,res,next);
   try{
