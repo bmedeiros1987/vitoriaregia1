@@ -1,0 +1,35 @@
+name: Validar voz gratuita
+
+on:
+  pull_request:
+    paths:
+      - "voice-service/**"
+      - "server/src/telegram-concierge-audio.mjs"
+      - "server/src/telegram-concierge-preload.mjs"
+      - ".github/workflows/validate-free-voice.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validar Python
+        run: python -m py_compile voice-service/app.py
+
+      - name: Validar JavaScript
+        run: |
+          node --check server/src/telegram-concierge-audio.mjs
+          node --check server/src/telegram-concierge-preload.mjs
+
+      - name: Conferir arquivos do Space
+        run: |
+          test -s voice-service/Dockerfile
+          test -s voice-service/requirements.txt
+          test -s voice-service/README.md
+          grep -q "sdk: docker" voice-service/README.md
+          grep -q "app_port: 7860" voice-service/README.md
