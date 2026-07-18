@@ -1,6 +1,6 @@
 {
   "name": "vitoria-regia-pro-server",
-  "version": "12.9.0",
+  "version": "12.9.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -24,5 +24,5 @@
   "engines": {
     "node": "20.19.0"
   },
-  "description": "Sistema Vitória Régia Pro v12.9.0 Presentation Ready com chamadas inteligentes pelo Telegram via CallMeBot."
+  "description": "Sistema Vitória Régia Pro v12.9.1 com chamadas contextuais detalhadas e UTF-8."
 }
