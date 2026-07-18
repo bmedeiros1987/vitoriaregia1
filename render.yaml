@@ -11,7 +11,9 @@ services:
       - key: NODE_ENV
         value: production
       - key: APP_VERSION
-        value: Vitória Régia Pro v12.8.6
+        value: Vitória Régia Pro v12.9.0
+      - key: VITE_APP_VERSION
+        value: Vitória Régia Pro v12.9.0
       - key: NPM_CONFIG_REGISTRY
         value: https://registry.npmjs.org/
       - key: NPM_CONFIG_AUDIT
