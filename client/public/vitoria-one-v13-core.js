@@ -12,7 +12,7 @@
   }
   function drawer(shell){
     const open=shell.classList.contains('mobile-open');
-    document.body.classList.toggle('vr-one-menu-open',open);
+    document.body.classList.toggle('vr-one-drawer-open',open);
     const bottom=shell.querySelector('.bottomNav');
     bottom?.classList.toggle('vr-one-hidden-by-drawer',open);
     if(bottom&&bottom.getAttribute('aria-hidden')!==String(open))bottom.setAttribute('aria-hidden',String(open));
