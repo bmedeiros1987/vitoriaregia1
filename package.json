@@ -1,8 +1,8 @@
 {
   "name": "vitoria-regia-one",
-  "version": "13.1.0",
+  "version": "14.0.0",
   "private": true,
-  "description": "Vitória Régia One v13.1 com convites QR recorrentes, acessíveis e seguros.",
+  "description": "Vitória Régia One v14: painel único do síndico, assinatura ASAAS, contrato e auditoria.",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "npm --prefix client run dev",
