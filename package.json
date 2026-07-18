@@ -1,8 +1,8 @@
 {
-  "name": "vitoria-regia-pro",
-  "version": "12.9.4",
+  "name": "vitoria-regia-one",
+  "version": "13.0.0",
   "private": true,
-  "description": "Sistema Vitória Régia Pro v12.9.4 com viewport móvel fixo, Reservas responsivas e navegação premium.",
+  "description": "Vitória Régia One v13: experiência condominial única, acessível e confiável.",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "npm --prefix client run dev",
