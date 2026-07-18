@@ -1,8 +1,8 @@
 {
   "name": "vitoria-regia-one",
-  "version": "13.0.0",
+  "version": "13.1.0",
   "private": true,
-  "description": "Vitória Régia One v13: experiência condominial única, acessível e confiável.",
+  "description": "Vitória Régia One v13.1 com convites QR recorrentes, acessíveis e seguros.",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "npm --prefix client run dev",
