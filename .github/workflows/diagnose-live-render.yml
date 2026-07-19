@@ -15,21 +15,11 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 5
     steps:
-      - name: Check active deployment
+      - uses: actions/checkout@v4
+      - name: Validate login DOM
         shell: bash
         run: |
-          set -euo pipefail
-          base='https://vitoriaregia-pro.onrender.com'
-          stamp="$(date +%s)"
-          curl -sS -L --max-time 60 -H 'Cache-Control: no-cache' -D /tmp/headers "$base/?verify=$stamp" -o /tmp/live.html
-          echo '=== HEADERS ==='
-          cat /tmp/headers
-          echo '=== MARKERS ==='
-          grep -En '20260719[f-z]|vr-boot-fallback|deletion-governance-v14|assets/.*\.js' /tmp/live.html || true
-          echo '=== SCRIPT ORDER ==='
-          grep -En '<script' /tmp/live.html || true
-          echo '=== HEALTH ==='
-          curl -sS -L --max-time 40 -D - "$base/api/health" -o /tmp/health || true
-          cat /tmp/health || true
+          python3 -m pip install --quiet websocket-client requests
+          python3 .github/scripts/diagnose_live.py
