@@ -59,18 +59,18 @@
           const url=new URL(location.href);url.searchParams.set('vr_recover',Date.now().toString());location.replace(url.toString());
         };
         window.setTimeout(()=>show('A inicialização está demorando mais que o normal. Toque em “Recarregar sistema” para renovar os arquivos do aplicativo.','delayed'),10000);
-        window.addEventListener('error',event=>show('Um componente não conseguiu iniciar. Recarregue para buscar a versão corrigida.','error'));
+        window.addEventListener('error',()=>show('Um componente não conseguiu iniciar. Recarregue para buscar a versão corrigida.','error'));
         window.addEventListener('unhandledrejection',()=>show('Não foi possível concluir a inicialização. Recarregue para tentar novamente.','error'));
       })();
     </script>
-    <!-- O núcleo React inicia primeiro. Integrações são carregadas de forma não bloqueante. -->
+    <!-- O núcleo React inicia primeiro. Integrações são adiadas e preservam a ordem de dependência. -->
     <script type="module" src="/src/main.jsx"></script>
-    <script async src="/package-intelligence-v14.js?v=20260719e"></script>
-    <script async src="/reservation-rsvp-public-v14.js?v=20260719e"></script>
-    <script async src="/reservation-rsvp-manager-v14.js?v=20260719e"></script>
-    <script async src="/deletion-governance-v14.js?v=20260719e"></script>
-    <script type="module" async src="/telegram-calls.js?v=20260719e"></script>
-    <script type="module" async src="/telegram-call-details-ui.js?v=20260719e"></script>
-    <script type="module" async src="/vitoria-one-v13-core.js?v=20260719e"></script>
+    <script defer src="/package-intelligence-v14.js?v=20260719e"></script>
+    <script defer src="/reservation-rsvp-public-v14.js?v=20260719e"></script>
+    <script defer src="/reservation-rsvp-manager-v14.js?v=20260719e"></script>
+    <script defer src="/deletion-governance-v14.js?v=20260719e"></script>
+    <script type="module" src="/telegram-calls.js?v=20260719e"></script>
+    <script type="module" src="/telegram-call-details-ui.js?v=20260719e"></script>
+    <script type="module" src="/vitoria-one-v13-core.js?v=20260719e"></script>
   </body>
 </html>
