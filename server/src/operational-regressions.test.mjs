@@ -113,7 +113,7 @@ test('importação de convidados cobre Excel, PDF, CSV e Google Forms exportado'
 test('lembretes de encomenda mantêm e-mail obrigatório e respeitam a resposta do morador', () => {
   const reminders=source('package-reminders-preload.mjs');
   const lib=source('reservation-rsvp-lib.mjs');
-  assert.match(reminders,/const channels=\{app:true,email:true,telegram:true,whatsapp:true/);
+  assert.match(reminders,/const channels=\{app:true,telegram:true,whatsapp:true,[\s\S]{0,100}email:true\}/);
   assert.match(reminders,/results\.email=await sendEmail/);
   assert.match(reminders,/response_email_notified_at/);
   assert.match(reminders,/retirar_agora/);
