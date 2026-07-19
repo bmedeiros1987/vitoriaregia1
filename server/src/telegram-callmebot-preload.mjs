@@ -2,6 +2,7 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import { Pool } from 'pg';
 import { createHmac, timingSafeEqual, createHash } from 'node:crypto';
+import { classifyTelegramCallPayload } from './telegram-call-classifier.mjs';
 
 const nativeFetch = globalThis.fetch.bind(globalThis);
 const JWT_SECRET = process.env.JWT_SECRET || 'troque-este-segredo-em-producao';
@@ -136,16 +137,6 @@ function isQuietHours(prefs, date = new Date()) {
   const end = timeToMinute(prefs.quiet_end);
   if (start === end) return true;
   return start < end ? now >= start && now < end : now >= start || now < end;
-}
-function classifyMessage(text = '') {
-  const value = clean(text, 3500).toLowerCase();
-  if (/emerg[eê]ncia|socorro|p[aâ]nico|inc[eê]ndio|vazamento|alarme|risco imediato|alerta urgente|prioridade cr[ií]tica/.test(value)) return 'emergency';
-  if (/visitante|convidad[oa]|aguardando.*portaria|portaria.*aguardando/.test(value)) return 'visitor';
-  if (/interfone|chamada da portaria|contato da portaria/.test(value)) return 'intercom';
-  if (/encomenda|pacote|correios|mercado livre|amazon|entrega/.test(value) && /urgente|medicamento|perec[ií]vel|refrigerad|prioridade/.test(value)) return 'urgent_package';
-  if (/encomenda|pacote|correios|mercado livre|amazon|entrega/.test(value)) return 'package';
-  if (/comunicado|aviso|assembleia|manuten[cç][aã]o/.test(value)) return 'notice';
-  return 'notification';
 }
 function categoryLabel(category) {
   return ({ emergency:'Emergência', visitor:'Visitante', intercom:'Interfone', urgent_package:'Encomenda urgente', package:'Encomenda', notice:'Comunicado', notification:'Notificação' }[category] || 'Notificação');
@@ -348,7 +339,7 @@ async function processTelegramDelivery(url, init, response) {
     } catch { return; }
   }
   if (!body?.chat_id || !body?.text) return;
-  const category = classifyMessage(body.text);
+  const category = classifyTelegramCallPayload(body);
   if (category === 'notification') return;
   const target = await findTargetByChat(body.chat_id).catch(() => null);
   if (!target) return;
