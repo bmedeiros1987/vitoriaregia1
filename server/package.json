@@ -1,6 +1,6 @@
 {
   "name": "vitoria-regia-one-server",
-  "version": "14.0.3",
+  "version": "14.0.6",
   "private": true,
   "type": "module",
   "scripts": {
@@ -28,5 +28,5 @@
   "engines": {
     "node": "20.19.0"
   },
-  "description": "Backend Vitória Régia One v14.0.3 com exclusões rastreáveis, proteção de autoria, RSVP e lembretes."
+  "description": "Backend Vitória Régia One v14.0.6 com exclusões rastreáveis, RSVP, lembretes e versão alinhada."
 }

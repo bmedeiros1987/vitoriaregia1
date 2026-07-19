@@ -1,0 +1,198 @@
+/* Vitória Régia One v14.0.5 — recuperação definitiva do shell web */
+:root{
+  --vr-recovery-sidebar:286px;
+  --vr-recovery-sidebar-compact:88px;
+  --vr-recovery-gutter:clamp(18px,2vw,34px);
+  --vr-recovery-max:1500px;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html,body,#root,.appShell{width:100%;min-width:0;max-width:100%}
+
+/*
+ * Regra única no desktop: sidebar fixa + uma única margem no conteúdo.
+ * A versão anterior misturava grid com margin-left e reservava o menu duas vezes.
+ */
+@media (min-width:861px){
+  html body .appShell,
+  html body .appShell.menu-vertical{
+    display:block!important;
+    grid-template-columns:none!important;
+    width:100%!important;
+    min-height:100dvh!important;
+  }
+
+  html body .appShell>aside{
+    position:fixed!important;
+    inset:0 auto 0 0!important;
+    display:flex!important;
+    flex-direction:column!important;
+    width:var(--vr-recovery-sidebar)!important;
+    min-width:var(--vr-recovery-sidebar)!important;
+    max-width:var(--vr-recovery-sidebar)!important;
+    height:100dvh!important;
+    max-height:100dvh!important;
+    overflow:hidden auto!important;
+    opacity:1!important;
+    visibility:visible!important;
+    transform:none!important;
+    pointer-events:auto!important;
+    z-index:1200!important;
+  }
+
+  html body .appShell.menu-closed>aside{
+    width:var(--vr-recovery-sidebar-compact)!important;
+    min-width:var(--vr-recovery-sidebar-compact)!important;
+    max-width:var(--vr-recovery-sidebar-compact)!important;
+  }
+
+  html body .appShell>main.content{
+    display:block!important;
+    grid-column:auto!important;
+    width:calc(100% - var(--vr-recovery-sidebar))!important;
+    max-width:none!important;
+    min-width:0!important;
+    min-height:100dvh!important;
+    margin:0 0 0 var(--vr-recovery-sidebar)!important;
+    padding:0 var(--vr-recovery-gutter) clamp(34px,4vw,64px)!important;
+    overflow:visible!important;
+    filter:none;
+  }
+
+  html body .appShell.menu-closed>main.content{
+    width:calc(100% - var(--vr-recovery-sidebar-compact))!important;
+    margin-left:var(--vr-recovery-sidebar-compact)!important;
+  }
+
+  html body .appShell>main.content>.topbar,
+  html body .appShell>main.content>.dashboard,
+  html body .appShell>main.content>.panel,
+  html body .appShell>main.content>.stack,
+  html body .appShell>main.content>section,
+  html body .appShell>main.content>div:not(.toast){
+    width:100%!important;
+    max-width:var(--vr-recovery-max)!important;
+    margin-left:auto!important;
+    margin-right:auto!important;
+  }
+
+  html body .appShell>main.content>.topbar{
+    display:flex!important;
+    opacity:1!important;
+    visibility:visible!important;
+    pointer-events:auto!important;
+    margin-top:0!important;
+    margin-bottom:clamp(16px,1.8vw,26px)!important;
+  }
+}
+
+/* Falha segura: uma classe de foco antiga nunca mais pode esconder a aplicação. */
+body.vr-focus-layer:not(.vr-deletion-open):not(.vr-scanner-open){
+  overflow:auto!important;
+}
+body.vr-focus-layer:not(.vr-deletion-open):not(.vr-scanner-open) .appShell>aside,
+body.vr-focus-layer:not(.vr-deletion-open):not(.vr-scanner-open) .appShell .bottomNav,
+body.vr-focus-layer:not(.vr-deletion-open):not(.vr-scanner-open) .appShell .mobileMenu,
+body.vr-focus-layer:not(.vr-deletion-open):not(.vr-scanner-open) .appShell .floatingEmergency,
+body.vr-focus-layer:not(.vr-deletion-open):not(.vr-scanner-open) .appShell .content>.topbar,
+body.vr-focus-layer:not(.vr-deletion-open):not(.vr-scanner-open) .appShell .subTabs,
+body.vr-focus-layer:not(.vr-deletion-open):not(.vr-scanner-open) .appShell .tabs,
+body.vr-focus-layer:not(.vr-deletion-open):not(.vr-scanner-open) .appShell [role="tablist"]{
+  opacity:1!important;
+  visibility:visible!important;
+  pointer-events:auto!important;
+}
+body.vr-focus-layer:not(.vr-deletion-open):not(.vr-scanner-open) .appShell>main.content{
+  filter:none!important;
+  pointer-events:auto!important;
+}
+
+/* Hierarquia e densidade premium para a área útil. */
+.content>.dashboard,
+.content>.panel,
+.content>.stack{
+  min-width:0!important;
+}
+.content .panel,
+.content .subpanel,
+.content .card,
+.content .noticeBox{
+  max-width:100%!important;
+}
+.content .formGrid,
+.content .premiumForm{
+  width:100%!important;
+  min-width:0!important;
+  align-items:start!important;
+}
+.content .formGrid>*,
+.content .premiumForm>*{
+  min-width:0!important;
+  max-width:100%!important;
+}
+.content textarea{resize:vertical;min-height:124px}
+.content button,.content input,.content select,.content textarea{max-width:100%}
+
+/* Abas e cabeçalhos internos permanecem legíveis sem cobrir o conteúdo. */
+.content .subTabs,
+.content .tabs,
+.content .panelTabs,
+.content .moduleTabs,
+.content .segmentedTabs,
+.content [role="tablist"]{
+  width:100%!important;
+  max-width:100%!important;
+  z-index:640!important;
+}
+
+/* Somente camadas realmente abertas escondem a navegação concorrente. */
+body.vr-deletion-open .appShell>aside,
+body.vr-deletion-open .appShell .bottomNav,
+body.vr-deletion-open .appShell .mobileMenu,
+body.vr-deletion-open .appShell .floatingEmergency,
+body.vr-deletion-open .appShell .content>.topbar{
+  opacity:0!important;
+  visibility:hidden!important;
+  pointer-events:none!important;
+}
+
+@media (max-width:860px){
+  html body .appShell{display:block!important;width:100%!important}
+  html body .appShell>main.content,
+  html body .appShell.menu-closed>main.content{
+    width:100%!important;
+    max-width:100%!important;
+    margin:0!important;
+    padding-left:12px!important;
+    padding-right:12px!important;
+  }
+  html body .appShell>aside{
+    position:fixed!important;
+    inset:0 auto 0 0!important;
+    display:flex!important;
+    width:min(88vw,330px)!important;
+    min-width:0!important;
+    max-width:min(88vw,330px)!important;
+    height:100dvh!important;
+    opacity:1!important;
+    visibility:visible!important;
+    transform:translateX(-105%)!important;
+    pointer-events:auto!important;
+    z-index:2600!important;
+  }
+  html body .appShell.mobile-open>aside{transform:translateX(0)!important}
+  html body .appShell>main.content>.topbar{
+    display:flex!important;
+    opacity:1!important;
+    visibility:visible!important;
+    pointer-events:auto!important;
+  }
+}
+
+@media (min-width:861px) and (max-width:1180px){
+  :root{--vr-recovery-sidebar:250px;--vr-recovery-gutter:18px}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .appShell>aside,.appShell>main.content{transition:none!important}
+}
