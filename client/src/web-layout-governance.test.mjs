@@ -35,7 +35,7 @@ test('central aparece somente para gestão autorizada',()=>{
   const script=read('public/deletion-governance-v14.js');
   assert.match(script,/\['master','admin','sindico','subsindico'\]/);
   assert.match(script,/allowedRoles\.has/);
-  assert.match(script,/Criado pelo síndico/);
+  assert.match(script,/criados pelo síndico/i);
 });
 
 test('arquivos são carregados por último para prevalecer sobre o layout antigo',()=>{
