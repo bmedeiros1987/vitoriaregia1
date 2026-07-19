@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Vitória Régia" />
-    <link rel="manifest" href="/manifest.webmanifest?v=20260719f" />
+    <link rel="manifest" href="/manifest.webmanifest?v=20260719g" />
     <link rel="icon" href="/logo-vitoria-regia.svg" />
     <link rel="apple-touch-icon" href="/logo-vitoria-regia.png" />
     <link rel="stylesheet" href="/premium-polish.css?v=20260717" />
@@ -27,8 +27,9 @@
     <link rel="stylesheet" href="/vitoria-one-v14-super-premium.css?v=20260718a" />
     <link rel="stylesheet" href="/vitoria-one-v14-layout-audit.css?v=20260719b" />
     <link rel="stylesheet" href="/reservation-rsvp-v14.css?v=20260719c" />
-    <link rel="stylesheet" href="/vitoria-one-v14-web-premium.css?v=20260719d" />
-    <link rel="stylesheet" href="/vitoria-one-v14-web-premium-patch.css?v=20260719d" />
+    <link rel="stylesheet" href="/vitoria-one-v14-web-premium.css?v=20260719g" />
+    <link rel="stylesheet" href="/vitoria-one-v14-web-premium-patch.css?v=20260719g" />
+    <link rel="stylesheet" href="/vitoria-one-v14-layout-recovery.css?v=20260719g" />
     <style>
       .vrBootFallback{min-height:100dvh;display:grid;place-items:center;padding:24px;background:linear-gradient(145deg,#eef7f5,#f9fcfb);font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#123a3a}.vrBootCard{width:min(430px,100%);padding:28px;border:1px solid rgba(16,104,99,.14);border-radius:28px;background:rgba(255,255,255,.94);box-shadow:0 24px 70px rgba(4,52,58,.12);text-align:center}.vrBootLogo{width:74px;height:74px;object-fit:contain;margin-bottom:14px}.vrBootCard h1{margin:0 0 8px;font-size:1.45rem}.vrBootCard p{margin:0;color:#587270;line-height:1.5}.vrBootSpinner{width:38px;height:38px;margin:22px auto 16px;border:3px solid #d7e8e5;border-top-color:#0a8278;border-radius:50%;animation:vrBootSpin .8s linear infinite}.vrBootActions{display:none;margin-top:18px;gap:10px;justify-content:center}.vrBootFallback[data-state="delayed"] .vrBootActions,.vrBootFallback[data-state="error"] .vrBootActions{display:flex}.vrBootFallback[data-state="error"] .vrBootSpinner{animation:none;border-color:#e9c5c9;border-top-color:#bf2d3f}.vrBootButton{min-height:46px;padding:0 18px;border:0;border-radius:14px;background:#08796f;color:#fff;font-weight:800}.vrBootHint{display:block;margin-top:12px;font-size:.78rem;color:#78908e}@keyframes vrBootSpin{to{transform:rotate(360deg)}}
     </style>
@@ -63,14 +64,13 @@
         window.addEventListener('unhandledrejection',()=>show('Não foi possível concluir a inicialização. Recarregue para tentar novamente.','error'));
       })();
     </script>
-    <!-- O núcleo do login monta antes de todas as integrações não essenciais. -->
     <script type="module" src="/src/main.jsx"></script>
-    <script defer src="/reservation-rsvp-public-v14.js?v=20260719f"></script>
-    <script defer src="/package-intelligence-v14.js?v=20260719f"></script>
-    <script defer src="/reservation-rsvp-manager-v14.js?v=20260719f"></script>
-    <script defer src="/deletion-governance-v14.js?v=20260719f"></script>
-    <script type="module" src="/telegram-calls.js?v=20260719f"></script>
-    <script type="module" src="/telegram-call-details-ui.js?v=20260719f"></script>
-    <script type="module" src="/vitoria-one-v13-core.js?v=20260719f"></script>
+    <script defer src="/reservation-rsvp-public-v14.js?v=20260719g"></script>
+    <script defer src="/package-intelligence-v14.js?v=20260719g"></script>
+    <script defer src="/reservation-rsvp-manager-v14.js?v=20260719g"></script>
+    <script defer src="/deletion-governance-v14.js?v=20260719g"></script>
+    <script type="module" src="/telegram-calls.js?v=20260719g"></script>
+    <script type="module" src="/telegram-call-details-ui.js?v=20260719g"></script>
+    <script type="module" src="/vitoria-one-v13-core.js?v=20260719g"></script>
   </body>
 </html>
