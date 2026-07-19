@@ -9,8 +9,8 @@ test('HTML não carrega extensões que substituem elementos controlados pelo Rea
   for(const unsafe of ['telegram-calls-menu-hotfix.js','vitoria-one-v13-nav.js','visitor-qr-v13.js','sindico-one-v14.js']){
     assert.doesNotMatch(html,new RegExp(`<script[^>]+${unsafe.replaceAll('.','\\.')}`));
   }
-  assert.match(html,/telegram-calls\.js\?v=20260719a/);
-  assert.match(html,/vitoria-one-v13-core\.js\?v=20260719a/);
+  assert.match(html,/telegram-calls\.js\?v=20260719b/);
+  assert.match(html,/vitoria-one-v13-core\.js\?v=20260719b/);
 });
 
 test('núcleo visual não remove, insere ou reescreve filhos do React', () => {
@@ -57,4 +57,26 @@ test('visitantes recorrentes usam QR Code nativo sem reativar o script legado', 
   assert.match(main,/Selecione ao menos um dia da semana para o visitante recorrente/);
   assert.match(main,/Gerar QR Code seguro/);
   assert.doesNotMatch(html,/<script[^>]+visitor-qr-v13\.js/);
+});
+
+test('leitor inteligente é carregado antes do React e mantém contingência do OCR original', () => {
+  const html=read('index.html');
+  const intelligence=read('public/package-intelligence-v14.js');
+  const scriptPosition=html.indexOf('/package-intelligence-v14.js');
+  const reactPosition=html.indexOf('/src/main.jsx');
+  assert.ok(scriptPosition >= 0 && scriptPosition < reactPosition);
+  assert.match(intelligence,/\/api\/ocr-intelligence\/parse-package/);
+  assert.match(intelligence,/\/api\/ocr-intelligence\/learn-package/);
+  assert.match(intelligence,/return nativeFetch\(input, init\)/);
+  assert.match(intelligence,/captureButton\.click\(\)/);
+  assert.match(intelligence,/document\.body\.classList\.add\('vr-scanner-open'\)/);
+});
+
+test('auditoria visual fixa menu e remove navegação durante a leitura', () => {
+  const css=read('public/vitoria-one-v14-layout-audit.css');
+  assert.match(css,/\.appShell > aside \{[\s\S]*position: fixed !important/);
+  assert.match(css,/body\.vr-scanner-open \.bottomNav/);
+  assert.match(css,/body\.vr-scanner-open footer/);
+  assert.match(css,/\.cameraReaderBox \{[\s\S]*height: 100dvh !important/);
+  assert.match(css,/\.toast,[\s\S]*font-size: \.84rem !important/);
 });
