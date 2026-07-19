@@ -1,0 +1,57 @@
+name: Diagnose live Render boot
+
+on:
+  push:
+    branches:
+      - diagnostic/live-render-boot
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect live HTML and assets
+        shell: bash
+        run: |
+          set -uo pipefail
+          base='https://regia-pro.onrender.com'
+          echo '=== RESPONSE HEADERS ==='
+          curl -sSIL --max-time 45 "$base/?diagnostic=$(date +%s)" || true
+          echo
+          echo '=== HTML ==='
+          curl -sSL --max-time 45 -H 'Cache-Control: no-cache' "$base/?diagnostic=$(date +%s)" -o /tmp/live.html
+          wc -c /tmp/live.html
+          sed -n '1,180p' /tmp/live.html
+          echo
+          echo '=== MARKERS ==='
+          grep -En '14\.0\.[0-9]+|20260719[a-z]|vr-boot-fallback|src/main|assets/.*\.js|deletion-governance|reservation-rsvp' /tmp/live.html || true
+          echo
+          echo '=== REFERENCED JS STATUS ==='
+          python3 - <<'PY'
+          import re, subprocess
+          from urllib.parse import urljoin
+          html=open('/tmp/live.html',encoding='utf-8',errors='replace').read()
+          srcs=re.findall(r'<script[^>]+src=["\']([^"\']+)',html,re.I)
+          print('scripts:',srcs)
+          for src in srcs:
+              url=urljoin('https://regia-pro.onrender.com/',src)
+              print('\n---',url)
+              subprocess.run(['curl','-sS','-L','--max-time','30','-o','/tmp/asset','-w','status=%{http_code} type=%{content_type} size=%{size_download}\n',url],check=False)
+              try:
+                  data=open('/tmp/asset','rb').read(300)
+                  print(data.decode('utf-8','replace'))
+              except Exception as exc:
+                  print(exc)
+          PY
+          echo
+          echo '=== API HEALTH ==='
+          for path in /api/health /health /api/settings/public; do
+            echo "--- $path"
+            curl -sS -L --max-time 30 -D - "$base$path" -o /tmp/api || true
+            head -c 1000 /tmp/api || true
+            echo
+          done
