@@ -789,7 +789,14 @@ function Visitors({data,forms,setForm,action,notify,fileToData,openConfirm,del,l
   const f=forms.visitor;
   const [pass,setPass]=useState(null);
   const [qrBusy,setQrBusy]=useState('');
+  const [verification,setVerification]=useState(null);
+  const [verificationBusy,setVerificationBusy]=useState(false);
   const weekdays=Array.isArray(f.weekdays) ? f.weekdays.map(String) : [];
+
+  useEffect(()=>{
+    const token=new URLSearchParams(window.location.search).get('visitor_invite');
+    if(token) void verifyInvite(token,false);
+  },[]);
 
   function toggleWeekday(value){
     const next=weekdays.includes(value) ? weekdays.filter(day=>day!==value) : [...weekdays,value];
@@ -866,6 +873,29 @@ function Visitors({data,forms,setForm,action,notify,fileToData,openConfirm,del,l
     finally{ setQrBusy(''); }
   }
 
+  async function verifyInvite(token,confirmEntry=false){
+    if(!token || verificationBusy) return;
+    setVerificationBusy(true);
+    try{
+      const result=await request('/api/visitor-invites/verify',{
+        method:'POST',
+        body:JSON.stringify({token,confirm_entry:confirmEntry,gate:'Portaria principal'})
+      });
+      setVerification({...result,token});
+      if(confirmEntry){ notify('Entrada confirmada e registrada no histórico do visitante.'); void loadAll(); }
+    }catch(error){
+      setVerification({ok:false,error:error?.message || 'Não foi possível validar este QR Code.',token});
+      notify(error?.message || 'Não foi possível validar este QR Code.',true);
+    }finally{ setVerificationBusy(false); }
+  }
+
+  function closeVerification(){
+    setVerification(null);
+    const url=new URL(window.location.href);
+    url.searchParams.delete('visitor_invite');
+    window.history.replaceState(null,'',`${url.pathname}${url.search}${url.hash}`);
+  }
+
   return <div className="stack visitorPremiumFlow">
     <section className="visitorQrHero">
       <span><QrCode/></span><div><small>Acesso inteligente</small><h3>Convites com QR Code seguro</h3><p>Crie um acesso avulso ou recorrente, defina dias e horários e compartilhe o convite sem duplicar cadastros.</p></div>
@@ -914,6 +944,7 @@ function Visitors({data,forms,setForm,action,notify,fileToData,openConfirm,del,l
       </>}/>
     </section>
     {pass && <VisitorQrPassModal pass={pass} onClose={()=>setPass(null)} notify={notify}/>} 
+    {verification && <VisitorQrVerifyModal result={verification} busy={verificationBusy} onConfirm={()=>verifyInvite(verification.token,true)} onClose={closeVerification}/>} 
   </div>;
 }
 
@@ -963,6 +994,29 @@ function VisitorQrPassModal({pass,onClose,notify}){
         <button type="button" className="secondaryAction" onClick={copyInvite}><Copy/> Copiar link</button>
         <button type="button" className="secondaryAction" onClick={()=>window.open(`https://t.me/share/url?url=${encodeURIComponent(invite.url||'')}&text=${encodeURIComponent(shareText)}`,'_blank','noopener,noreferrer')}><Send/> Telegram</button>
         <button type="button" className="secondaryAction" onClick={downloadQr}><Download/> Baixar QR</button>
+      </div>
+    </section>
+  </div>;
+}
+
+function VisitorQrVerifyModal({result,busy,onConfirm,onClose}){
+  const visitor=result?.visitor || {};
+  const validation=result?.validation || {};
+  const valid=result?.valid === true || validation.valid === true;
+  const confirmed=result?.entry_confirmed === true;
+  return <div className="modalOverlay visitorQrModalOverlay">
+    <section className="visitorQrModal visitorQrVerifyModal" role="dialog" aria-modal="true" aria-label="Validação do QR Code do visitante">
+      <button type="button" className="visitorQrClose" onClick={onClose} aria-label="Fechar"><X/></button>
+      <header><span><QrCode/></span><div><small>Leitura da portaria</small><h2>Conferir acesso</h2><p>Validação assinada pelo Vitória Régia</p></div></header>
+      {result?.error ? <div className="visitorQrValidity invalid"><AlertTriangle/><span><b>QR Code não aceito</b><small>{result.error}</small></span></div> : <>
+        <div className={`visitorQrValidity ${valid?'valid':'invalid'}`}>{valid?<ShieldCheck/>:<AlertTriangle/>}<span><b>{confirmed?'Entrada confirmada':valid?'Acesso autorizado':'Acesso não autorizado'}</b><small>{confirmed?'O acesso foi registrado no histórico.':valid?'Confira a identidade antes de liberar a entrada.':(validation.reasons || ['Este convite não está válido agora.']).join(' ')}</small></span></div>
+        <div className="visitorVerifyDetails">
+          <span>Visitante<b>{visitor.name || '-'}</b></span><span>Unidade<b>{visitor.unit || '-'}</b></span><span>Tipo<b>{visitor.recurring?'Recorrente':'Avulso'}</b></span><span>Validade<b>{visitorPeriod(visitor)}</b></span><span>Horário<b>{visitor.access_start_time || '00:00'} às {visitor.access_end_time || '23:59'}</b></span><span>Entradas registradas<b>{visitor.access_count || 0}{visitor.max_entries>0?` de ${visitor.max_entries}`:''}</b></span>
+        </div>
+      </>}
+      <div className="visitorQrActions">
+        <button type="button" className="secondaryAction" disabled={busy} onClick={onClose}>Fechar</button>
+        {!result?.error && valid && !confirmed && <button type="button" className="primary" disabled={busy} onClick={onConfirm}><CheckCircle2/> {busy?'Registrando…':'Confirmar entrada'}</button>}
       </div>
     </section>
   </div>;
