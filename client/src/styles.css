@@ -1182,3 +1182,19 @@ body{
 .toast{top:24px!important;right:26px!important;bottom:auto!important;left:auto!important;width:max-content!important;max-width:min(430px,calc(100vw - 52px))!important;min-width:0!important;min-height:0!important;height:auto!important;max-height:min(180px,45dvh)!important;overflow:auto!important;display:flex!important;align-items:center!important;line-height:1.35!important;overflow-wrap:anywhere!important;pointer-events:none!important}
 .toast.toast-error{background:linear-gradient(135deg,#b4232e,#d13d47)!important;color:#fff!important;box-shadow:0 18px 42px rgba(180,35,46,.28)!important}
 @media(max-width:920px){.toast{top:auto!important;right:12px!important;bottom:calc(var(--vr-mobile-nav-height,92px) + 18px + env(safe-area-inset-bottom,0px))!important;left:12px!important;width:auto!important;max-width:none!important;max-height:132px!important}}
+
+/* Fluxo de encomendas: confirmação persistente, erro recuperável e recibo compacto. */
+.confirmInlineError{display:flex;align-items:flex-start;gap:10px;margin:14px 0 4px;padding:12px 14px;border:1px solid color-mix(in srgb,#b4232e 35%,var(--line));border-radius:16px;background:color-mix(in srgb,#b4232e 8%,var(--panel));color:#8f1f29}
+.confirmInlineError>svg{width:21px;height:21px;flex:0 0 auto;margin-top:1px}
+.confirmInlineError span{display:grid;gap:3px;min-width:0}
+.confirmInlineError b{font-weight:950}
+.confirmInlineError small{color:inherit;font-weight:750;line-height:1.4;overflow-wrap:anywhere}
+.packageCreatedReceipt{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:12px;width:100%;min-height:0;padding:12px 14px;border:1px solid color-mix(in srgb,var(--ok) 38%,var(--line));border-radius:18px;background:linear-gradient(135deg,color-mix(in srgb,var(--ok) 8%,var(--panel)),var(--panel));box-shadow:0 12px 30px rgba(18,107,95,.08)}
+.packageCreatedReceipt>svg{width:25px;height:25px;color:var(--ok);flex:0 0 auto}
+.packageCreatedReceipt>div{display:grid;gap:2px;min-width:0}
+.packageCreatedReceipt b{font-size:14px;font-weight:950;color:var(--text)}
+.packageCreatedReceipt small{color:var(--muted);font-weight:750;line-height:1.35;overflow-wrap:anywhere}
+.packageCreatedReceipt code{white-space:nowrap}
+.packageCreatedReceipt>button{display:grid;place-items:center;width:36px;height:36px;padding:0;border:1px solid var(--line);border-radius:12px;background:var(--panel2);color:var(--muted)}
+.packageCreatedReceipt>button svg{width:18px;height:18px}
+@media(max-width:620px){.packageCreatedReceipt{grid-template-columns:auto minmax(0,1fr) auto;padding:11px 12px}.packageCreatedReceipt code{grid-column:2}.packageCreatedReceipt>button{grid-column:3;grid-row:1}}
