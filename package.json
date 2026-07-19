@@ -1,8 +1,8 @@
 {
   "name": "vitoria-regia-one",
-  "version": "14.0.1",
+  "version": "14.0.2",
   "private": true,
-  "description": "Vitória Régia One v14.0.1: OCR inteligente, layout fixo, chamadas Telegram e auditoria visual.",
+  "description": "Vitória Régia One v14.0.2: reservas seguras, RSVP público, convidados, QR e lembretes de encomenda.",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "npm --prefix client run dev",

@@ -1,30 +1,32 @@
 {
   "name": "vitoria-regia-one-server",
-  "version": "14.0.1",
+  "version": "14.0.2",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --watch --import ./src/runtime-secret-alignment-preload.mjs --import ./src/telegram-callmebot-ssl-hotfix.mjs --import ./src/visitor-qr-preload.mjs --import ./src/platform-preload.mjs --import ./src/package-ocr-intelligence-preload.mjs src/index.js",
+    "dev": "node --watch --import ./src/runtime-secret-alignment-preload.mjs --import ./src/telegram-callmebot-ssl-hotfix.mjs --import ./src/visitor-qr-preload.mjs --import ./src/reservation-rsvp-preload.mjs --import ./src/package-reminders-preload.mjs --import ./src/platform-preload.mjs --import ./src/package-ocr-intelligence-preload.mjs src/index.js",
     "test:regressions": "node --test src/operational-regressions.test.mjs",
-    "build": "npm run test:regressions && node --check src/runtime-secret-alignment-preload.mjs && node --check src/package-ocr-intelligence-preload.mjs && node --check src/telegram-call-classifier.mjs && node --check src/telegram-callmebot-ssl-hotfix.mjs && node --check src/telegram-concierge-data.mjs && node --check src/telegram-concierge-audio.mjs && node --check src/telegram-concierge-preload.mjs && node --check src/telegram-callmebot-preload.mjs && node --check src/visitor-qr-preload.mjs && node --check src/platform-core.mjs && node --check src/platform-contract.mjs && node --check src/platform-asaas.mjs && node --check src/platform-preload.mjs && node --check src/index.js",
-    "start": "node --import ./src/runtime-secret-alignment-preload.mjs --import ./src/telegram-callmebot-ssl-hotfix.mjs --import ./src/visitor-qr-preload.mjs --import ./src/platform-preload.mjs --import ./src/package-ocr-intelligence-preload.mjs src/index.js"
+    "build": "npm run test:regressions && node --check src/runtime-secret-alignment-preload.mjs && node --check src/package-ocr-intelligence-preload.mjs && node --check src/reservation-rsvp-lib.mjs && node --check src/reservation-rsvp-service.mjs && node --check src/reservation-rsvp-preload.mjs && node --check src/package-reminders-preload.mjs && node --check src/telegram-call-classifier.mjs && node --check src/telegram-callmebot-ssl-hotfix.mjs && node --check src/telegram-concierge-data.mjs && node --check src/telegram-concierge-audio.mjs && node --check src/telegram-concierge-preload.mjs && node --check src/telegram-callmebot-preload.mjs && node --check src/visitor-qr-preload.mjs && node --check src/platform-core.mjs && node --check src/platform-contract.mjs && node --check src/platform-asaas.mjs && node --check src/platform-preload.mjs && node --check src/index.js",
+    "start": "node --import ./src/runtime-secret-alignment-preload.mjs --import ./src/telegram-callmebot-ssl-hotfix.mjs --import ./src/visitor-qr-preload.mjs --import ./src/reservation-rsvp-preload.mjs --import ./src/package-reminders-preload.mjs --import ./src/platform-preload.mjs --import ./src/package-ocr-intelligence-preload.mjs src/index.js"
   },
   "dependencies": {
     "@sendgrid/mail": "8.1.6",
+    "adm-zip": "^0.5.16",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
     "nodemailer": "^6.9.16",
+    "pdf-parse": "^1.1.1",
     "pg": "^8.13.1",
     "qrcode": "^1.5.4",
     "web-push": "^3.6.7",
-    "adm-zip": "^0.5.16",
-    "multer": "^1.4.5-lts.1"
+    "xlsx": "^0.18.5"
   },
   "engines": {
     "node": "20.19.0"
   },
-  "description": "Backend Vitória Régia One v14.0.1 com OCR adaptativo, sessão integrada e auditoria operacional."
+  "description": "Backend Vitória Régia One v14.0.2 com reservas seguras, RSVP, convidados, QR e lembretes de encomenda."
 }
