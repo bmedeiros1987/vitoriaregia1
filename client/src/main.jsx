@@ -9,6 +9,7 @@ import {
   AppWindow, Phone, Banknote, History, Paintbrush, PanelLeft, CheckSquare, Info, ChevronRight, Flame, ShieldAlert, Ambulance, Droplets, Zap, BellRing, FireExtinguisher, CircleAlert, Clock, CalendarClock, Repeat, UserCog, Briefcase, ArrowRightLeft, BookOpen, FileUp, HelpCircle, FileSearch, MessageSquareText, ClipboardCheck, Database
 } from 'lucide-react';
 import './styles.css';
+import { confirmationStateAfterResult, isOperationFailure, prependPackage, submitPackageRegistration } from './package-flow.js';
 
 const API = import.meta.env.VITE_API_URL || '';
 const VERSION = import.meta.env.VITE_APP_VERSION || 'Vitória Régia Pro v12.8.4';
@@ -282,6 +283,22 @@ function App(){
     setData({ settings:settingsRes, dashboard, residents, users, employees, shifts, messages, packages:packagesRes, visitors, invoices, notices, buildingNews, reservations, finance, boletos, commonAreas, incidents, maintenance, emergencyTypes, emergencyRequests, registrationRequests, notifications, audit, weather, systemUpdates, manuals, documents, faqs, supportTickets, occurrenceBook, notifyConfig });
     setForms(f => ({ ...f, settings:settingsRes }));
   }
+  async function refreshPackages(){
+    const packages=await request('/api/packages');
+    setData(d => ({ ...d, packages }));
+    return packages;
+  }
+  async function createPackageRecord(payload, successMessage){
+    return submitPackageRegistration({
+      payload,
+      postPackage:body => post('/api/packages', body),
+      onCreated:created => setData(d => ({ ...d, packages:prependPackage(d.packages, created) })),
+      resetForm:() => setForms(current => ({ ...current, package:initialForms().package })),
+      refresh:refreshPackages,
+      notify,
+      successMessage
+    });
+  }
   async function doLogin(e){ e.preventDefault(); setErr(''); try { const r=await post('/api/login', forms.login); localStorage.setItem('vr_token', r.token); localStorage.setItem('vr_user', JSON.stringify(r.user)); setSession(r.user); if(r.user?.force_password_change){ setActive('perfil'); notify('Senha temporária detectada. Altere sua senha no Meu Perfil para continuar com segurança.'); } else { notify('Login realizado com segurança'); } } catch(e){ setErr(e.message); } }
   function logout(){ localStorage.removeItem('vr_token'); localStorage.removeItem('vr_user'); setSession(null); setActive('dashboard'); }
   async function action(path, body, message, method='POST'){
@@ -299,9 +316,15 @@ function App(){
   async function confirmRun(){
     const c=confirm;
     if(!c || c.running) return;
-    setConfirm({...c,running:true});
-    try { if(c.fn) await c.fn(); }
-    finally { setConfirm(null); }
+    setConfirm({...c,running:true,error:''});
+    try {
+      const result=c.fn ? await c.fn() : true;
+      setConfirm(confirmationStateAfterResult(c, result));
+    } catch(error){
+      const failure={ ok:false, error:error?.message || 'Não foi possível concluir o cadastro.' };
+      notify(failure.error, true);
+      setConfirm(confirmationStateAfterResult(c, failure));
+    }
   }
   function go(tab, newSub){
     const r=routeState(tab, tab==='reservas' ? (newSub || 'calendario') : newSub);
@@ -368,7 +391,7 @@ function App(){
   const routeNow = currentRouteState();
   const reservasRouteLocked = active==='reservas' || routeNow.active==='reservas' || isReservasHash();
   const visualActive = reservasRouteLocked ? 'reservas' : active;
-  const props = { data, forms, setForm, action, notify, loadAll, settings, session, can, openConfirm, lookup, lookupUnit, prefillResidentFromContext, readImage, openCameraReader, reading, readingProgress, fileToData, setActive:go, sub, setSub, isAdminReserved, configTab, setConfigTab, del, logout };
+  const props = { data, forms, setForm, action, createPackageRecord, notify, loadAll, settings, session, can, openConfirm, lookup, lookupUnit, prefillResidentFromContext, readImage, openCameraReader, reading, readingProgress, fileToData, setActive:go, sub, setSub, isAdminReserved, configTab, setConfigTab, del, logout };
   return <div className={shellClass}>
     <button className="mobileMenu" onClick={()=>setMenuOpen(true)}><Menu /></button>{menuOpen && <div className="overlay" onClick={()=>setMenuOpen(false)} />}
     <aside><div className="brand brandCompact brandLogoOnly"><img src="/logo-vitoria-regia-menu.svg" className="brandLogo"/><button className="insideClose menuToggle" title={menuOpen ? 'Fechar menu' : (menuClosed?'Expandir menu':'Recolher menu')} onClick={()=>{ if(window.innerWidth < 861) setMenuOpen(false); else setMenuClosed(!menuClosed); }}>{window.innerWidth < 861 ? <X/> : (menuClosed ? <ChevronRight/> : <PanelLeft/>)}</button></div><nav>{menuItems.map(([key,label,Icon]) => <button key={key} className={visualActive===key?'active':''} aria-current={visualActive===key?'page':undefined} onClick={()=>go(key, key==='reservas'?'calendario':undefined)}><Icon /><span>{label}</span></button>)}</nav><div className="sideBottom"><button onClick={()=>go('perfil')}><UserCheck/><span>Meu perfil</span></button><button onClick={logout}><LogOut/><span>Sair</span></button></div></aside>
@@ -677,16 +700,34 @@ function PackageScanSummary({f={},lookup}){
     <article><b>Confiança</b><span>{packageConfidenceLabel(confidence)} {confidence ? `${confidence}%` : ''}</span><small>{status === 'validada' ? 'Pronto para cadastro automático' : status === 'revisao' ? 'Revisar antes de salvar' : 'Aguardando leitura'}</small></article>
   </div>;
 }
+function PackageCreatedReceipt({value,onClose}){
+  if(!value) return null;
+  const notification = value.linked === false || value.notification_status === 'sem_vinculo'
+    ? 'Salva sem vínculo automático com morador'
+    : 'Notificações em processamento';
+  return <div className="packageCreatedReceipt" role="status" aria-live="polite">
+    <CheckCircle2/>
+    <div><b>Encomenda cadastrada e exibida na lista</b><small>{value.tracking || `Registro #${value.id}`} · Unidade {value.unit || '-'} · {notification}</small></div>
+    {value.pickup_code && <Code>{value.pickup_code}</Code>}
+    <button type="button" onClick={onClose} aria-label="Fechar confirmação do cadastro"><X/></button>
+  </div>;
+}
 function PackageScannerPremium(props){
-  const {forms,setForm,readImage,openCameraReader,reading,readingProgress,action,openConfirm,lookup,lookupUnit,prefillResidentFromContext,data}=props;
+  const {forms,setForm,readImage,openCameraReader,reading,readingProgress,createPackageRecord,openConfirm,lookup,lookupUnit,prefillResidentFromContext}=props;
+  const [lastCreated,setLastCreated]=useState(null);
   const f=forms.package;
   const canAuto = Boolean(f.tracking && f.unit && f.recipient && Number(f.ocr_confidence || 0) >= 80);
   function save(auto=false){
     const title = auto ? 'Cadastrar automaticamente encomenda lida' : 'Conferir e cadastrar encomenda lida';
-    openConfirm(title, { Código:f.tracking, Unidade:f.unit, Destinatário:f.recipient, Confiança:f.ocr_confidence ? `${f.ocr_confidence}%` : 'pendente' }, () => action('/api/packages', {...f, source_type:f.source_type || 'leitor_premium'}, auto ? 'Encomenda cadastrada automaticamente' : 'Encomenda cadastrada'));
+    openConfirm(title, { Código:f.tracking, Unidade:f.unit, Destinatário:f.recipient, Confiança:f.ocr_confidence ? `${f.ocr_confidence}%` : 'pendente' }, async () => {
+      const result=await createPackageRecord({...f, source_type:f.source_type || 'leitor_premium'}, auto ? 'Encomenda cadastrada automaticamente e exibida na lista.' : 'Encomenda cadastrada e exibida na lista.');
+      if(!isOperationFailure(result)) setLastCreated(result);
+      return result;
+    });
   }
   return <div className="stack packageScannerPremium">
     <div className="scannerHero"><div><span className="eyebrow">Leitor automático premium</span><h3>QR Code + código de barras + OCR da etiqueta</h3><p>Use a câmera do celular da portaria para identificar rastreio, unidade, destinatário, transportadora e evitar duplicidades.</p></div><ScanLine/></div>
+    <PackageCreatedReceipt value={lastCreated} onClose={()=>setLastCreated(null)}/>
     <div className="scannerActionsGrid">
       <button type="button" className="confirmAction" onClick={()=>openCameraReader?.('package')}><Camera/> Abrir câmera e ler etiqueta</button>
       <label className="fileButton"><ScanLine/> {reading==='package'?'Lendo etiqueta...':'Escolher foto / câmera padrão'}<input type="file" accept="image/*" capture="environment" onChange={e=>readImage(e.target.files?.[0],'package')}/></label>
@@ -712,17 +753,19 @@ function PackageScannerPremium(props){
   </div>;
 }
 
-function Packages({forms,setForm,action,openConfirm,lookup,lookupUnit,prefillResidentFromContext,readImage,openCameraReader,reading,readingProgress,data,del,loadAll,session}){
+function Packages({forms,setForm,action,createPackageRecord,openConfirm,lookup,lookupUnit,prefillResidentFromContext,readImage,openCameraReader,reading,readingProgress,data,del,loadAll,session}){
+  const [lastCreated,setLastCreated]=useState(null);
   const f=forms.package;
   const isResident=session?.role==='morador';
   const summary={Código:f.tracking, Destinatário:f.recipient, Unidade:f.unit, 'Canais':Object.entries(f.notification_channels||{}).filter(([,v])=>v).map(([k])=>channelNames[k]||k).join(', ')};
   const confirmDelivery=(p,who)=>action(`/api/packages/${p.id}/${who==='resident'?'resident-confirm-delivery':'staff-confirm-delivery'}`,{}, who==='resident'?'Recebimento confirmado pelo morador':'Entrega registrada pela portaria; aguardando confirmação do morador');
   async function createPackage(){
-    const ok=await action('/api/packages', f, 'Encomenda cadastrada. As notificações estão sendo enviadas em segundo plano.');
-    if(ok) setForm('package', initialForms().package);
-    return ok;
+    const result=await createPackageRecord(f);
+    if(!isOperationFailure(result)) setLastCreated(result);
+    return result;
   }
   return <div className="stack">
+    <PackageCreatedReceipt value={lastCreated} onClose={()=>setLastCreated(null)}/>
     <form className="formGrid" onSubmit={e=>{e.preventDefault(); openConfirm('Confirmar cadastro de encomenda', summary, createPackage);}}>
       <label>Código/rastreio *<input required value={f.tracking} onChange={e=>setForm('package',{tracking:e.target.value})}/></label>
       <label>Unidade *<div className="inline"><input required value={f.unit} onChange={e=>setForm('package',{unit:e.target.value})} onBlur={()=>lookupUnit('package', f.unit, f.recipient)}/><button type="button" onClick={()=>lookupUnit('package', f.unit, f.recipient)}><Search/></button></div></label>
@@ -1671,7 +1714,7 @@ function CriticalEmergencyOverlay({alert,onOpen,onDismiss}){
 function Status({ok,children}){ return <span className={'status '+(ok?'ok':'warn')}>{children}</span>; }
 function Code({children}){ return <code className="code">{children}</code>; }
 function Table({rows=[],render}){ return <div className="tableWrap"><table><tbody>{rows?.length?rows.map((r,i)=><tr key={r.id||i}>{render(r)}</tr>):<tr><td><small>Nenhum registro encontrado.</small></td></tr>}</tbody></table></div>; }
-function ConfirmModal({confirm,onCancel,onConfirm}){ return <div className="modalOverlay"><div className="confirmModal" aria-busy={confirm.running?'true':'false'}><h2><CheckCircle2/> {confirm.title}</h2><p>{confirm.running?'Gravando com segurança. Aguarde a confirmação do servidor…':'Confira os dados antes de gravar. Essa etapa evita cadastros duplicados ou lançamentos incorretos.'}</p><div className="confirmList">{Object.entries(confirm.fields||{}).map(([k,v])=><span key={k}>{k}<b>{String(v||'-')}</b></span>)}</div><div className="modalActions"><button type="button" disabled={confirm.running} onClick={onCancel}>Voltar e corrigir</button><button type="button" className="primary" disabled={confirm.running} onClick={onConfirm}>{confirm.running?'Processando…':'Confirmar cadastro'}</button></div></div></div>; }
+function ConfirmModal({confirm,onCancel,onConfirm}){ return <div className="modalOverlay"><div className="confirmModal" aria-busy={confirm.running?'true':'false'}><h2><CheckCircle2/> {confirm.title}</h2><p>{confirm.running?'Gravando com segurança. Aguarde a confirmação do servidor…':'Confira os dados antes de gravar. Essa etapa evita cadastros duplicados ou lançamentos incorretos.'}</p>{confirm.error&&<div className="confirmInlineError" role="alert"><AlertTriangle/><span><b>Cadastro não concluído</b><small>{confirm.error}</small></span></div>}<div className="confirmList">{Object.entries(confirm.fields||{}).map(([k,v])=><span key={k}>{k}<b>{String(v||'-')}</b></span>)}</div><div className="modalActions"><button type="button" disabled={confirm.running} onClick={onCancel}>Voltar e corrigir</button><button type="button" className="primary" disabled={confirm.running} onClick={onConfirm}>{confirm.running?'Processando…':confirm.error?'Tentar novamente':'Confirmar cadastro'}</button></div></div></div>; }
 function MobileViewportHint(){ const [closed,setClosed]=useState(()=>localStorage.getItem('vr_mobile_hint_closed')==='1'); if(closed) return null; return <div className="mobileViewportHint"><Smartphone/><span><b>Visualização premium</b> · Para tabelas, reservas e financeiro, gire o celular para a horizontal. No tablet, o modo paisagem fica igual ao desktop.</span><button type="button" aria-label="Fechar aviso" onClick={()=>{localStorage.setItem('vr_mobile_hint_closed','1'); setClosed(true);}}><X/></button></div>; }
 function Footer(){ return <footer className="appFooter"><span>{VERSION}</span><span>Desenvolvido por <b>CrewCheck</b> · Todos os direitos reservados</span></footer>; }
 
