@@ -1,8 +1,8 @@
 {
   "name": "vitoria-regia-one",
-  "version": "14.0.4",
+  "version": "14.0.5",
   "private": true,
-  "description": "Vitória Régia One v14.0.4: inicialização resiliente, login prioritário e recuperação automática de cache.",
+  "description": "Vitória Régia One v14.0.5: domínio ativo, login prioritário e inicialização sem ciclos de mutação.",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "npm --prefix client run dev",
