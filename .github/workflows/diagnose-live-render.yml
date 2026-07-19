@@ -17,44 +17,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Inspect live HTML and assets
+      - name: Locate active Render service
         shell: bash
         run: |
           set -uo pipefail
-          base='https://regia-pro.onrender.com'
-          echo '=== RESPONSE HEADERS ==='
-          curl -sSIL --max-time 45 "$base/?diagnostic=$(date +%s)" || true
-          echo
-          echo '=== HTML ==='
-          curl -sSL --max-time 45 -H 'Cache-Control: no-cache' "$base/?diagnostic=$(date +%s)" -o /tmp/live.html
-          wc -c /tmp/live.html
-          sed -n '1,180p' /tmp/live.html
-          echo
-          echo '=== MARKERS ==='
-          grep -En '14\.0\.[0-9]+|20260719[a-z]|vr-boot-fallback|src/main|assets/.*\.js|deletion-governance|reservation-rsvp' /tmp/live.html || true
-          echo
-          echo '=== REFERENCED JS STATUS ==='
-          python3 - <<'PY'
-          import re, subprocess
-          from urllib.parse import urljoin
-          html=open('/tmp/live.html',encoding='utf-8',errors='replace').read()
-          srcs=re.findall(r'<script[^>]+src=["\']([^"\']+)',html,re.I)
-          print('scripts:',srcs)
-          for src in srcs:
-              url=urljoin('https://regia-pro.onrender.com/',src)
-              print('\n---',url)
-              subprocess.run(['curl','-sS','-L','--max-time','30','-o','/tmp/asset','-w','status=%{http_code} type=%{content_type} size=%{size_download}\n',url],check=False)
-              try:
-                  data=open('/tmp/asset','rb').read(300)
-                  print(data.decode('utf-8','replace'))
-              except Exception as exc:
-                  print(exc)
-          PY
-          echo
-          echo '=== API HEALTH ==='
-          for path in /api/health /health /api/settings/public; do
-            echo "--- $path"
-            curl -sS -L --max-time 30 -D - "$base$path" -o /tmp/api || true
-            head -c 1000 /tmp/api || true
+          candidates=(
+            'https://regia-pro.onrender.com'
+            'https://vitoria-regia-pro.onrender.com'
+            'https://vitoriaregia1.onrender.com'
+            'https://vitoria-regia-one.onrender.com'
+          )
+          for base in "${candidates[@]}"; do
+            echo
+            echo "================ $base ================"
+            curl -sS -L --max-time 45 -H 'Cache-Control: no-cache' -D /tmp/headers "$base/?diagnostic=$(date +%s)" -o /tmp/live || true
+            cat /tmp/headers || true
+            echo "body-size=$(wc -c </tmp/live 2>/dev/null || echo 0)"
+            head -c 1200 /tmp/live 2>/dev/null || true
+            echo
+            echo '--- markers ---'
+            grep -Eo '14\.0\.[0-9]+|20260719[a-z]|vr-boot-fallback|/assets/[^" ]+\.js|/src/main\.jsx' /tmp/live 2>/dev/null | head -40 || true
+            echo '--- health ---'
+            curl -sS -L --max-time 25 -o /tmp/health -w 'status=%{http_code} type=%{content_type} size=%{size_download}\n' "$base/api/health" || true
+            head -c 500 /tmp/health 2>/dev/null || true
             echo
           done
