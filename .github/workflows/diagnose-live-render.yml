@@ -15,37 +15,90 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 6
     steps:
-      - name: Validate live login with headless Chrome
+      - name: Capture live browser errors through CDP
         shell: bash
         run: |
-          set -uo pipefail
+          set -euo pipefail
           base='https://vitoriaregia-pro.onrender.com'
-          echo '=== HTML AND ASSETS ==='
-          curl -sS -L --max-time 45 -H 'Cache-Control: no-cache' "$base/?diagnostic=$(date +%s)" -o /tmp/live.html
-          grep -Eo '/assets/[^" ]+\.(js|css)' /tmp/live.html | sort -u | tee /tmp/assets.txt || true
-          while read -r asset; do
-            [ -z "$asset" ] && continue
-            curl -sS -L --max-time 35 -o /tmp/asset -w "$asset status=%{http_code} type=%{content_type} size=%{size_download}\n" "$base$asset" || true
-          done </tmp/assets.txt
-          echo
-          echo '=== HEADLESS DOM ==='
           browser=''
           for candidate in google-chrome-stable google-chrome chromium chromium-browser; do
             if command -v "$candidate" >/dev/null 2>&1; then browser="$candidate"; break; fi
           done
           echo "browser=$browser"
-          if [ -n "$browser" ]; then
-            timeout 90 "$browser" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --virtual-time-budget=15000 --dump-dom "$base/?diagnostic=$(date +%s)" >/tmp/dom.html 2>/tmp/chrome.log || true
-            echo "dom-size=$(wc -c </tmp/dom.html 2>/dev/null || echo 0)"
-            grep -Ein 'login|entrar|email|senha|vr-boot-fallback|erro|error|root' /tmp/dom.html | head -100 || true
-            echo '--- chrome log ---'
-            tail -120 /tmp/chrome.log || true
-          fi
-          echo
-          echo '=== API ==='
-          curl -sS -L --max-time 35 -D /tmp/api.headers "$base/api/settings/public" -o /tmp/api.body || true
-          cat /tmp/api.headers
-          head -c 1200 /tmp/api.body
-          echo
+          python3 -m pip install --quiet websocket-client requests
+          "$browser" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage \
+            --remote-debugging-port=9222 --remote-allow-origins='*' \
+            --user-data-dir=/tmp/vr-chrome-profile \
+            "$base/?diagnostic=$(date +%s)" >/tmp/chrome.log 2>&1 &
+          chrome_pid=$!
+          trap 'kill "$chrome_pid" 2>/dev/null || true' EXIT
+          python3 - <<'PY'
+          import json, time, requests, websocket
+
+          endpoint='http://127.0.0.1:9222/json'
+          pages=[]
+          for _ in range(60):
+              try:
+                  pages=requests.get(endpoint,timeout=2).json()
+                  if pages: break
+              except Exception:
+                  pass
+              time.sleep(.5)
+          print('pages=',[(p.get('type'),p.get('url')) for p in pages])
+          page=next((p for p in pages if p.get('type')=='page'),None)
+          if not page:
+              raise SystemExit('Nenhuma página disponível no Chrome')
+          ws=websocket.create_connection(page['webSocketDebuggerUrl'],timeout=2,origin='http://localhost')
+          next_id=1
+          def send(method,params=None):
+              global next_id
+              current=next_id; next_id+=1
+              ws.send(json.dumps({'id':current,'method':method,'params':params or {}}))
+              return current
+          for method in ['Runtime.enable','Log.enable','Page.enable','Network.enable']:
+              send(method)
+          errors=[]; failures=[]; responses=[]
+          deadline=time.time()+18
+          while time.time()<deadline:
+              try:
+                  msg=json.loads(ws.recv())
+              except Exception:
+                  continue
+              method=msg.get('method','')
+              params=msg.get('params',{})
+              if method=='Runtime.exceptionThrown':
+                  detail=params.get('exceptionDetails',{})
+                  errors.append({'text':detail.get('text'),'url':detail.get('url'),'line':detail.get('lineNumber'),'column':detail.get('columnNumber'),'exception':detail.get('exception',{}).get('description')})
+              elif method=='Log.entryAdded':
+                  entry=params.get('entry',{})
+                  if entry.get('level') in ('error','warning'):
+                      errors.append({'level':entry.get('level'),'text':entry.get('text'),'url':entry.get('url'),'line':entry.get('lineNumber')})
+              elif method=='Network.loadingFailed':
+                  failures.append({'url':params.get('requestId'),'error':params.get('errorText'),'blocked':params.get('blockedReason')})
+              elif method=='Network.responseReceived':
+                  response=params.get('response',{})
+                  if int(response.get('status',0))>=400:
+                      responses.append({'status':response.get('status'),'url':response.get('url'),'mime':response.get('mimeType')})
+          eval_id=send('Runtime.evaluate',{'expression':"JSON.stringify({readyState:document.readyState,title:document.title,url:location.href,bodyText:(document.body&&document.body.innerText||'').slice(0,4000),root:(document.getElementById('root')&&document.getElementById('root').innerHTML||'').slice(0,8000),scripts:[...document.scripts].map(s=>s.src),styles:[...document.styleSheets].map(s=>s.href)})",'returnByValue':True})
+          snapshot=None
+          end=time.time()+8
+          while time.time()<end:
+              try: msg=json.loads(ws.recv())
+              except Exception: continue
+              if msg.get('id')==eval_id:
+                  snapshot=msg.get('result',{}).get('result',{}).get('value')
+                  break
+          print('\n=== SNAPSHOT ===')
+          print(snapshot)
+          print('\n=== JS / CONSOLE ERRORS ===')
+          print(json.dumps(errors,ensure_ascii=False,indent=2))
+          print('\n=== NETWORK 4XX/5XX ===')
+          print(json.dumps(responses,ensure_ascii=False,indent=2))
+          print('\n=== NETWORK FAILURES ===')
+          print(json.dumps(failures,ensure_ascii=False,indent=2))
+          ws.close()
+          PY
+          echo '=== CHROME STDERR ==='
+          grep -E 'ERROR|FATAL|Uncaught|SyntaxError|TypeError|ReferenceError|ERR_' /tmp/chrome.log | tail -100 || true
