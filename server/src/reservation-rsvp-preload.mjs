@@ -156,8 +156,7 @@ function installRoutes(app) {
     } catch(error) { return res.status(error.status || 400).json({error:error.message}); }
   });
 
-  router.use(authenticate);
-  router.get('/reservations/:id/rsvp',async(req,res)=>{
+  router.get('/reservations/:id/rsvp',authenticate,async(req,res)=>{
     try {
       await ensureSchema();
       const reservation=await reservationForUser(req.params.id,req.vrUser);
@@ -169,7 +168,7 @@ function installRoutes(app) {
     } catch(error) { return res.status(error.status || 400).json({error:error.message}); }
   });
 
-  router.post('/reservations/:id/rsvp/campaign',async(req,res)=>{
+  router.post('/reservations/:id/rsvp/campaign',authenticate,async(req,res)=>{
     try {
       await ensureSchema();
       const reservation=await reservationForUser(req.params.id,req.vrUser);
@@ -190,7 +189,7 @@ function installRoutes(app) {
     } catch(error) { return res.status(error.status || 400).json({error:error.message}); }
   });
 
-  router.post('/reservations/:id/rsvp/invitations',async(req,res)=>{
+  router.post('/reservations/:id/rsvp/invitations',authenticate,async(req,res)=>{
     try {
       await ensureSchema();
       const reservation=await reservationForUser(req.params.id,req.vrUser);
@@ -206,7 +205,7 @@ function installRoutes(app) {
     } catch(error) { return res.status(error.status || 400).json({error:error.message}); }
   });
 
-  router.post('/reservations/:id/rsvp/import',upload.single('file'),async(req,res)=>{
+  router.post('/reservations/:id/rsvp/import',authenticate,upload.single('file'),async(req,res)=>{
     try {
       await ensureSchema();
       const reservation=await reservationForUser(req.params.id,req.vrUser);
@@ -224,7 +223,7 @@ function installRoutes(app) {
     } catch(error) { return res.status(error.status || 400).json({error:error.message}); }
   });
 
-  router.post('/reservations/:id/rsvp/guests/:guestId/:action',async(req,res)=>{
+  router.post('/reservations/:id/rsvp/guests/:guestId/:action',authenticate,async(req,res)=>{
     try {
       await ensureSchema();
       const reservation=await reservationForUser(req.params.id,req.vrUser);
