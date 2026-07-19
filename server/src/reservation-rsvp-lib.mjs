@@ -182,7 +182,7 @@ export async function sendTelegram(chatId,text) {
   const botToken=await getSetting('TELEGRAM_BOT_TOKEN',process.env.TELEGRAM_BOT_TOKEN || '');
   if(!chat || !botToken) return {ok:false,skipped:true,reason:'Telegram não vinculado.'};
   try {
-    const response=await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:chat,text:`\u2063vr-silent\u2063${clean(text,3880)}`,disable_web_page_preview:true,telegram_call_suppress:true})});
+    const response=await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:chat,text:clean(text,3880),disable_web_page_preview:true,disable_notification:true})});
     const body=await response.json().catch(()=>({}));
     return {ok:response.ok && body.ok!==false,data:body};
   } catch(error) { return {ok:false,error:error.message}; }
