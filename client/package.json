@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "test:packages": "node --test src/package-flow.test.mjs",
-    "build": "npm run test:packages && node --check public/telegram-calls-menu-hotfix.js && node --check public/telegram-call-details-ui.js && node --check public/mobile-stability-v12-9-2.js && node --check public/mobile-premium-v12-9-4.js && node --check public/vitoria-one-v13-core.js && node --check public/vitoria-one-v13-nav.js && node --check public/visitor-qr-v13.js && node --check public/sindico-one-v14.js && vite build",
+    "test:stability": "node --test src/package-flow.test.mjs src/dom-safety.test.mjs",
+    "build": "npm run test:stability && node --check public/telegram-calls-menu-hotfix.js && node --check public/telegram-call-details-ui.js && node --check public/mobile-stability-v12-9-2.js && node --check public/mobile-premium-v12-9-4.js && node --check public/vitoria-one-v13-core.js && node --check public/vitoria-one-v13-nav.js && node --check public/visitor-qr-v13.js && node --check public/sindico-one-v14.js && vite build",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
