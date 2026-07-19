@@ -1,0 +1,9 @@
+.vrDeleteButton:disabled{cursor:not-allowed!important;background:#eef2f1!important;border-color:#d9e2e0!important;color:#7b8d8a!important;box-shadow:none!important}
+.vrDeletionToast{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);z-index:4;width:min(520px,calc(100% - 32px));padding:12px 16px;border-radius:14px;background:#0a756a;color:#fff;text-align:center;font-weight:750;box-shadow:0 16px 40px rgba(4,55,59,.28)}
+.vrDeletionToast[data-fail="true"]{background:#b42335}
+.vrDeletionToast[hidden]{display:none!important}
+.vrDeletionShell{position:relative}
+.vrDeletionRow:has(.vrDeleteButton:disabled){background:rgba(244,248,247,.9)}
+body.vr-focus-layer .appShell>main.content{filter:saturate(.82);pointer-events:none}
+body.vr-deletion-open .vrDeletionOverlay{pointer-events:auto}
+@media(max-width:860px){.vrDeletionToast{position:fixed;bottom:max(14px,calc(env(safe-area-inset-bottom,0px) + 10px))}}
