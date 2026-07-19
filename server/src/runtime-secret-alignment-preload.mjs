@@ -16,6 +16,10 @@ function sanitizeDatabaseUrl(value = '') {
   }
 }
 
+if (!String(process.env.APP_VERSION || '').trim()) {
+  process.env.APP_VERSION = 'Vitória Régia One v14.0.1';
+}
+
 if (!String(process.env.JWT_SECRET || '').trim()) {
   const databaseUrl = sanitizeDatabaseUrl(process.env.DATABASE_URL || 'postgres://localhost/vitoriaregia');
   process.env.JWT_SECRET = createHash('sha256')
