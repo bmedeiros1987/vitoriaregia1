@@ -79,7 +79,7 @@ test('reserva de morador renova a permissão e continua na rota canônica', () =
   assert.match(preload,/jwt\.sign\(upgraded,JWT_SECRET/);
   assert.match(preload,/req\.headers\.authorization=/);
   assert.match(preload,/return next\(\)/);
-  assert.doesNotMatch(preload,/INSERT INTO boletos[\s\S]{0,600}handleResidentReservation/);
+  assert.doesNotMatch(preload,/router\.use\(authenticate\)/);
   assert.ok(pkg.scripts.start.indexOf('reservation-rsvp-preload.mjs') < pkg.scripts.start.indexOf('src/index.js'));
 });
 
@@ -119,5 +119,6 @@ test('lembretes de encomenda mantêm e-mail obrigatório e respeitam a resposta 
   assert.match(reminders,/retirar_agora/);
   assert.match(reminders,/nextMinutes=60/);
   assert.match(reminders,/setInterval\(\(\)=>void processDue\(\),60\*1000\)/);
+  assert.doesNotMatch(reminders,/router\.use\(authenticate\)/);
   assert.match(lib,/disable_notification:true/);
 });
