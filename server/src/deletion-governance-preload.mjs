@@ -31,6 +31,15 @@ function testRecord(record={}){
   const text=[record.name,record.email,record.recipient,record.resident,record.unit,record.notes,record.label,record.tracking,record.area].filter(Boolean).join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
   return /(^|\W)(teste|test|testing|demo|demonstracao|homolog|homologacao|qa)(\W|$)/i.test(text) || /@(example|teste|test)\./i.test(clean(record.email));
 }
+function applyCors(req,res){
+  const origin=clean(req.headers.origin);
+  const configured=clean(process.env.CORS_ORIGIN).split(',').map(v=>v.trim()).filter(Boolean);
+  const allowed=!origin || configured.includes('*') || configured.includes(origin) || ['https://vitoriaregia-pro.onrender.com','https://vitoriaregia1.netlify.app','http://localhost:5173','http://127.0.0.1:5173'].includes(origin) || /^https:\/\/deploy-preview-\d+--vitoriaregia1\.netlify\.app$/i.test(origin);
+  if(origin&&allowed) res.setHeader('Access-Control-Allow-Origin',origin);
+  res.setHeader('Access-Control-Allow-Credentials','true');
+  res.setHeader('Cache-Control','no-store');
+  res.setHeader('X-Content-Type-Options','nosniff');
+}
 async function ensureSchema(){
   if(schemaPromise) return schemaPromise;
   schemaPromise=(async()=>{
@@ -65,10 +74,10 @@ async function ensureSchema(){
 }
 
 const entityConfig={
-  users:{select:'SELECT * FROM users WHERE id=$1',remove:"UPDATE users SET active=false,deleted_at=now() WHERE id=$1 RETURNING *",label:r=>r.email||r.name||String(r.id)},
-  residents:{select:'SELECT * FROM residents WHERE id=$1',remove:'UPDATE residents SET active=false,deleted_at=now() WHERE id=$1 RETURNING *',label:r=>r.name||r.unit||String(r.id)},
-  packages:{select:'SELECT * FROM packages WHERE id=$1',remove:"UPDATE packages SET deleted_at=now(),status='removida' WHERE id=$1 RETURNING *",label:r=>r.tracking||r.recipient||String(r.id)},
-  reservations:{select:'SELECT * FROM reservations WHERE id=$1',remove:"UPDATE reservations SET deleted_at=now(),status='cancelada',cancel_reason=COALESCE(NULLIF(cancel_reason,''),'Excluída pelo painel de gestão') WHERE id=$1 RETURNING *",label:r=>`${r.area||'Reserva'} ${r.reserved_for||''}`.trim()||String(r.id)}
+  users:{select:'SELECT * FROM users WHERE id=$1',list:"SELECT * FROM users WHERE COALESCE(active,true)=true ORDER BY id DESC LIMIT 500",remove:"UPDATE users SET active=false,deleted_at=now() WHERE id=$1 RETURNING *",label:r=>r.email||r.name||String(r.id)},
+  residents:{select:'SELECT * FROM residents WHERE id=$1',list:"SELECT * FROM residents WHERE COALESCE(active,true)=true AND deleted_at IS NULL ORDER BY id DESC LIMIT 500",remove:'UPDATE residents SET active=false,deleted_at=now() WHERE id=$1 RETURNING *',label:r=>r.name||r.unit||String(r.id)},
+  packages:{select:'SELECT * FROM packages WHERE id=$1',list:"SELECT * FROM packages WHERE deleted_at IS NULL ORDER BY id DESC LIMIT 500",remove:"UPDATE packages SET deleted_at=now(),status='removida' WHERE id=$1 RETURNING *",label:r=>r.tracking||r.recipient||String(r.id)},
+  reservations:{select:'SELECT * FROM reservations WHERE id=$1',list:"SELECT * FROM reservations WHERE deleted_at IS NULL ORDER BY reserved_for DESC NULLS LAST,id DESC LIMIT 500",remove:"UPDATE reservations SET deleted_at=now(),status='cancelada',cancel_reason=COALESCE(NULLIF(cancel_reason,''),'Excluída pelo painel de gestão') WHERE id=$1 RETURNING *",label:r=>`${r.area||'Reserva'} ${r.reserved_for||''}`.trim()||String(r.id)}
 };
 
 async function inferOwnership(type,record={}){
@@ -110,9 +119,35 @@ function entityFromPostPath(path=''){
   if(path==='/api/reservations') return 'reservations';
   return '';
 }
+function publicRecord(type,record,owner,actor){
+  const isTest=Boolean(owner.is_test_record||testRecord(record));
+  const actorRole=clean(actor.role).toLowerCase();
+  const creatorRole=clean(owner.created_by_role).toLowerCase();
+  const protectedBySindico=actorRole==='admin'&&creatorRole==='sindico'&&!isTest;
+  const self=type==='users'&&Number(record.id)===Number(actor.id);
+  const protectedMaster=type==='users'&&clean(record.role).toLowerCase()==='master'&&actorRole!=='master';
+  const safe={id:record.id,name:record.name||'',email:record.email||'',role:record.role||'',unit:record.unit||'',recipient:record.recipient||'',tracking:record.tracking||'',label:record.label||'',status:record.status||'',area:record.area||'',resident:record.resident||'',reserved_for:record.reserved_for||'',start_time:record.start_time||'',end_time:record.end_time||'',created_at:record.created_at||''};
+  return {...safe,creator_role:creatorRole,creator_email:owner.created_by_email||'',is_test_record:isTest,can_delete:!(protectedBySindico||self||protectedMaster),delete_block_reason:protectedBySindico?'Criado pelo síndico':self?'Seu próprio acesso':protectedMaster?'Acesso técnico principal':''};
+}
 
+async function listHandler(type,req,res,next){
+  try{
+    applyCors(req,res);
+    await ensureSchema();
+    const actor=authPayload(req);
+    if(!actor) return res.status(401).json({error:'Sessão expirada. Entre novamente.'});
+    if(!allowedRole(actor.role)) return res.status(403).json({error:'Este perfil não possui acesso à central de exclusões.'});
+    const cfg=entityConfig[type];
+    if(!cfg) return res.status(404).json({error:'Categoria não encontrada.'});
+    const rows=(await q(cfg.list)).rows;
+    const items=[];
+    for(const record of rows){ const owner=await inferOwnership(type,record); items.push(publicRecord(type,record,owner,actor)); }
+    return res.json({ok:true,type,items,policy:{actor_role:clean(actor.role).toLowerCase(),admin_cannot_delete_sindico_records:true,test_exception:true}});
+  }catch(error){return next(error);}
+}
 async function deletionHandler(type,req,res,next){
   try{
+    applyCors(req,res);
     await ensureSchema();
     const actor=authPayload(req);
     if(!actor) return res.status(401).json({error:'Sessão expirada. Entre novamente para excluir.'});
@@ -123,11 +158,11 @@ async function deletionHandler(type,req,res,next){
     if(!record) return res.status(404).json({error:'Registro não encontrado ou já removido.'});
     if(type==='users'){
       if(Number(record.id)===Number(actor.id)) return res.status(409).json({error:'Por segurança, você não pode excluir o próprio acesso.'});
-      if(clean(record.role).toLowerCase()==='master' && actorRole!=='master') return res.status(403).json({error:'O acesso técnico principal não pode ser excluído por este perfil.'});
+      if(clean(record.role).toLowerCase()==='master'&&actorRole!=='master') return res.status(403).json({error:'O acesso técnico principal não pode ser excluído por este perfil.'});
     }
     const owner=await inferOwnership(type,record);
-    const isTest=Boolean(owner.is_test_record || testRecord(record));
-    if(actorRole==='admin' && clean(owner.created_by_role).toLowerCase()==='sindico' && !isTest){
+    const isTest=Boolean(owner.is_test_record||testRecord(record));
+    if(actorRole==='admin'&&clean(owner.created_by_role).toLowerCase()==='sindico'&&!isTest){
       return res.status(403).json({error:'Este cadastro foi realizado pelo síndico. O administrador não pode excluí-lo; apenas o próprio síndico, o subsíndico autorizado ou a área técnica. A exceção é exclusiva para cadastros claramente identificados como teste.'});
     }
     const removed=(await q(cfg.remove,[req.params.id])).rows[0];
@@ -141,9 +176,9 @@ async function deletionHandler(type,req,res,next){
 function install(app){
   if(installed) return;
   installed=true;
-  const originalUse=install.originalUse || express.application.use;
+  const originalUse=install.originalUse||express.application.use;
   originalUse.call(app,async(req,res,next)=>{
-    const type=req.method==='POST' ? entityFromPostPath(req.path) : '';
+    const type=req.method==='POST'?entityFromPostPath(req.path):'';
     if(!type) return next();
     const actor=authPayload(req);
     if(!actor) return next();
@@ -156,9 +191,11 @@ function install(app){
     next();
   });
   for(const type of Object.keys(entityConfig)){
+    express.application.get.call(app,`/api/deletion-governance/list/${type}`,(req,res,next)=>listHandler(type,req,res,next));
     express.application.delete.call(app,`/api/${type}/:id`,(req,res,next)=>deletionHandler(type,req,res,next));
   }
   express.application.get.call(app,'/api/deletion-governance/status',(req,res)=>{
+    applyCors(req,res);
     const actor=authPayload(req);
     if(!actor) return res.status(401).json({error:'Sessão necessária.'});
     return res.json({ok:true,version:'14.0.3',roles:['admin','sindico','subsindico'],admin_cannot_delete_sindico_records:true,test_exception:true});
@@ -169,4 +206,4 @@ function install(app){
 
 const originalUse=express.application.use;
 install.originalUse=originalUse;
-express.application.use=function patchedUse(...args){ if(!installed) install(this); return originalUse.apply(this,args); };
+express.application.use=function patchedUse(...args){if(!installed)install(this);return originalUse.apply(this,args);};
