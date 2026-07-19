@@ -4,11 +4,13 @@
   function currentUser(){try{return JSON.parse(localStorage.getItem('vr_user')||'null')||{};}catch{return {};}}
   function brand(){
     if(document.title!=='Vitória Régia One')document.title='Vitória Régia One';
-    document.querySelectorAll('.logoVersion').forEach(node=>{if(node.textContent!=='Vitória Régia One v14.0.0')node.textContent='Vitória Régia One v14.0.0';});
   }
   function cleanup(){
-    ['vr-integrated-menu','vr-presentation-tools','vr-telegram-nudge','vr-telegram-call-native-entry','vr-telegram-call-menu','vr-telegram-call-fallback-entry','vr-premium-suite-root','vr-premium-suite-launcher'].forEach(id=>document.getElementById(id)?.remove());
-    document.querySelector('.mobileViewportHint')?.remove();
+    // Nunca remover ou substituir nós dentro de #root: eles pertencem ao React.
+    ['vr-integrated-menu','vr-presentation-tools','vr-telegram-nudge','vr-telegram-call-native-entry','vr-telegram-call-menu','vr-telegram-call-fallback-entry','vr-premium-suite-root','vr-premium-suite-launcher','vr-sindico-one-v14','vr-visitor-qr-one'].forEach(id=>{
+      const node=document.getElementById(id);
+      if(node&&!node.closest('#root'))node.remove();
+    });
   }
   function drawer(shell){
     const open=shell.classList.contains('mobile-open');
@@ -18,9 +20,7 @@
     if(bottom&&bottom.getAttribute('aria-hidden')!==String(open))bottom.setAttribute('aria-hidden',String(open));
   }
   function trust(shell){
-    const host=shell.querySelector('.topActions');if(!host)return;
-    let badge=host.querySelector('.vr-one-trust');
-    if(!badge){badge=document.createElement('span');badge.className='vr-one-trust';host.insertBefore(badge,host.firstChild);}
+    const badge=shell.querySelector('.vr-one-trust');if(!badge)return;
     const online=navigator.onLine!==false,label=online?'Sistema conectado':'Sem conexão';
     if(badge.textContent!==label)badge.textContent=label;
     badge.classList.toggle('offline',!online);
@@ -28,9 +28,7 @@
   function footer(){
     const node=document.querySelector('.appFooter');if(!node)return;
     node.classList.add('vr-one-footer');
-    if(node.dataset.vrOneFooter==='14.0')return;
     node.dataset.vrOneFooter='14.0';
-    node.innerHTML='<span>Vitória Régia One v14.0</span><span>Ambiente seguro · dados protegidos</span>';
   }
   function sync(){
     brand();
