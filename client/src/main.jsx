@@ -387,6 +387,14 @@ function App(){
 
   if(!session) return <LoginPage forms={forms} setForm={setForm} mode={loginMode} setMode={setLoginMode} doLogin={doLogin} err={err} setShowPass={setShowPass} showPass={showPass} action={action} settings={settings} />;
   const menuItems = [ ['dashboard','Início',Home], ['portaria','Portaria',Package], ['reservas','Reservas',CalendarDays], ['financeiro','Financeiro',WalletCards], ['cadastros','Cadastros',Users], ['comunicacao','Comunicação',Bell], ['ocorrencias','Ocorrências',BookOpen], ['emergencia','Emergência',Siren], ['suporte','Suporte',HelpCircle], ['configuracoes','Configurações',Settings] ];
+  const menuAccessByRole={
+    morador:['dashboard','portaria','reservas','financeiro','comunicacao','ocorrencias','emergencia','suporte'],
+    portaria:['dashboard','portaria','reservas','cadastros','comunicacao','ocorrencias','emergencia','suporte'],
+    funcionario:['dashboard','portaria','reservas','comunicacao','ocorrencias','emergencia','suporte'],
+    financeiro:['dashboard','financeiro','comunicacao','suporte','configuracoes']
+  };
+  const allowedMenu=menuAccessByRole[session?.role];
+  const visibleMenuItems=allowedMenu ? menuItems.filter(([key])=>allowedMenu.includes(key)) : menuItems;
   const shellClass = ['appShell', menuOpen?'mobile-open':'', menuClosed?'menu-closed':'', `menu-${settings.MENU_ORIENTATION||'vertical'}`].join(' ');
   const routeNow = currentRouteState();
   const reservasRouteLocked = active==='reservas' || routeNow.active==='reservas' || isReservasHash();
@@ -394,9 +402,9 @@ function App(){
   const props = { data, forms, setForm, action, createPackageRecord, notify, loadAll, settings, session, can, openConfirm, lookup, lookupUnit, prefillResidentFromContext, readImage, openCameraReader, reading, readingProgress, fileToData, setActive:go, sub, setSub, isAdminReserved, configTab, setConfigTab, del, logout };
   return <div className={shellClass}>
     <button className="mobileMenu" onClick={()=>setMenuOpen(true)}><Menu /></button>{menuOpen && <div className="overlay" onClick={()=>setMenuOpen(false)} />}
-    <aside><div className="brand brandCompact brandLogoOnly"><img src="/logo-vitoria-regia-menu.svg" className="brandLogo"/><button className="insideClose menuToggle" title={menuOpen ? 'Fechar menu' : (menuClosed?'Expandir menu':'Recolher menu')} onClick={()=>{ if(window.innerWidth < 861) setMenuOpen(false); else setMenuClosed(!menuClosed); }}>{window.innerWidth < 861 ? <X/> : (menuClosed ? <ChevronRight/> : <PanelLeft/>)}</button></div><nav>{menuItems.map(([key,label,Icon]) => <button key={key} className={visualActive===key?'active':''} aria-current={visualActive===key?'page':undefined} onClick={()=>go(key, key==='reservas'?'calendario':undefined)}><Icon /><span>{label}</span></button>)}</nav><div className="sideBottom"><button onClick={()=>go('perfil')}><UserCheck/><span>Meu perfil</span></button><button onClick={logout}><LogOut/><span>Sair</span></button></div></aside>
+    <aside><div className="brand brandCompact brandLogoOnly"><img src="/logo-vitoria-regia-menu.svg" className="brandLogo"/><button className="insideClose menuToggle" title={menuOpen ? 'Fechar menu' : (menuClosed?'Expandir menu':'Recolher menu')} onClick={()=>{ if(window.innerWidth < 861) setMenuOpen(false); else setMenuClosed(!menuClosed); }}>{window.innerWidth < 861 ? <X/> : (menuClosed ? <ChevronRight/> : <PanelLeft/>)}</button></div><section className="vr-one-profile-card"><div className="vr-one-profile-avatar">{firstName(session?.name).slice(0,1).toUpperCase()||'U'}</div><div className="vr-one-profile-copy"><b>{firstName(session?.name)||'Usuário'}</b><small>{roleLabel(session?.role)}{session?.unit?` · Unidade ${session.unit}`:''}</small><span>Sessão protegida</span></div></section><nav>{visibleMenuItems.map(([key,label,Icon]) => <button key={key} className={visualActive===key?'active':''} aria-current={visualActive===key?'page':undefined} onClick={()=>go(key, key==='reservas'?'calendario':undefined)}><Icon /><span>{label}</span></button>)}</nav><div className="sideBottom"><button type="button" onClick={()=>window.VitoriaRegiaTelegramCalls?.open?.()}><Phone/><span>Chamadas Telegram</span></button><button type="button" onClick={()=>window.open('https://t.me/vitoriaregia_bot','_blank','noopener,noreferrer')}><Send/><span>Ajuda pelo Telegram</span></button><button onClick={()=>go('perfil')}><UserCheck/><span>Meu perfil</span></button><button onClick={logout}><LogOut/><span>Sair</span></button></div></aside>
     {can('emergency.use') && <button className="floatingEmergency" onClick={()=>go('emergencia')}><Siren/><span>Emergência</span></button>}
-    <main className="content"><Topbar session={session} settings={settings} data={data} setActive={go}/>{toast && <div className={`toast${toast.fail?' toast-error':''}`} role={toast.fail?'alert':'status'} aria-live="polite">{toast.message}</div>}
+    <main className="content"><Topbar session={session} settings={settings} data={data} active={visualActive} setActive={go}/>{toast && <div className={`toast${toast.fail?' toast-error':''}`} role={toast.fail?'alert':'status'} aria-live="polite">{toast.message}</div>}
       {visualActive==='dashboard' && <Dashboard {...props}/>} {visualActive==='portaria' && <Portaria {...props}/>} {reservasRouteLocked && <Reservations {...props}/>} {visualActive==='financeiro' && <Financeiro {...props}/>} {visualActive==='cadastros' && <Cadastros {...props}/>} {visualActive==='comunicacao' && <Comunicacao {...props}/>} {visualActive==='ocorrencias' && <OccurrenceBook {...props}/>} {visualActive==='emergencia' && <Emergency {...props}/>} {visualActive==='suporte' && <SupportPage {...props}/>} {visualActive==='configuracoes' && <SettingsPage {...props}/>} {visualActive==='perfil' && <Profile {...props}/>} 
     </main><nav className="bottomNav"><button className={visualActive==='dashboard'?'active':''} onClick={()=>go('dashboard')}><Home/><span>Início</span></button><button className={visualActive==='reservas'?'active':''} onClick={()=>go('reservas','calendario')}><CalendarDays/><span>Reservas</span></button><button className={visualActive==='comunicacao'?'active':''} onClick={()=>go('comunicacao','notificacoes')}><Bell/><span>Comunicados</span></button><button className={visualActive==='perfil'?'active':''} onClick={()=>go('perfil')}><UserCheck/><span>Perfil</span></button></nav>{criticalAlert && <CriticalEmergencyOverlay alert={criticalAlert} onOpen={()=>acknowledgeCriticalAlert(true)} onDismiss={()=>acknowledgeCriticalAlert(false)} />} {cameraReader && <CameraCaptureModal type={cameraReader.type} onClose={()=>setCameraReader(null)} onCapture={async(file,type,meta)=>{ setCameraReader(null); await readImage(file,type,meta || {}); }} notify={notify}/>} {confirm && <ConfirmModal confirm={confirm} onCancel={()=>setConfirm(null)} onConfirm={confirmRun}/>}<MobileViewportHint/><Footer /></div>;
 }
@@ -610,11 +618,14 @@ function LoginPage({ forms,setForm,mode,setMode,doLogin,err,setShowPass,showPass
 }
 
 
-function Topbar({session,settings,data,setActive}){
+function Topbar({session,settings,data,active,setActive}){
+  const online=useOnlineStatus();
   const unread = data?.notifications?.filter?.(n=>!n.read_at)?.length || 0;
+  const title={dashboard:'Visão geral',portaria:'Portaria e entregas',reservas:'Reservas',financeiro:'Financeiro',cadastros:'Pessoas e acessos',comunicacao:'Comunicados',ocorrencias:'Ocorrências',emergencia:'Emergência',suporte:'Ajuda e suporte',configuracoes:'Configurações',perfil:'Meu perfil'}[active] || 'Painel do condomínio';
   return <header className="topbar mobileAlignedTopbar">
-    <div><small>{settings.CONDO_NAME || 'Condomínio Vitória Régia'}</small><h1>Painel do condomínio</h1></div>
+    <div><small>{settings.CONDO_NAME || 'Condomínio Vitória Régia'}</small><h1>{title}</h1></div>
     <div className="topActions">
+      <span className={online?'vr-one-trust':'vr-one-trust offline'}>{online?'Sistema conectado':'Sem conexão'}</span>
       <button className="notificationBell topBell" title="Abrir notificações" onClick={()=>setActive('comunicacao','notificacoes')}><Bell/>{unread>0 && <em>{unread}</em>}</button>
       <button className="profileBadge" onClick={()=>setActive('perfil')}><UserCheck/><span>{firstName(session?.name) || roleLabel(session?.role)}<small>Perfil ativo</small></span></button>
     </div>
@@ -1716,6 +1727,23 @@ function Code({children}){ return <code className="code">{children}</code>; }
 function Table({rows=[],render}){ return <div className="tableWrap"><table><tbody>{rows?.length?rows.map((r,i)=><tr key={r.id||i}>{render(r)}</tr>):<tr><td><small>Nenhum registro encontrado.</small></td></tr>}</tbody></table></div>; }
 function ConfirmModal({confirm,onCancel,onConfirm}){ return <div className="modalOverlay"><div className="confirmModal" aria-busy={confirm.running?'true':'false'}><h2><CheckCircle2/> {confirm.title}</h2><p>{confirm.running?'Gravando com segurança. Aguarde a confirmação do servidor…':'Confira os dados antes de gravar. Essa etapa evita cadastros duplicados ou lançamentos incorretos.'}</p>{confirm.error&&<div className="confirmInlineError" role="alert"><AlertTriangle/><span><b>Cadastro não concluído</b><small>{confirm.error}</small></span></div>}<div className="confirmList">{Object.entries(confirm.fields||{}).map(([k,v])=><span key={k}>{k}<b>{String(v||'-')}</b></span>)}</div><div className="modalActions"><button type="button" disabled={confirm.running} onClick={onCancel}>Voltar e corrigir</button><button type="button" className="primary" disabled={confirm.running} onClick={onConfirm}>{confirm.running?'Processando…':confirm.error?'Tentar novamente':'Confirmar cadastro'}</button></div></div></div>; }
 function MobileViewportHint(){ const [closed,setClosed]=useState(()=>localStorage.getItem('vr_mobile_hint_closed')==='1'); if(closed) return null; return <div className="mobileViewportHint"><Smartphone/><span><b>Visualização premium</b> · Para tabelas, reservas e financeiro, gire o celular para a horizontal. No tablet, o modo paisagem fica igual ao desktop.</span><button type="button" aria-label="Fechar aviso" onClick={()=>{localStorage.setItem('vr_mobile_hint_closed','1'); setClosed(true);}}><X/></button></div>; }
-function Footer(){ return <footer className="appFooter"><span>{VERSION}</span><span>Desenvolvido por <b>CrewCheck</b> · Todos os direitos reservados</span></footer>; }
+function Footer(){ return <footer className="appFooter vr-one-footer" data-vr-one-footer="14.0"><span>{VERSION}</span><span>Ambiente seguro · dados protegidos</span><span>Desenvolvido por <b>CrewCheck</b> · Todos os direitos reservados</span></footer>; }
 
-createRoot(document.getElementById('root')).render(<App/>);
+class AppErrorBoundary extends React.Component{
+  constructor(props){ super(props); this.state={error:null}; }
+  static getDerivedStateFromError(error){ return {error}; }
+  componentDidCatch(error,info){
+    console.error('Falha protegida da interface Vitória Régia:',error,info);
+    try{ localStorage.setItem('vr_last_ui_error',JSON.stringify({message:String(error?.message||error||'Falha de interface'),at:new Date().toISOString(),hash:window.location.hash})); }catch{}
+  }
+  recover(home=false){
+    if(home) window.location.hash='#/dashboard';
+    window.location.reload();
+  }
+  render(){
+    if(!this.state.error) return this.props.children;
+    return <main className="appFatalError" role="alert"><section><ShieldAlert/><span className="eyebrow">Recuperação automática</span><h1>A interface encontrou uma falha e foi protegida.</h1><p>Sua sessão e seus dados foram preservados. Recarregue o sistema para continuar.</p><div><button type="button" onClick={()=>this.recover(false)}><RefreshCcw/> Recarregar sistema</button><button type="button" className="secondaryAction" onClick={()=>this.recover(true)}><Home/> Voltar ao início</button></div></section></main>;
+  }
+}
+
+createRoot(document.getElementById('root')).render(<AppErrorBoundary><App/></AppErrorBoundary>);
