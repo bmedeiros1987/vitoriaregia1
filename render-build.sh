@@ -8,8 +8,8 @@ export npm_config_update_notifier="false"
 export LANG="${LANG:-C.UTF-8}"
 export LC_ALL="${LC_ALL:-C.UTF-8}"
 export PGCLIENTENCODING="${PGCLIENTENCODING:-UTF8}"
-export APP_VERSION="${APP_VERSION:-Vitória Régia One v14.0.3}"
-export VITE_APP_VERSION="${VITE_APP_VERSION:-Vitória Régia One v14.0.3}"
+export APP_VERSION="${APP_VERSION:-Vitória Régia One v14.0.4}"
+export VITE_APP_VERSION="${VITE_APP_VERSION:-Vitória Régia One v14.0.4}"
 
 printf '\n==> Instalando dependências da raiz...\n'
 npm install --ignore-scripts --no-audit --no-fund --legacy-peer-deps
@@ -23,7 +23,7 @@ npm --prefix server install --include=dev --no-audit --no-fund --legacy-peer-dep
 printf '\n==> Compilando cliente...\n'
 npm --prefix client run build
 
-printf '\n==> Validando chamadas, RSVP, exclusões, layout, OCR e UTF-8...\n'
+printf '\n==> Validando chamadas, RSVP, exclusões, boot, layout, OCR e UTF-8...\n'
 node --check server/src/telegram-call-context.mjs
 node --check server/src/telegram-call-details-preload.mjs
 node --check server/src/telegram-concierge-data.mjs
