@@ -9,8 +9,8 @@ test('HTML não carrega extensões que substituem elementos controlados pelo Rea
   for(const unsafe of ['telegram-calls-menu-hotfix.js','vitoria-one-v13-nav.js','visitor-qr-v13.js','sindico-one-v14.js']){
     assert.doesNotMatch(html,new RegExp(`<script[^>]+${unsafe.replaceAll('.','\\.')}`));
   }
-  assert.match(html,/telegram-calls\.js\?v=20260719f/);
-  assert.match(html,/vitoria-one-v13-core\.js\?v=20260719f/);
+  assert.match(html,/telegram-calls\.js\?v=20260719g/);
+  assert.match(html,/vitoria-one-v13-core\.js\?v=20260719g/);
 });
 
 test('núcleo visual não remove, insere ou reescreve filhos do React', () => {
@@ -54,7 +54,7 @@ test('visitantes recorrentes usam QR Code nativo sem reativar o script legado', 
   assert.match(main,/\/api\/visitor-invites\/verify/);
   assert.match(main,/confirm_entry:confirmEntry/);
   assert.match(main,/function VisitorQrVerifyModal/);
-  assert.match(main,/Selecione ao menos um dia da semana para o visitante recorrente/);
+  assert.match da semana para o visitante recorrente/);
   assert.match(main,/Gerar QR Code seguro/);
   assert.doesNotMatch(html,/<script[^>]+visitor-qr-v13\.js/);
 });
