@@ -33,7 +33,7 @@ public class MainActivity extends Activity {
     private ProgressBar progressBar;
     private ValueCallback<Uri[]> filePathCallback;
     private PermissionRequest pendingPermissionRequest;
-    private static final String BASE_URL = "https://vitoriaregia1.onrender.com/?app=morador#/morador";
+    private static final String BASE_URL = "https://vitoriaregia-pro.onrender.com/?app=morador#/morador";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
