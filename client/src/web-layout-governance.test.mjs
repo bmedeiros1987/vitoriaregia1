@@ -4,22 +4,31 @@ import { readFileSync } from 'node:fs';
 
 const read=relative=>readFileSync(new URL(`../${relative}`,import.meta.url),'utf8');
 
-test('correção web remove deslocamento duplo da sidebar',()=>{
-  const css=read('public/vitoria-one-v14-web-premium.css');
-  assert.match(css,/display:grid!important/);
-  assert.match(css,/grid-template-columns:var\(--vr-web-sidebar\) minmax\(0,1fr\)!important/);
-  assert.match(css,/\.appShell>main\.content\{[\s\S]*margin:0!important/);
-  assert.match(css,/\.appShell>aside\{[\s\S]*position:sticky!important/);
+test('recuperação web usa somente uma reserva de largura para a sidebar',()=>{
+  const css=read('public/vitoria-one-v14-layout-recovery.css');
+  assert.match(css,/display:block!important/);
+  assert.match(css,/grid-template-columns:none!important/);
+  assert.match(css,/position:fixed!important/);
+  assert.match(css,/margin:0 0 0 var\(--vr-recovery-sidebar\)!important/);
+  assert.match(css,/width:calc\(100% - var\(--vr-recovery-sidebar\)\)!important/);
+  assert.doesNotMatch(css,/grid-template-columns:var\(--vr-recovery-sidebar\)/);
 });
 
-test('drawer e camadas de foco escondem navegações concorrentes',()=>{
-  const css=read('public/vitoria-one-v14-web-premium.css');
+test('camada de foco presa é removida e não pode ocultar o sistema',()=>{
+  const css=read('public/vitoria-one-v14-layout-recovery.css');
   const script=read('public/deletion-governance-v14.js');
+  assert.match(css,/body\.vr-focus-layer:not\(\.vr-deletion-open\):not\(\.vr-scanner-open\)/);
+  assert.match(css,/opacity:1!important/);
+  assert.match(css,/pointer-events:auto!important/);
+  assert.match(script,/function clearStaleFocus/);
+  assert.match(script,/document\.body\.classList\.remove\('vr-focus-layer','vr-deletion-open'\)/);
+  assert.doesNotMatch(script,/querySelector\('\.cameraReaderOverlay,#vr-telegram-call-root/);
+});
+
+test('drawer mobile esconde somente navegação concorrente enquanto aberto',()=>{
+  const css=read('public/vitoria-one-v14-web-premium.css');
   assert.match(css,/\.appShell\.mobile-open \.bottomNav/);
   assert.match(css,/\.appShell\.mobile-open \.subTabs/);
-  assert.match(css,/body\.vr-focus-layer \.appShell>aside/);
-  assert.match(script,/vr-focus-layer/);
-  assert.match(script,/MutationObserver/);
 });
 
 test('central premium permite excluir quatro categorias com confirmação',()=>{
@@ -38,14 +47,15 @@ test('central aparece somente para gestão autorizada',()=>{
   assert.match(script,/criados pelo síndico/i);
 });
 
-test('núcleo React inicia antes das integrações auxiliares',()=>{
+test('núcleo React inicia antes das integrações e CSS de recuperação carrega por último',()=>{
   const html=read('index.html');
   const oldCss=html.indexOf('/vitoria-one-v14-layout-audit.css');
-  const newCss=html.indexOf('/vitoria-one-v14-web-premium.css');
+  const premiumCss=html.indexOf('/vitoria-one-v14-web-premium.css');
+  const recoveryCss=html.indexOf('/vitoria-one-v14-layout-recovery.css');
   const react=html.indexOf('/src/main.jsx');
   const intelligence=html.indexOf('/package-intelligence-v14.js');
   const governance=html.indexOf('/deletion-governance-v14.js');
-  assert.ok(oldCss>=0&&newCss>oldCss);
+  assert.ok(oldCss>=0&&premiumCss>oldCss&&recoveryCss>premiumCss);
   assert.ok(react>=0&&intelligence>react&&governance>react);
   assert.match(html,/<script defer src="\/deletion-governance-v14\.js/);
 });
