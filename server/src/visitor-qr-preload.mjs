@@ -9,6 +9,7 @@ const DATABASE_URL = process.env.DATABASE_URL || 'postgres://localhost/vitoriare
 const TZ = process.env.TZ || 'America/Sao_Paulo';
 let pool;
 let schemaPromise;
+const parseVisitorJson=express.json({limit:'35mb'});
 
 function dbConfig() {
   let connectionString = DATABASE_URL;
@@ -112,8 +113,7 @@ async function invitePayload(req,visitor){
 async function getVisitor(id){ return (await q('SELECT * FROM visitors WHERE id=$1 AND deleted_at IS NULL',[id])).rows[0]||null; }
 async function audit(actor,action,entity){ await q('INSERT INTO audit(actor,action,entity) VALUES($1,$2,$3)',[actor||'sistema',action,entity||'']).catch(()=>null); }
 function visitorView(v){ return { id:v.id,name:v.name,document:v.document,unit:v.unit,authorized_by:v.authorized_by,status:v.status,plate:v.plate,phone:v.phone,recurring:v.recurring,weekdays:list(v.weekdays),access_dates:list(v.access_dates),valid_from:v.valid_from,valid_until:v.valid_until,access_start_time:v.access_start_time,access_end_time:v.access_end_time,max_entries:Number(v.max_entries||0),access_count:Number(v.access_count||0),last_access_at:v.last_access_at,qr_enabled:v.qr_enabled,qr_revoked_at:v.qr_revoked_at,notes:v.notes,created_at:v.created_at }; }
-async function handle(req,res,next){
-  if(!req.path.startsWith('/api/visitor-invites')) return next();
+async function handleVisitorRequest(req,res,next){
   try{
     await ensureSchema();
     const user=auth(req);
@@ -172,6 +172,17 @@ async function handle(req,res,next){
     }
     return send(res,404,{error:'Recurso de convite não encontrado.'});
   }catch(error){ return send(res,error.status||500,{error:error.message||'Não foi possível processar o convite.'}); }
+}
+
+function handle(req,res,next){
+  if(!req.path.startsWith('/api/visitor-invites')) return next();
+  // O preload é instalado antes do parser global do index.js. Fazemos o parse
+  // somente nas rotas de convite para que POST/verify recebam o JSON completo,
+  // independentemente da ordem dos demais middlewares.
+  if(!['POST','PUT','PATCH'].includes(req.method) || req.body!==undefined) return handleVisitorRequest(req,res,next);
+  return parseVisitorJson(req,res,error=>error
+    ? send(res,400,{error:'JSON inválido ou maior que o limite permitido.'})
+    : handleVisitorRequest(req,res,next));
 }
 
 const originalUse=express.application.use;

@@ -30,4 +30,6 @@ test('convite QR recorrente exige dias definidos e preserva janela de acesso', (
   assert.match(preload, /access_start_time/);
   assert.match(preload, /access_end_time/);
   assert.match(preload, /\/api\/visitor-invites\/verify/);
+  assert.match(preload, /parseVisitorJson\(req,res/);
+  assert.match(preload, /req\.body!==undefined/);
 });
