@@ -9,8 +9,8 @@ test('HTML não carrega extensões que substituem elementos controlados pelo Rea
   for(const unsafe of ['telegram-calls-menu-hotfix.js','vitoria-one-v13-nav.js','visitor-qr-v13.js','sindico-one-v14.js']){
     assert.doesNotMatch(html,new RegExp(`<script[^>]+${unsafe.replaceAll('.','\\.')}`));
   }
-  assert.match(html,/telegram-calls\.js\?v=20260719e/);
-  assert.match(html,/vitoria-one-v13-core\.js\?v=20260719e/);
+  assert.match(html,/telegram-calls\.js\?v=20260719f/);
+  assert.match(html,/vitoria-one-v13-core\.js\?v=20260719f/);
 });
 
 test('núcleo visual não remove, insere ou reescreve filhos do React', () => {
@@ -82,12 +82,11 @@ test('auditoria visual fixa menu e remove navegação durante a leitura', () => 
   assert.match(css,/\.toast,[\s\S]*font-size: \.84rem !important/);
 });
 
-test('RSVP público sem login inicia antes do React e o gestor não bloqueia o login', () => {
+test('RSVP público sem login continua disponível sem bloquear a montagem do login', () => {
   const html=read('index.html');
   const publicRsvp=read('public/reservation-rsvp-public-v14.js');
   const reactPosition=html.indexOf('/src/main.jsx');
-  assert.ok(html.indexOf('/reservation-rsvp-public-v14.js') >= 0);
-  assert.ok(html.indexOf('/reservation-rsvp-public-v14.js') < reactPosition);
+  assert.ok(html.indexOf('/reservation-rsvp-public-v14.js') > reactPosition);
   assert.ok(html.indexOf('/reservation-rsvp-manager-v14.js') > reactPosition);
   assert.match(html,/<script defer src="\/reservation-rsvp-public-v14\.js/);
   assert.match(publicRsvp,/\/api\/public\/rsvp/);
