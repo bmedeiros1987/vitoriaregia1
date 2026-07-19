@@ -1,0 +1,197 @@
+/* Vitória Régia One v14.0.3 — shell web premium e governança visual */
+:root{
+  --vr-web-sidebar:286px;
+  --vr-web-sidebar-compact:88px;
+  --vr-web-gutter:clamp(18px,2vw,34px);
+  --vr-web-max:1680px;
+  --vr-safe-top:env(safe-area-inset-top,0px);
+  --vr-safe-bottom:env(safe-area-inset-bottom,0px);
+}
+
+html,body,#root{width:100%;min-height:100%;overflow-x:hidden}
+body{background:linear-gradient(135deg,#eef7f5 0%,#f8fbfa 46%,#edf5f6 100%)}
+.appShell{width:100%!important;min-height:100dvh!important;min-width:0!important}
+.appShell>*{min-width:0}
+
+/* O shell anterior contava a largura da sidebar duas vezes: coluna + margin-left. */
+@media (min-width:861px){
+  .appShell{
+    display:grid!important;
+    grid-template-columns:var(--vr-web-sidebar) minmax(0,1fr)!important;
+    align-items:start!important;
+  }
+  .appShell.menu-closed{grid-template-columns:var(--vr-web-sidebar-compact) minmax(0,1fr)!important}
+  .appShell>aside{
+    position:sticky!important;
+    inset:auto!important;
+    top:0!important;
+    width:100%!important;
+    height:100dvh!important;
+    max-height:100dvh!important;
+    overflow:hidden auto!important;
+    z-index:900!important;
+    align-self:start!important;
+    contain:layout paint;
+  }
+  .appShell>main.content{
+    grid-column:2!important;
+    width:100%!important;
+    max-width:none!important;
+    min-width:0!important;
+    margin:0!important;
+    padding:0 var(--vr-web-gutter) clamp(30px,4vw,58px)!important;
+    overflow:visible!important;
+  }
+  .appShell>main.content>.topbar{
+    width:100%!important;
+    max-width:var(--vr-web-max)!important;
+    margin:0 auto clamp(18px,2vw,28px)!important;
+  }
+  .appShell>main.content>div:not(.toast),
+  .appShell>main.content>section,
+  .appShell>main.content>.panel{
+    width:100%!important;
+    max-width:var(--vr-web-max)!important;
+    margin-inline:auto!important;
+  }
+  .appShell.menu-closed>main.content{margin:0!important}
+}
+
+.content{min-width:0!important}
+.content .panel,.content .stack,.content .dashboard,.content .vrReservaShell,.content .packageUnifiedShell{max-width:100%;min-width:0}
+.panel,.subpanel,.card,.noticeBox,.vrReservaCalendarCard,.vrReservaDayPanel{overflow-wrap:anywhere}
+.tableWrap,.tableContainer,.dataTableWrap{width:100%;max-width:100%;overflow:auto;overscroll-behavior-inline:contain}
+table{max-width:100%}
+
+/* Cabeçalho compacto e alinhado à área útil. */
+.topbar{
+  position:sticky!important;
+  top:0!important;
+  z-index:720!important;
+  min-height:82px!important;
+  padding:max(14px,var(--vr-safe-top)) clamp(18px,2vw,30px) 14px!important;
+  border-radius:0 0 22px 22px!important;
+  backdrop-filter:blur(22px) saturate(150%);
+  box-shadow:0 12px 32px rgba(8,48,55,.07)!important;
+}
+
+/* Abas internas não cobrem o conteúdo e somem enquanto o drawer está aberto. */
+.subTabs,.tabs,.panelTabs,.moduleTabs,.segmentedTabs,[role="tablist"]{
+  max-width:100%!important;
+  overflow-x:auto!important;
+  overflow-y:hidden!important;
+  scrollbar-width:none;
+  overscroll-behavior-inline:contain;
+}
+.subTabs::-webkit-scrollbar,.tabs::-webkit-scrollbar,.panelTabs::-webkit-scrollbar,.moduleTabs::-webkit-scrollbar,.segmentedTabs::-webkit-scrollbar,[role="tablist"]::-webkit-scrollbar{display:none}
+
+/* Formulários web: colunas equilibradas, sem campos gigantes ou corte lateral. */
+.formGrid,.premiumForm{
+  grid-template-columns:repeat(12,minmax(0,1fr))!important;
+  gap:clamp(12px,1.25vw,18px)!important;
+  align-items:end!important;
+}
+.formGrid>label,.premiumForm>label{grid-column:span 4;min-width:0!important}
+.formGrid>.full,.premiumForm>.full,.formGrid>textarea,.premiumForm>textarea{grid-column:1/-1!important}
+.formGrid>button,.premiumForm>button,.formGrid>.fileButton,.premiumForm>.fileButton{min-height:52px!important;min-width:0!important}
+.formGrid input,.formGrid select,.formGrid textarea,.premiumForm input,.premiumForm select,.premiumForm textarea{width:100%!important;max-width:100%!important;min-width:0!important}
+.formGrid textarea,.premiumForm textarea{min-height:128px!important}
+
+/* Cards com densidade premium no desktop largo. */
+@media (min-width:1280px){
+  .panel{padding:clamp(20px,1.8vw,30px)!important;border-radius:28px!important}
+  .dashboardGrid,.moduleGrid,.supportGrid{gap:clamp(16px,1.4vw,24px)!important}
+  .vrReservaMainGrid{grid-template-columns:minmax(0,1.7fr) minmax(300px,.7fr)!important}
+}
+
+/* Drawer, modais e menus: somente uma camada de navegação visível. */
+.appShell.mobile-open .bottomNav,
+.appShell.mobile-open .floatingEmergency,
+.appShell.mobile-open .subTabs,
+.appShell.mobile-open .tabs,
+.appShell.mobile-open .panelTabs,
+.appShell.mobile-open .moduleTabs,
+.appShell.mobile-open [role="tablist"]{
+  opacity:0!important;
+  visibility:hidden!important;
+  pointer-events:none!important;
+}
+body.vr-focus-layer .appShell>aside,
+body.vr-focus-layer .bottomNav,
+body.vr-focus-layer .mobileMenu,
+body.vr-focus-layer .floatingEmergency,
+body.vr-focus-layer .content>.topbar,
+body.vr-focus-layer .content>.subTabs,
+body.vr-focus-layer .content>.tabs{
+  opacity:0!important;
+  visibility:hidden!important;
+  pointer-events:none!important;
+}
+body.vr-focus-layer{overflow:hidden!important}
+
+/* Central de exclusões */
+.vrGovernanceMenuButton{color:#e9fffb!important}
+.vrGovernanceMenuButton svg{color:#58e4d0!important}
+.vrDeletionOverlay{
+  position:fixed;
+  inset:0;
+  z-index:6200;
+  display:grid;
+  place-items:center;
+  padding:clamp(10px,2vw,28px);
+  background:rgba(3,25,31,.7);
+  backdrop-filter:blur(18px) saturate(125%);
+}
+.vrDeletionShell{
+  width:min(1220px,100%);
+  max-height:calc(100dvh - clamp(20px,4vw,56px));
+  display:grid;
+  grid-template-rows:auto auto auto minmax(0,1fr);
+  overflow:hidden;
+  border:1px solid rgba(255,255,255,.58);
+  border-radius:30px;
+  background:linear-gradient(155deg,rgba(255,255,255,.98),rgba(240,250,248,.96));
+  box-shadow:0 36px 110px rgba(0,22,29,.34);
+}
+.vrDeletionHead{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:24px 26px 18px;background:linear-gradient(135deg,#073e57,#087c78);color:#fff}
+.vrDeletionHead small{display:block;margin-bottom:5px;letter-spacing:.12em;text-transform:uppercase;font-weight:800;opacity:.76}
+.vrDeletionHead h2{margin:0;font-size:clamp(1.4rem,2.4vw,2.1rem)}
+.vrDeletionHead p{margin:7px 0 0;max-width:72ch;opacity:.86}
+.vrDeletionClose{width:46px;height:46px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.28)!important;border-radius:15px!important;background:rgba(255,255,255,.12)!important;color:#fff!important;font-size:1.45rem!important}
+.vrDeletionPolicy{margin:16px 20px 0;padding:13px 15px;border-radius:16px;background:#eaf8f4;border:1px solid #b9e6d9;color:#164940;font-size:.9rem;line-height:1.45}
+.vrDeletionPolicy.admin{background:#fff6df;border-color:#ead298;color:#624811}
+.vrDeletionToolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;padding:16px 20px}
+.vrDeletionTabs{display:flex;gap:8px;overflow:auto;scrollbar-width:none}
+.vrDeletionTabs::-webkit-scrollbar{display:none}
+.vrDeletionTabs button{white-space:nowrap;border-radius:999px!important;padding:11px 16px!important;background:#edf5f4!important;color:#28504e!important;border:1px solid #d1e3e0!important}
+.vrDeletionTabs button.active{background:#0b766c!important;color:#fff!important;border-color:#0b766c!important;box-shadow:0 8px 18px rgba(11,118,108,.18)}
+.vrDeletionSearch{min-width:min(310px,35vw);border:1px solid #cddfdd;border-radius:14px;padding:0 14px;background:#fff}
+.vrDeletionBody{overflow:auto;padding:0 20px 22px}
+.vrDeletionState{padding:36px 18px;text-align:center;color:#57706e}
+.vrDeletionList{display:grid;gap:10px}
+.vrDeletionRow{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(150px,.55fr) auto;gap:14px;align-items:center;padding:15px 16px;border:1px solid #dbe9e6;border-radius:18px;background:rgba(255,255,255,.9);box-shadow:0 8px 24px rgba(12,68,69,.05)}
+.vrDeletionRow b,.vrDeletionRow small{display:block}.vrDeletionRow small{margin-top:4px;color:#617875}.vrDeletionMeta{font-size:.82rem;color:#3b5d59}
+.vrDeleteButton{min-height:44px!important;border-radius:13px!important;background:#fff0f1!important;border:1px solid #f0bdc2!important;color:#b42332!important;font-weight:800!important;padding:10px 14px!important}
+.vrDeleteButton:hover{background:#d92e42!important;color:#fff!important;border-color:#d92e42!important}
+
+@media (max-width:1100px){
+  .formGrid>label,.premiumForm>label{grid-column:span 6}
+}
+@media (max-width:860px){
+  .appShell{display:block!important}
+  .appShell>main.content{width:100%!important;margin:0!important;padding-left:12px!important;padding-right:12px!important}
+  .appShell>aside{position:fixed!important;inset:0 auto 0 0!important;width:min(88vw,330px)!important;height:100dvh!important;transform:translateX(-105%)!important;z-index:2600!important}
+  .appShell.mobile-open>aside{transform:translateX(0)!important}
+  .formGrid,.premiumForm{grid-template-columns:1fr!important}
+  .formGrid>label,.premiumForm>label,.formGrid>.full,.premiumForm>.full{grid-column:1!important}
+  .vrDeletionOverlay{padding:0}
+  .vrDeletionShell{width:100%;height:100dvh;max-height:none;border-radius:0}
+  .vrDeletionHead{padding:max(16px,calc(var(--vr-safe-top) + 10px)) 16px 14px}
+  .vrDeletionPolicy{margin:12px 12px 0}
+  .vrDeletionToolbar{grid-template-columns:1fr;padding:12px}
+  .vrDeletionSearch{min-width:0;width:100%;min-height:48px}
+  .vrDeletionBody{padding:0 12px calc(18px + var(--vr-safe-bottom))}
+  .vrDeletionRow{grid-template-columns:1fr;gap:9px}
+  .vrDeleteButton{width:100%}
+}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}.vrDeletionOverlay,.appShell>aside{transition:none!important}}

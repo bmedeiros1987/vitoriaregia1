@@ -1,8 +1,8 @@
 {
   "name": "vitoria-regia-one",
-  "version": "14.0.2",
+  "version": "14.0.3",
   "private": true,
-  "description": "Vitória Régia One v14.0.2: reservas seguras, RSVP público, convidados, QR e lembretes de encomenda.",
+  "description": "Vitória Régia One v14.0.3: layout web premium, exclusões rastreáveis e proteção de autoria.",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "npm --prefix client run dev",
