@@ -8,8 +8,8 @@ export npm_config_update_notifier="false"
 export LANG="${LANG:-C.UTF-8}"
 export LC_ALL="${LC_ALL:-C.UTF-8}"
 export PGCLIENTENCODING="${PGCLIENTENCODING:-UTF8}"
-export APP_VERSION="${APP_VERSION:-Vitória Régia One v14.0.4}"
-export VITE_APP_VERSION="${VITE_APP_VERSION:-Vitória Régia One v14.0.4}"
+export APP_VERSION="${APP_VERSION:-Vitória Régia One v14.0.6}"
+export VITE_APP_VERSION="${VITE_APP_VERSION:-Vitória Régia One v14.0.6}"
 
 printf '\n==> Instalando dependências da raiz...\n'
 npm install --ignore-scripts --no-audit --no-fund --legacy-peer-deps
