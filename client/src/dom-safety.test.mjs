@@ -35,3 +35,13 @@ test('aplicação possui cabeçalho, perfil e recuperação de erro nativos', ()
   assert.match(main,/className=\{online\?'vr-one-trust'/);
   assert.match(main,/<AppErrorBoundary><App\/><\/AppErrorBoundary>/);
 });
+
+test('encomendas reúne leitor, cadastro e histórico em uma única tela', () => {
+  const main=read('src/main.jsx');
+  assert.doesNotMatch(main,/\['leitor','Leitor Premium'\]/);
+  assert.doesNotMatch(main,/function PackageScannerPremium/);
+  assert.match(main,/Encomendas \+ leitura inteligente/);
+  assert.match(main,/Cadastrar e acompanhar em um só lugar/);
+  assert.match(main,/className="packageHistorySection"/);
+  assert.match(main,/active === 'portaria' && sub === 'leitor' \? 'encomendas'/);
+});

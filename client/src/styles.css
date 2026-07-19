@@ -1178,6 +1178,25 @@ body{
 .apkUpdatePolicy code{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:3px 7px;}
 @media(max-width:860px){.offlineApkGuide{grid-template-columns:1fr;}}
 
+/* Encomendas unificadas: leitor, cadastro e acompanhamento na mesma tela. */
+.packageUnifiedFlow{gap:16px}
+.packageUnifiedHero{position:relative;overflow:hidden}
+.packageUnifiedHero:after{content:"";position:absolute;width:190px;height:190px;right:-70px;bottom:-115px;border-radius:50%;background:color-mix(in srgb,var(--accent2) 18%,transparent);pointer-events:none}
+.packageUnifiedHero>svg{position:relative;z-index:1}
+.packageUnifiedActions>button,.packageUnifiedActions>.fileButton{min-height:54px;justify-content:center}
+.packageRegisterCard{position:relative;overflow:hidden;border-color:color-mix(in srgb,var(--accent) 24%,var(--line))}
+.packageRegisterCard:before{content:"";position:absolute;inset:0 0 auto;height:4px;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+.packageRegisterCard>.channels{grid-column:1/-1;margin:2px 0}
+.packageRegisterCard>button{min-height:50px}
+.packageSafetyRule{display:flex!important;align-items:flex-start!important;gap:10px!important}
+.packageSafetyRule>svg{width:23px;height:23px;flex:0 0 auto;color:var(--accent)}
+.packageSafetyRule>span{display:grid;gap:3px;min-width:0}
+.packageHistorySection{display:grid;gap:12px;margin-top:4px}
+.packageHistorySection>header{display:flex;align-items:end;justify-content:space-between;gap:16px;padding:4px 2px}
+.packageHistorySection>header h3{margin:3px 0 0;font-size:24px;letter-spacing:-.5px}
+.packageHistorySection>header>small{padding:7px 10px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--muted);font-weight:900;white-space:nowrap}
+@media(max-width:720px){.packageUnifiedHero{padding:17px!important}.packageUnifiedHero h3{font-size:24px!important}.packageRegisterCard>.channels{display:grid}.packageHistorySection>header{align-items:flex-start}.packageHistorySection>header h3{font-size:21px}}
+
 /* A posição do toast precisa ser a última regra para não combinar top + bottom. */
 .toast{top:24px!important;right:26px!important;bottom:auto!important;left:auto!important;width:max-content!important;max-width:min(430px,calc(100vw - 52px))!important;min-width:0!important;min-height:0!important;height:auto!important;max-height:min(180px,45dvh)!important;overflow:auto!important;display:flex!important;align-items:center!important;line-height:1.35!important;overflow-wrap:anywhere!important;pointer-events:none!important}
 .toast.toast-error{background:linear-gradient(135deg,#b4232e,#d13d47)!important;color:#fff!important;box-shadow:0 18px 42px rgba(180,35,46,.28)!important}

@@ -144,6 +144,9 @@ const routeAliases = {
   apps:['configuracoes','apps'], updates:['configuracoes','atualizacoes'], atualizacoes:['configuracoes','atualizacoes'], manuais:['configuracoes','manuais'], documentos:['configuracoes','documentos'], central:['configuracoes','apps'], limites:['configuracoes','limites'], ocorrencias:['ocorrencias','livro'], suporte:['suporte','faq'],
   aparencia:['configuracoes','aparencia'], menu:['configuracoes','aparencia'], notificacao:['configuracoes','notificacoes'], telegram:['configuracoes','telegram'], whatsapp:['configuracoes','whatsapp'], email:['configuracoes','email'], banco:['configuracoes','banco'], auditoria:['configuracoes','auditoria'], condominio:['configuracoes','condominio'], configuracoes:['configuracoes','aparencia']
 };
+function normalizeRouteSub(active, sub){
+  return active === 'portaria' && sub === 'leitor' ? 'encomendas' : sub;
+}
 function routeState(raw='dashboard', explicitSub){
   const cleanRoute = String(raw || 'dashboard').replace(/^#?\/?/, '').replace(/^\//, '');
   const [first, second] = cleanRoute.split('/').filter(Boolean);
@@ -153,9 +156,9 @@ function routeState(raw='dashboard', explicitSub){
   }
   if(routeAliases[key]){
     const [active, aliasSub] = routeAliases[key];
-    return { active, sub: explicitSub || second || aliasSub || routeDefaults[active] };
+    return { active, sub:normalizeRouteSub(active, explicitSub || second || aliasSub || routeDefaults[active]) };
   }
-  return { active:key, sub: explicitSub || second || routeDefaults[key] };
+  return { active:key, sub:normalizeRouteSub(key, explicitSub || second || routeDefaults[key]) };
 }
 function routeHash(active, sub){
   return '/' + active + (sub && routeDefaults[active] ? '/' + sub : '');
@@ -691,7 +694,7 @@ function Dashboard({data,setActive,settings,session,forms,setForm,action,fileToD
   {key:'configuracoes',label:'Configurações',desc:'Sistema e preferências',Icon:Settings},
   {key:'central',label:'Central Premium',desc:'Serviços exclusivos para seu condomínio',Icon:BadgeDollarSign,premium:true}
 ]; const metricItems=[{icon:<Users/>,label:'Moradores',value:m.residents||0,tab:'cadastros',sub:'moradores'},{icon:<Package/>,label:'Encomendas',value:m.pendingPackages||0,tab:'portaria',sub:'encomendas'},{icon:<CalendarDays/>,label:'Reservas',value:m.reservationsPending||0,tab:'reservas'},{icon:<UserCheck/>,label:'Visitantes hoje',value:m.visitorsToday||0,tab:'portaria',sub:'visitantes'},{icon:<Bell/>,label:'Mensagens',value:m.messagesNew||0,tab:'comunicacao',sub:'notificacoes'},{icon:<UserPlus/>,label:'Cadastros pendentes',value:m.pendingRegistrations||0,tab:'cadastros',sub:'solicitacoes'},{icon:<BadgeDollarSign/>,label:'Boletos',value:m.boletosPending||0,tab:'financeiro',sub:'boletos'}]; return <div className="dashboardRedesign"><section className="dashboardHero"><div><span className="eyebrow">Residencial Vitória Régia</span><h2>{greetingForUser(session)}</h2><p>{session?.role==='morador'?'Aqui estão seus avisos, notícias, encomendas e serviços da sua unidade.':'Gestão premium do condomínio com comunicados, notícias, serviços e alertas centralizados.'}</p></div><div className="weather"><CloudSun/><div><b>{data.weather?.temperature ?? '--'}°C</b><small>{data.weather?.city || settings.WEATHER_CITY || 'João Pessoa'} · umidade {data.weather?.humidity ?? '--'}%</small></div></div></section><BuildingFeed data={data} setActive={setActive} session={session} forms={forms} setForm={setForm} action={action} fileToData={fileToData} loadAll={loadAll}/>{!['morador'].includes(session?.role) && <section className="approvalStrip"><button onClick={()=>setActive('cadastros','solicitacoes')}><UserPlus/><b>{m.pendingRegistrations||0}</b><span>Cadastros aguardando aprovação</span></button><button onClick={()=>setActive('reservas')}><CalendarDays/><b>{m.reservationsPending||0}</b><span>Reservas aguardando análise</span></button></section>}<div className="moduleGrid">{modules.map(({key,sub,label,desc,Icon,premium})=><button key={label} type="button" className={premium?'moduleCard premium':'moduleCard'} onClick={()=>setActive(key,sub)}><span><Icon/></span><b>{label}</b><small>{desc}</small><ChevronRight/></button>)}</div><section className="permissionsCard"><div><h3><ShieldCheck/> Gerenciar perfis e permissões</h3><p>Controle quem acessa o sistema e o que cada um pode fazer.</p><ul><li>Síndicos podem ser moradores ou usuários terceirizados</li><li>Permissões personalizadas por função</li><li>Reatribuição de síndico de forma simples e segura</li><li>Histórico completo de alterações</li></ul></div><div className="permissionVisual"><Users/><ShieldCheck/><button onClick={()=>setActive('cadastros','usuarios')}>Gerenciar agora</button></div></section><section className="appsShowcase"><div><h3>Baixar aplicativos</h3><p>Acesse o sistema de onde estiver com nossos aplicativos oficiais.</p></div><div className="quickAppCards"><button onClick={()=>setActive('configuracoes','apps')}><Smartphone/><b>App do Morador</b><small>Tudo na palma da mão.</small></button><button onClick={()=>setActive('configuracoes','apps')}><UserCheck/><b>App do Síndico</b><small>Gestão completa.</small></button><button onClick={()=>setActive('configuracoes','apps')}><ShieldCheck/><b>App da Portaria (APK)</b><small>Controle de acesso.</small></button></div></section><div className="metricStrip aligned dashboardMetrics">{metricItems.map(item=><Metric key={item.label} {...item} onClick={()=>setActive(item.tab,item.sub)} />)}</div></div>; }
-function Portaria(props){ return <Panel title="Portaria" subtitle="Encomendas, visitantes, reservas e atendimento rápido." icon={<Package/>}><SubTabs value={props.sub} setValue={props.setSub} tabs={[['encomendas','Encomendas'],['leitor','Leitor Premium'],['visitantes','Visitantes'],['escalas','Escalas'],['mensagens','Mensagens']]} />{props.sub==='encomendas'&&<Packages {...props}/>} {props.sub==='leitor'&&<PackageScannerPremium {...props}/>} {props.sub==='visitantes'&&<Visitors {...props}/>} {props.sub==='escalas'&&<Shifts {...props}/>} {props.sub==='mensagens'&&<Messages {...props}/>}</Panel>; }
+function Portaria(props){ const activeSub=normalizeRouteSub('portaria',props.sub); return <Panel title="Portaria" subtitle="Encomendas, visitantes, reservas e atendimento rápido." icon={<Package/>}><SubTabs value={activeSub} setValue={props.setSub} tabs={[['encomendas','Encomendas'],['visitantes','Visitantes'],['escalas','Escalas'],['mensagens','Mensagens']]} />{activeSub==='encomendas'&&<Packages {...props}/>} {activeSub==='visitantes'&&<Visitors {...props}/>} {activeSub==='escalas'&&<Shifts {...props}/>} {activeSub==='mensagens'&&<Messages {...props}/>}</Panel>; }
 function UnitLookupBox({result,onRegister}){ if(!result) return null; const arr=result.residents || []; return <div className={arr.length?'noticeBox ok':'noticeBox warn'}>{arr.length ? <><b>Morador encontrado</b><small>{arr.map(r=>`${r.name} · ${r.email || r.whatsapp_phone || r.phone || 'sem contato'}`).join(' | ')}</small></> : <><b>Nenhum morador cadastrado nesta unidade.</b><small>Recomende o cadastro antes de confirmar, principalmente para notificação automática.</small>{onRegister && <button type="button" className="buttonlike secondary" onClick={onRegister}><UserPlus/> Abrir cadastro pré-preenchido</button>}</>}</div>; }
 
 
@@ -723,74 +726,45 @@ function PackageCreatedReceipt({value,onClose}){
     <button type="button" onClick={onClose} aria-label="Fechar confirmação do cadastro"><X/></button>
   </div>;
 }
-function PackageScannerPremium(props){
-  const {forms,setForm,readImage,openCameraReader,reading,readingProgress,createPackageRecord,openConfirm,lookup,lookupUnit,prefillResidentFromContext}=props;
-  const [lastCreated,setLastCreated]=useState(null);
-  const f=forms.package;
-  const canAuto = Boolean(f.tracking && f.unit && f.recipient && Number(f.ocr_confidence || 0) >= 80);
-  function save(auto=false){
-    const title = auto ? 'Cadastrar automaticamente encomenda lida' : 'Conferir e cadastrar encomenda lida';
-    openConfirm(title, { Código:f.tracking, Unidade:f.unit, Destinatário:f.recipient, Confiança:f.ocr_confidence ? `${f.ocr_confidence}%` : 'pendente' }, async () => {
-      const result=await createPackageRecord({...f, source_type:f.source_type || 'leitor_premium'}, auto ? 'Encomenda cadastrada automaticamente e exibida na lista.' : 'Encomenda cadastrada e exibida na lista.');
-      if(!isOperationFailure(result)) setLastCreated(result);
-      return result;
-    });
-  }
-  return <div className="stack packageScannerPremium">
-    <div className="scannerHero"><div><span className="eyebrow">Leitor automático premium</span><h3>QR Code + código de barras + OCR da etiqueta</h3><p>Use a câmera do celular da portaria para identificar rastreio, unidade, destinatário, transportadora e evitar duplicidades.</p></div><ScanLine/></div>
-    <PackageCreatedReceipt value={lastCreated} onClose={()=>setLastCreated(null)}/>
-    <div className="scannerActionsGrid">
-      <button type="button" className="confirmAction" onClick={()=>openCameraReader?.('package')}><Camera/> Abrir câmera e ler etiqueta</button>
-      <label className="fileButton"><ScanLine/> {reading==='package'?'Lendo etiqueta...':'Escolher foto / câmera padrão'}<input type="file" accept="image/*" capture="environment" onChange={e=>readImage(e.target.files?.[0],'package')}/></label>
-      <button type="button" className="secondaryAction" onClick={()=>lookupUnit('package', f.unit, f.recipient)}><Search/> Validar unidade/morador</button>
-    </div>
-    {readingProgress?.type==='package' && <OcrProgressBar progress={readingProgress}/>}
-    <PackageScanSummary f={f} lookup={lookup.package}/>
-    <form className="formGrid premiumForm" onSubmit={e=>{e.preventDefault(); save(false);}}>
-      <label>Código/rastreio<input required value={f.tracking} onChange={e=>setForm('package',{tracking:e.target.value})}/></label>
-      <label>Unidade<input required value={f.unit} onChange={e=>setForm('package',{unit:e.target.value})} onBlur={()=>lookupUnit('package', f.unit, f.recipient)}/></label>
-      <label>Destinatário<input required value={f.recipient} onChange={e=>setForm('package',{recipient:e.target.value})}/></label>
-      <label>Transportadora<input value={f.carrier || ''} onChange={e=>setForm('package',{carrier:e.target.value,label:e.target.value})}/></label>
-      <label>Código de barras/QR<input value={f.barcode || ''} onChange={e=>setForm('package',{barcode:e.target.value})}/></label>
-      <label>Pedido<input value={f.order_number || ''} onChange={e=>setForm('package',{order_number:e.target.value})}/></label>
-      <label>NF-e<input value={f.invoice_number || ''} onChange={e=>setForm('package',{invoice_number:e.target.value})}/></label>
-      <label>Status<select value={f.validation_status || 'pendente'} onChange={e=>setForm('package',{validation_status:e.target.value})}><option value="pendente">Pendente</option><option value="validada">Validada</option><option value="revisao">Revisão</option><option value="duplicada">Possível duplicada</option></select></label>
-      <textarea placeholder="Texto lido automaticamente / auditoria da etiqueta" value={f.extracted_text} onChange={e=>setForm('package',{extracted_text:e.target.value})}/>
-      <button><Plus/> Conferir e cadastrar</button>
-      <button type="button" className="confirmAction" disabled={!canAuto} onClick={()=>save(true)}><CheckCircle2/> Cadastrar automático seguro</button>
-    </form>
-    <UnitLookupBox result={lookup.package} onRegister={()=>prefillResidentFromContext('package')}/>
-    <div className="noticeBox ok"><b>Regra de segurança</b><small>Cadastro automático só é liberado quando rastreio, unidade, destinatário e confiança mínima forem identificados. Caso contrário, a etiqueta fica para revisão manual.</small></div>
-  </div>;
-}
-
 function Packages({forms,setForm,action,createPackageRecord,openConfirm,lookup,lookupUnit,prefillResidentFromContext,readImage,openCameraReader,reading,readingProgress,data,del,loadAll,session}){
   const [lastCreated,setLastCreated]=useState(null);
   const f=forms.package;
   const isResident=session?.role==='morador';
-  const summary={Código:f.tracking, Destinatário:f.recipient, Unidade:f.unit, 'Canais':Object.entries(f.notification_channels||{}).filter(([,v])=>v).map(([k])=>channelNames[k]||k).join(', ')};
+  const canAuto = Boolean(f.tracking && f.unit && f.recipient && Number(f.ocr_confidence || 0) >= 80);
+  const summary={Código:f.tracking, Destinatário:f.recipient, Unidade:f.unit, Confiança:f.ocr_confidence ? `${f.ocr_confidence}%` : 'preenchimento manual', 'Canais':Object.entries(f.notification_channels||{}).filter(([,v])=>v).map(([k])=>channelNames[k]||k).join(', ')};
   const confirmDelivery=(p,who)=>action(`/api/packages/${p.id}/${who==='resident'?'resident-confirm-delivery':'staff-confirm-delivery'}`,{}, who==='resident'?'Recebimento confirmado pelo morador':'Entrega registrada pela portaria; aguardando confirmação do morador');
-  async function createPackage(){
-    const result=await createPackageRecord(f);
+  async function createPackage(payload=f, successMessage){
+    const result=await createPackageRecord(payload, successMessage);
     if(!isOperationFailure(result)) setLastCreated(result);
     return result;
   }
-  return <div className="stack">
+  function save(auto=false){
+    const payload={...f, auto_register:auto, source_type:auto ? (f.source_type==='manual'?'leitor_premium':f.source_type) : f.source_type};
+    openConfirm(auto?'Cadastrar automaticamente a encomenda lida':'Confirmar cadastro de encomenda', summary, ()=>createPackage(payload, auto?'Encomenda lida e cadastrada automaticamente.':'Encomenda cadastrada e exibida na lista.'));
+  }
+  return <div className="stack packageScannerPremium packageUnifiedFlow">
+    <div className="scannerHero packageUnifiedHero"><div><span className="eyebrow">Encomendas + leitura inteligente</span><h3>Cadastrar e acompanhar em um só lugar</h3><p>Leia QR Code, código de barras ou texto da etiqueta pela câmera. Confira os dados e acompanhe a entrega logo abaixo, sem trocar de tela.</p></div><ScanLine/></div>
     <PackageCreatedReceipt value={lastCreated} onClose={()=>setLastCreated(null)}/>
-    <form className="formGrid" onSubmit={e=>{e.preventDefault(); openConfirm('Confirmar cadastro de encomenda', summary, createPackage);}}>
+    <div className="scannerActionsGrid packageUnifiedActions">
+      <button type="button" className="confirmAction" onClick={()=>openCameraReader?.('package')}><Camera/> Abrir câmera e ler etiqueta</button>
+      <label className="fileButton"><ScanLine/> {reading==='package'?'Lendo etiqueta...':'Escolher foto / câmera padrão'}<input type="file" accept="image/*" capture="environment" onChange={e=>readImage(e.target.files?.[0],'package')}/></label>
+      <button type="button" className="secondaryAction" onClick={()=>lookupUnit('package', f.unit, f.recipient)}><Search/> Validar unidade/morador</button>
+    </div>
+    {readingProgress?.type==='package' && <OcrProgressBar progress={readingProgress}/>} 
+    <PackageScanSummary f={f} lookup={lookup.package}/>
+    <form className="formGrid premiumForm packageRegisterCard" onSubmit={e=>{e.preventDefault(); save(false);}}>
       <label>Código/rastreio *<input required value={f.tracking} onChange={e=>setForm('package',{tracking:e.target.value})}/></label>
       <label>Unidade *<div className="inline"><input required value={f.unit} onChange={e=>setForm('package',{unit:e.target.value})} onBlur={()=>lookupUnit('package', f.unit, f.recipient)}/><button type="button" onClick={()=>lookupUnit('package', f.unit, f.recipient)}><Search/></button></div></label>
       <label>Destinatário *<input required value={f.recipient} onChange={e=>setForm('package',{recipient:e.target.value})}/></label>
       <label>Etiqueta/observação<input value={f.label} onChange={e=>setForm('package',{label:e.target.value})}/></label>
-      <ChannelChooser settings={data.settings} value={f.notification_channels} onChange={v=>setForm('package',{notification_channels:v})}/><PackageScanSummary f={f} lookup={lookup.package}/>
-      <button type="button" className="fileButton cameraOpenButton" onClick={()=>openCameraReader?.('package')}><Camera/> Abrir câmera do celular</button>
-      <label className="fileButton"><ScanLine/> {reading==='package'?'Lendo etiqueta...':'Escolher foto/usar câmera padrão'}<input type="file" accept="image/*" capture="environment" onChange={e=>readImage(e.target.files?.[0],'package')}/></label>
-      {readingProgress?.type==='package' && <div className="full"><OcrProgressBar progress={readingProgress}/></div>}
-      <div className="formGrid full packageExtraFields"><label>Transportadora<input value={f.carrier || ''} onChange={e=>setForm('package',{carrier:e.target.value,label:e.target.value})}/></label><label>Código de barras/QR<input value={f.barcode || ''} onChange={e=>setForm('package',{barcode:e.target.value})}/></label><label>Confiança OCR<input value={f.ocr_confidence || ''} onChange={e=>setForm('package',{ocr_confidence:e.target.value})}/></label><label>Status da leitura<select value={f.validation_status || 'pendente'} onChange={e=>setForm('package',{validation_status:e.target.value})}><option value="pendente">Pendente</option><option value="validada">Validada</option><option value="revisao">Revisão</option><option value="duplicada">Possível duplicada</option></select></label></div><textarea placeholder="Texto lido automaticamente / observações" value={f.extracted_text} onChange={e=>setForm('package',{extracted_text:e.target.value})}/>
+      <ChannelChooser settings={data.settings} value={f.notification_channels} onChange={v=>setForm('package',{notification_channels:v})}/>
+      <div className="formGrid full packageExtraFields"><label>Transportadora<input value={f.carrier || ''} onChange={e=>setForm('package',{carrier:e.target.value,label:e.target.value})}/></label><label>Código de barras/QR<input value={f.barcode || ''} onChange={e=>setForm('package',{barcode:e.target.value})}/></label><label>Pedido<input value={f.order_number || ''} onChange={e=>setForm('package',{order_number:e.target.value})}/></label><label>NF-e<input value={f.invoice_number || ''} onChange={e=>setForm('package',{invoice_number:e.target.value})}/></label><label>Confiança OCR<input type="number" min="0" max="100" value={f.ocr_confidence || ''} onChange={e=>setForm('package',{ocr_confidence:e.target.value})}/></label><label>Status da leitura<select value={f.validation_status || 'pendente'} onChange={e=>setForm('package',{validation_status:e.target.value})}><option value="pendente">Pendente</option><option value="validada">Validada</option><option value="revisao">Revisão</option><option value="duplicada">Possível duplicada</option></select></label></div><textarea className="full" placeholder="Texto lido automaticamente / observações" value={f.extracted_text} onChange={e=>setForm('package',{extracted_text:e.target.value})}/>
       <button><Plus/> Conferir e cadastrar</button>
+      <button type="button" className="confirmAction" disabled={!canAuto} onClick={()=>save(true)}><CheckCircle2/> Cadastrar automático seguro</button>
     </form>
     <UnitLookupBox result={lookup.package} onRegister={()=>prefillResidentFromContext('package')}/>
-    <Table rows={data.packages} render={p=><>
+    <div className="noticeBox ok packageSafetyRule"><ShieldCheck/><span><b>Cadastro seguro</b><small>O modo automático só é liberado com rastreio, unidade, destinatário e confiança mínima de 80%. Caso contrário, use “Conferir e cadastrar”.</small></span></div>
+    <section className="packageHistorySection"><header><div><span className="eyebrow">Acompanhamento</span><h3>Encomendas registradas</h3></div><small>{data.packages.length} registro(s)</small></header><Table rows={data.packages} render={p=><>
       <td><b>{p.tracking}</b><small>{p.recipient || p.resident_name} · Unidade {p.unit}</small></td>
       <td><Code>{p.pickup_code || '-'}</Code></td>
       <td><Status ok={p.status==='entregue'}>{p.status}</Status><small>{deliveryPreferenceLabel(p.delivery_preference)}</small><small>{p.staff_delivered_at?'Portaria confirmou':'Aguardando portaria'} · {p.resident_delivered_at?'Morador confirmou':'Aguardando morador'}</small></td>
@@ -798,7 +772,7 @@ function Packages({forms,setForm,action,createPackageRecord,openConfirm,lookup,l
         {isResident ? <><button onClick={()=>action(`/api/packages/${p.id}/preference`,{delivery_preference:'receber_elevador'},'Preferência enviada à portaria em serviço')}>Receber pelo elevador</button><button onClick={()=>action(`/api/packages/${p.id}/preference`,{delivery_preference:'retirar_agora'},'Preferência enviada à portaria em serviço')}>Vou retirar agora</button><button onClick={()=>action(`/api/packages/${p.id}/preference`,{delivery_preference:'retirar_mais_tarde'},'Preferência enviada à portaria em serviço')}>Retirar mais tarde</button><button className="confirmAction" onClick={()=>confirmDelivery(p,'resident')}>Confirmo recebimento</button></> : <><button className="secondaryAction" onClick={()=>action(`/api/packages/${p.id}/intercom-fallback`,{},'Telegram enviado ao morador e à portaria')}>Interfone sem contato</button><button className="confirmAction" onClick={()=>confirmDelivery(p,'staff')}>Indicar entregue</button></>}
         <button onClick={()=>openConfirm('Remover encomenda',{Código:p.tracking,Unidade:p.unit},()=>del(`/api/packages/${p.id}`).then(loadAll))}><Trash2/></button>
       </td>
-    </>}/>
+    </>}/></section>
   </div>;
 }
 function Visitors({data,forms,setForm,action,fileToData,openConfirm,del,loadAll}){ const f=forms.visitor; const submit=()=>action('/api/visitors', f, 'Visitante cadastrado'); return <div className="stack"><form className="formGrid" onSubmit={e=>{e.preventDefault(); openConfirm('Confirmar visitante',{Nome:f.name,Unidade:f.unit,Documento:f.document},submit);}}><label>Nome *<input required value={f.name} onChange={e=>setForm('visitor',{name:e.target.value})}/></label><label>Unidade *<input required value={f.unit} onChange={e=>setForm('visitor',{unit:e.target.value})}/></label><label>Documento<input value={f.document} onChange={e=>setForm('visitor',{document:e.target.value})}/></label><label>Telefone<input value={f.phone} onChange={e=>setForm('visitor',{phone:e.target.value})}/></label><label>Placa<input value={f.plate} onChange={e=>setForm('visitor',{plate:e.target.value})}/></label><label className="check"><input type="checkbox" checked={f.recurring} onChange={e=>setForm('visitor',{recurring:e.target.checked})}/>Visitante recorrente</label><label className="check"><input type="checkbox" checked={f.announce_required} onChange={e=>setForm('visitor',{announce_required:e.target.checked})}/>Porteiro deve anunciar</label><label>Forma de anúncio<select value={f.announcement_channel} onChange={e=>setForm('visitor',{announcement_channel:e.target.value})}><option value="interfone">Interfone</option><option value="app">Notificação do sistema</option><option value="whatsapp">WhatsApp</option></select></label><label className="fileButton"><Camera/> Tirar foto<input type="file" accept="image/*" capture="environment" onChange={e=>fileToData(e.target.files?.[0], photo_data=>setForm('visitor',{photo_data}))}/></label><button><Plus/> Conferir e cadastrar</button></form><Table rows={data.visitors} render={v=><><td>{v.photo_data?<img src={v.photo_data} className="avatar"/>:<UserCheck/>}<b>{v.name}</b><small>Unidade {v.unit} · {v.document}</small></td><td>{v.recurring?'Recorrente':'Avulso'}<small>{v.announcement_channel}</small></td><td className="actions"><button className="secondaryAction" onClick={()=>action(`/api/visitors/${v.id}/intercom-fallback`,{},'Telegram enviado ao morador e à portaria')}>Interfone sem contato</button><button onClick={()=>openConfirm('Remover visitante',{Nome:v.name,Unidade:v.unit},()=>del(`/api/visitors/${v.id}`).then(loadAll))}><Trash2/></button></td></>}/></div>; }
