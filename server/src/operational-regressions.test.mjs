@@ -33,3 +33,16 @@ test('convite QR recorrente exige dias definidos e preserva janela de acesso', (
   assert.match(preload, /parseVisitorJson\(req,res/);
   assert.match(preload, /req\.body!==undefined/);
 });
+
+test('encomendas e reservas sempre tentam e-mail para a conta vinculada', () => {
+  const index=source('index.js');
+  assert.match(index,/async function residentEmailTargets/);
+  assert.match(index,/SELECT email FROM users WHERE resident_id=\$1/);
+  assert.match(index,/email:true, telegram:true/);
+  assert.match(index,/event_type:'package_arrival', force_email:true/);
+  assert.match(index,/event_type:'reservation_status', force_email:true/);
+  assert.match(index,/sendEmailSmart\(\{ to:emailTargets\.join\(','\)/);
+  assert.match(index,/actionUrl:fullActionUrl\(action_url\)/);
+  assert.match(index,/notifyReservationUpdate\(reserva,status\)/);
+  assert.doesNotMatch(index,/notifyReservationUpdate\(reserva,'pre_agendada'\)[\s\S]{0,220}pendente_aceite_regras/);
+});
