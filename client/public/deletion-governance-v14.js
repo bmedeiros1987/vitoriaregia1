@@ -115,9 +115,14 @@
       toast(error.message,true);
     }
   }
+
+  function clearStaleFocus(){
+    if(state.overlay?.isConnected) return;
+    state.overlay=null;
+    document.body.classList.remove('vr-focus-layer','vr-deletion-open');
+  }
   function close(){
-    if(!state.overlay) return;
-    state.overlay.remove();
+    if(state.overlay) state.overlay.remove();
     state.overlay=null;
     document.body.classList.remove('vr-focus-layer','vr-deletion-open');
     document.removeEventListener('keydown',onKey);
@@ -127,7 +132,8 @@
   function onKey(event){if(event.key==='Escape')close();}
   async function open(){
     if(!allowedRoles.has(role())) return;
-    if(state.overlay) return;
+    if(state.overlay?.isConnected) return;
+    clearStaleFocus();
     state.changed=false;state.query='';
     const overlay=document.createElement('div');
     overlay.className='vrDeletionOverlay';
@@ -159,11 +165,8 @@
     host.insertBefore(button,host.firstChild);
   }
 
-  // Não observa alterações de classe. A versão anterior alterava classes do body
-  // dentro de um observer de atributos e podia criar um ciclo sem fim no boot.
   let syncQueued=false;
   let lastDrawerOpen=null;
-  let lastFocusLayer=null;
   function syncLayerState(){
     const shell=document.querySelector('.appShell');
     const drawerOpen=Boolean(shell?.classList.contains('mobile-open'));
@@ -171,12 +174,9 @@
       lastDrawerOpen=drawerOpen;
       document.body.classList.toggle('vr-sidebar-drawer-open',drawerOpen);
     }
-    const externalLayer=document.querySelector('.cameraReaderOverlay,#vr-telegram-call-root,.modalOverlay,.rsvpManagerOverlay,.criticalEmergencyOverlay');
-    const focusLayer=Boolean(externalLayer&&!state.overlay);
-    if(focusLayer!==lastFocusLayer){
-      lastFocusLayer=focusLayer;
-      document.body.classList.toggle('vr-focus-layer',focusLayer);
-    }
+    // A classe de foco pertence exclusivamente à central de exclusões.
+    // Elementos ocultos de outros módulos não podem mais esconder a navegação.
+    clearStaleFocus();
     injectMenu();
   }
   function scheduleSync(){
@@ -187,7 +187,13 @@
     else setTimeout(run,0);
   }
   const observer=new MutationObserver(scheduleSync);
-  function start(){observer.observe(document.body,{childList:true,subtree:true});scheduleSync();}
+  function start(){
+    clearStaleFocus();
+    observer.observe(document.body,{childList:true,subtree:true});
+    scheduleSync();
+    setTimeout(clearStaleFocus,500);
+    setTimeout(clearStaleFocus,2500);
+  }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
   window.VitoriaRegiaDeletionGovernance={open,close,reload:load};
 })();
