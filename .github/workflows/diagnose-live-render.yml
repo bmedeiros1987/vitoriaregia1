@@ -23,6 +23,7 @@ jobs:
           set -uo pipefail
           candidates=(
             'https://regia-pro.onrender.com'
+            'https://vitoriaregia-pro.onrender.com'
             'https://vitoria-regia-pro.onrender.com'
             'https://vitoriaregia1.onrender.com'
             'https://vitoria-regia-one.onrender.com'
