@@ -6,7 +6,7 @@ import {
   Settings, ShieldCheck, UserPlus, Search, Plus, Save, Camera, ScanLine, Send, CheckCircle2, Download,
   UploadCloud, Palette, Mail, MessageCircle, Smartphone, KeyRound, Eye, EyeOff, Siren, ClipboardList,
   BadgeDollarSign, FileText, Wrench, Activity, RefreshCcw, Trash2, Edit3, MapPin, UserCheck, CloudSun,
-  AppWindow, Phone, Banknote, History, Paintbrush, PanelLeft, CheckSquare, Info, ChevronRight, Flame, ShieldAlert, Ambulance, Droplets, Zap, BellRing, FireExtinguisher, CircleAlert, Clock, CalendarClock, Repeat, UserCog, Briefcase, ArrowRightLeft, BookOpen, FileUp, HelpCircle, FileSearch, MessageSquareText, ClipboardCheck, Database
+  AppWindow, Phone, Banknote, History, Paintbrush, PanelLeft, CheckSquare, Info, ChevronRight, Flame, ShieldAlert, Ambulance, Droplets, Zap, BellRing, FireExtinguisher, CircleAlert, Clock, CalendarClock, Repeat, UserCog, Briefcase, ArrowRightLeft, BookOpen, FileUp, HelpCircle, FileSearch, MessageSquareText, ClipboardCheck, Database, QrCode, Copy, Share2
 } from 'lucide-react';
 import './styles.css';
 import { confirmationStateAfterResult, isOperationFailure, prependPackage, submitPackageRegistration } from './package-flow.js';
@@ -17,6 +17,7 @@ const DEFAULT_TELEGRAM_CHAT_ID = '8188648317';
 const money = (v) => Number(v || 0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
 const date = (v) => v ? new Date(String(v)).toLocaleDateString('pt-BR', { timeZone:'UTC' }) : '-';
 const todayISO = () => new Date().toISOString().slice(0, 10);
+const addDaysISO = (days=0) => new Date(Date.now() + Number(days || 0) * 86400000).toISOString().slice(0, 10);
 const bool = (v, fallback=false) => v === undefined || v === null || v === '' ? fallback : ['1','true','sim','yes','on','ativo','liberado'].includes(String(v).trim().toLowerCase());
 function useOnlineStatus(){
   const [online,setOnline]=useState(typeof navigator === 'undefined' ? true : navigator.onLine !== false);
@@ -102,7 +103,7 @@ function initialForms(){ return {
   user:{ id:'', name:'', gender:'nao_informado', email:'', password:'', role:'morador', user_type:'morador', unit:'', phone:'', whatsapp_phone:'', telegram_username:'', telegram_chat_id:'', resident_id:'', active:true, notification_preferences:{ app:true, browser:true, email:true, telegram:true, whatsapp:false } },
   employee:{ name:'', role:'portaria', phone:'', email:'', active:true, notes:'' }, shift:{ employee_id:'', role:'portaria', date:todayISO(), recurrence_type:'single', weekdays:[], month_days:[], shift_type:'manha', starts_at:'', ends_at:'', start_time:'', end_time:'', use_custom_time:false, temporary_for_employee_id:'', substitution_reason:'dia', allow_employee_edit:false, notes:'' },
   package:{ tracking:'', recipient:'', unit:'', label:'', notes:'', extracted_text:'', photo_url:'', carrier:'', barcode:'', barcode_format:'', order_number:'', invoice_number:'', validation_status:'pendente', ocr_confidence:'', source_type:'manual', auto_register:false, notification_channels:{ app:true, browser:true, email:true, telegram:true, whatsapp:false } },
-  visitor:{ name:'', document:'', phone:'', unit:'', authorized_by:'', plate:'', recurring:false, weekdays:[], valid_from:'', valid_until:'', announce_required:true, announcement_channel:'interfone', photo_data:'', notes:'' },
+  visitor:{ name:'', document:'', phone:'', unit:'', authorized_by:'', plate:'', recurring:false, weekdays:[], visit_date:todayISO(), valid_from:todayISO(), valid_until:addDaysISO(30), access_dates:[], access_start_time:'00:00', access_end_time:'23:59', max_entries:'0', generate_qr:true, announce_required:true, announcement_channel:'interfone', photo_data:'', notes:'' },
   reservation:{ area:'Salão de festas', unit:'', resident:'', resident_id:'', reserved_for:todayISO(), reservation_mode:'periodo', period_label:'Noite', start_time:'19:00', end_time:'23:00', shift:'noite', all_day:false, terms_accepted:false, document_text:'', fee_amount:'' },
   reservationGuest:{ reservation_id:'', name:'', document:'', phone:'', plate:'', visitor_type:'convidado', age_group:'adulto', counts_as_guest:true, notes:'', photo_data:'' }, reservationVisitors:{ reservation_id:'', bulk:'' },
   commonArea:{ id:'', name:'', fee_amount:'', rules_document:'', active:true, requires_approval:true, max_guests:'30', count_children:true, count_infants:false, reservation_periods:'dia_todo,manha,tarde,noite,horario' },
@@ -775,7 +776,197 @@ function Packages({forms,setForm,action,createPackageRecord,openConfirm,lookup,l
     </>}/></section>
   </div>;
 }
-function Visitors({data,forms,setForm,action,fileToData,openConfirm,del,loadAll}){ const f=forms.visitor; const submit=()=>action('/api/visitors', f, 'Visitante cadastrado'); return <div className="stack"><form className="formGrid" onSubmit={e=>{e.preventDefault(); openConfirm('Confirmar visitante',{Nome:f.name,Unidade:f.unit,Documento:f.document},submit);}}><label>Nome *<input required value={f.name} onChange={e=>setForm('visitor',{name:e.target.value})}/></label><label>Unidade *<input required value={f.unit} onChange={e=>setForm('visitor',{unit:e.target.value})}/></label><label>Documento<input value={f.document} onChange={e=>setForm('visitor',{document:e.target.value})}/></label><label>Telefone<input value={f.phone} onChange={e=>setForm('visitor',{phone:e.target.value})}/></label><label>Placa<input value={f.plate} onChange={e=>setForm('visitor',{plate:e.target.value})}/></label><label className="check"><input type="checkbox" checked={f.recurring} onChange={e=>setForm('visitor',{recurring:e.target.checked})}/>Visitante recorrente</label><label className="check"><input type="checkbox" checked={f.announce_required} onChange={e=>setForm('visitor',{announce_required:e.target.checked})}/>Porteiro deve anunciar</label><label>Forma de anúncio<select value={f.announcement_channel} onChange={e=>setForm('visitor',{announcement_channel:e.target.value})}><option value="interfone">Interfone</option><option value="app">Notificação do sistema</option><option value="whatsapp">WhatsApp</option></select></label><label className="fileButton"><Camera/> Tirar foto<input type="file" accept="image/*" capture="environment" onChange={e=>fileToData(e.target.files?.[0], photo_data=>setForm('visitor',{photo_data}))}/></label><button><Plus/> Conferir e cadastrar</button></form><Table rows={data.visitors} render={v=><><td>{v.photo_data?<img src={v.photo_data} className="avatar"/>:<UserCheck/>}<b>{v.name}</b><small>Unidade {v.unit} · {v.document}</small></td><td>{v.recurring?'Recorrente':'Avulso'}<small>{v.announcement_channel}</small></td><td className="actions"><button className="secondaryAction" onClick={()=>action(`/api/visitors/${v.id}/intercom-fallback`,{},'Telegram enviado ao morador e à portaria')}>Interfone sem contato</button><button onClick={()=>openConfirm('Remover visitante',{Nome:v.name,Unidade:v.unit},()=>del(`/api/visitors/${v.id}`).then(loadAll))}><Trash2/></button></td></>}/></div>; }
+const VISITOR_WEEKDAYS = [['0','Dom'],['1','Seg'],['2','Ter'],['3','Qua'],['4','Qui'],['5','Sex'],['6','Sáb']];
+
+function visitorPeriod(visitor={}){
+  const start=String(visitor.valid_from || visitor.visit_date || '').slice(0,10);
+  const end=String(visitor.valid_until || start || '').slice(0,10);
+  if(!start) return 'Período não definido';
+  return start===end ? date(start) : `${date(start)} até ${date(end)}`;
+}
+
+function Visitors({data,forms,setForm,action,notify,fileToData,openConfirm,del,loadAll}){
+  const f=forms.visitor;
+  const [pass,setPass]=useState(null);
+  const [qrBusy,setQrBusy]=useState('');
+  const weekdays=Array.isArray(f.weekdays) ? f.weekdays.map(String) : [];
+
+  function toggleWeekday(value){
+    const next=weekdays.includes(value) ? weekdays.filter(day=>day!==value) : [...weekdays,value];
+    setForm('visitor',{weekdays:next});
+  }
+
+  function payloadFromForm(){
+    const singleDate=f.visit_date || todayISO();
+    return {
+      ...f,
+      weekdays,
+      valid_from:f.recurring ? f.valid_from : singleDate,
+      valid_until:f.recurring ? f.valid_until : singleDate,
+      visit_date:singleDate,
+      max_entries:Math.max(0,Number(f.max_entries || 0))
+    };
+  }
+
+  async function submit(payload){
+    try{
+      const result=await request(f.generate_qr ? '/api/visitor-invites' : '/api/visitors', {
+        method:'POST',
+        body:JSON.stringify(payload)
+      });
+      if(f.generate_qr) setPass(result);
+      setForm('visitor',initialForms().visitor);
+      notify(f.generate_qr ? 'Visitante cadastrado e QR Code seguro gerado.' : 'Visitante cadastrado.');
+      void loadAll();
+      return result;
+    }catch(error){
+      const failure={ok:false,error:error?.message || 'Não foi possível cadastrar o visitante.'};
+      notify(failure.error,true);
+      return failure;
+    }
+  }
+
+  function reviewAndSubmit(){
+    if(f.recurring && !weekdays.length){
+      notify('Selecione ao menos um dia da semana para o visitante recorrente.',true);
+      return;
+    }
+    if(f.recurring && (!f.valid_from || !f.valid_until || f.valid_until < f.valid_from)){
+      notify('Confira as datas inicial e final do acesso recorrente.',true);
+      return;
+    }
+    const payload=payloadFromForm();
+    const days=f.recurring ? weekdays.map(day=>VISITOR_WEEKDAYS.find(([value])=>value===day)?.[1]).filter(Boolean).join(', ') : '-';
+    openConfirm('Confirmar visitante',{
+      Nome:f.name,
+      Unidade:f.unit,
+      Documento:f.document || '-',
+      Acesso:f.recurring ? 'Recorrente' : 'Avulso',
+      Período:visitorPeriod(payload),
+      Dias:days,
+      'QR Code':f.generate_qr ? 'Será gerado' : 'Não solicitado'
+    },()=>submit(payload));
+  }
+
+  async function inviteAction(visitor,mode='pass'){
+    const busy=`${visitor.id}:${mode}`;
+    setQrBusy(busy);
+    try{
+      const path=mode==='pass' ? `/api/visitor-invites/${visitor.id}/pass` : `/api/visitor-invites/${visitor.id}/${mode}`;
+      const result=await request(path, mode==='pass' ? {} : {method:'POST',body:JSON.stringify({})});
+      if(mode==='revoke'){
+        setPass(null);
+        notify('QR Code revogado. Ele não autoriza mais a entrada.');
+      }else{
+        setPass(result);
+        notify(mode==='regenerate' ? 'Novo QR Code gerado; o anterior foi invalidado.' : 'QR Code pronto para compartilhar.');
+      }
+      void loadAll();
+    }catch(error){ notify(error.message,true); }
+    finally{ setQrBusy(''); }
+  }
+
+  return <div className="stack visitorPremiumFlow">
+    <section className="visitorQrHero">
+      <span><QrCode/></span><div><small>Acesso inteligente</small><h3>Convites com QR Code seguro</h3><p>Crie um acesso avulso ou recorrente, defina dias e horários e compartilhe o convite sem duplicar cadastros.</p></div>
+    </section>
+    <form className="formGrid premiumForm visitorQrForm" onSubmit={e=>{e.preventDefault();reviewAndSubmit();}}>
+      <h3 className="full"><UserPlus/> Cadastrar visitante</h3>
+      <label>Nome *<input required value={f.name} onChange={e=>setForm('visitor',{name:e.target.value})}/></label>
+      <label>Unidade *<input required value={f.unit} onChange={e=>setForm('visitor',{unit:e.target.value})}/></label>
+      <label>Autorizado por<input value={f.authorized_by} onChange={e=>setForm('visitor',{authorized_by:e.target.value})}/></label>
+      <label>Documento<input value={f.document} onChange={e=>setForm('visitor',{document:e.target.value})}/></label>
+      <label>Telefone<input inputMode="tel" value={f.phone} onChange={e=>setForm('visitor',{phone:e.target.value})}/></label>
+      <label>Placa<input value={f.plate} onChange={e=>setForm('visitor',{plate:e.target.value.toUpperCase()})}/></label>
+      <div className="visitorAccessChoices full">
+        <label className="check"><input type="checkbox" checked={f.recurring} onChange={e=>setForm('visitor',{recurring:e.target.checked,valid_from:f.valid_from||todayISO(),valid_until:f.valid_until||addDaysISO(30)})}/>Visitante recorrente</label>
+        <label className="check visitorQrToggle"><input type="checkbox" checked={f.generate_qr!==false} onChange={e=>setForm('visitor',{generate_qr:e.target.checked})}/><QrCode/> Gerar QR Code seguro</label>
+        <label className="check"><input type="checkbox" checked={f.announce_required} onChange={e=>setForm('visitor',{announce_required:e.target.checked})}/>Porteiro deve anunciar</label>
+      </div>
+      {f.recurring ? <>
+        <label>Válido a partir de *<input required type="date" value={f.valid_from} onChange={e=>setForm('visitor',{valid_from:e.target.value})}/></label>
+        <label>Válido até *<input required type="date" min={f.valid_from||todayISO()} value={f.valid_until} onChange={e=>setForm('visitor',{valid_until:e.target.value})}/></label>
+        <div className="visitorWeekdays full"><b>Dias autorizados *</b><div className="weekPicker">{VISITOR_WEEKDAYS.map(([value,label])=><button key={value} type="button" className={weekdays.includes(value)?'active':''} aria-pressed={weekdays.includes(value)} onClick={()=>toggleWeekday(value)}>{label}</button>)}</div></div>
+      </> : <label>Data da visita *<input required type="date" min={todayISO()} value={f.visit_date} onChange={e=>setForm('visitor',{visit_date:e.target.value})}/></label>}
+      {f.generate_qr!==false && <>
+        <label>Entrada permitida a partir de<input type="time" value={f.access_start_time} onChange={e=>setForm('visitor',{access_start_time:e.target.value})}/></label>
+        <label>Entrada permitida até<input type="time" value={f.access_end_time} onChange={e=>setForm('visitor',{access_end_time:e.target.value})}/></label>
+        <label>Limite de entradas<input type="number" min="0" inputMode="numeric" value={f.max_entries} onChange={e=>setForm('visitor',{max_entries:e.target.value})}/><small>Use 0 para entradas ilimitadas durante a validade.</small></label>
+      </>}
+      <label>Forma de anúncio<select value={f.announcement_channel} onChange={e=>setForm('visitor',{announcement_channel:e.target.value})}><option value="interfone">Interfone</option><option value="app">Notificação do sistema</option><option value="whatsapp">WhatsApp</option></select></label>
+      <label className="full">Observações<textarea value={f.notes} onChange={e=>setForm('visitor',{notes:e.target.value})}/></label>
+      <label className="fileButton"><Camera/> Tirar foto<input type="file" accept="image/*" capture="environment" onChange={e=>fileToData(e.target.files?.[0], photo_data=>setForm('visitor',{photo_data}))}/></label>
+      <button className="confirmAction"><Plus/> Conferir e cadastrar</button>
+    </form>
+    <section className="visitorHistorySection">
+      <header><div><small>Controle de acesso</small><h3>Visitantes cadastrados</h3></div><small>{data.visitors?.length || 0} registro(s)</small></header>
+      <Table rows={data.visitors} render={v=><>
+        <td>{v.photo_data?<img src={v.photo_data} className="avatar"/>:<UserCheck/>}<b>{v.name}</b><small>Unidade {v.unit} · {v.document || 'sem documento'}</small></td>
+        <td><b>{v.recurring?'Recorrente':'Avulso'}</b><small>{visitorPeriod(v)}</small><small>{v.qr_nonce ? (v.qr_enabled===false?'QR revogado':'QR ativo') : 'QR ainda não gerado'}</small></td>
+        <td className="actions visitorActions">
+          <button className="secondaryAction" disabled={Boolean(qrBusy)} onClick={()=>inviteAction(v,'pass')}><QrCode/> {v.qr_nonce?'Exibir QR':'Gerar QR'}</button>
+          {v.qr_nonce && v.qr_enabled!==false && <button className="secondaryAction" disabled={Boolean(qrBusy)} onClick={()=>inviteAction(v,'regenerate')}><RefreshCcw/> Novo QR</button>}
+          {v.qr_nonce && v.qr_enabled!==false && <button className="dangerAction" disabled={Boolean(qrBusy)} onClick={()=>openConfirm('Revogar QR Code',{Visitante:v.name,Unidade:v.unit},()=>inviteAction(v,'revoke'))}><X/> Revogar QR</button>}
+          {v.qr_nonce && v.qr_enabled===false && <button className="secondaryAction" disabled={Boolean(qrBusy)} onClick={()=>inviteAction(v,'regenerate')}><RefreshCcw/> Reativar QR</button>}
+          <button className="secondaryAction" onClick={()=>action(`/api/visitors/${v.id}/intercom-fallback`,{},'Telegram enviado ao morador e à portaria')}>Interfone sem contato</button>
+          <button onClick={()=>openConfirm('Remover visitante',{Nome:v.name,Unidade:v.unit},()=>del(`/api/visitors/${v.id}`).then(loadAll))}><Trash2/></button>
+        </td>
+      </>}/>
+    </section>
+    {pass && <VisitorQrPassModal pass={pass} onClose={()=>setPass(null)} notify={notify}/>} 
+  </div>;
+}
+
+function VisitorQrPassModal({pass,onClose,notify}){
+  const visitor=pass?.visitor || {};
+  const invite=pass?.invite || {};
+  const validation=pass?.validation;
+  const weekdayText=(visitor.weekdays || []).map(value=>VISITOR_WEEKDAYS.find(([day])=>day===String(value))?.[1]).filter(Boolean).join(', ');
+  const shareText=`Convite de acesso para ${visitor.name || 'visitante'} · Unidade ${visitor.unit || '-'}`;
+
+  async function copyInvite(){
+    try{
+      if(navigator.clipboard?.writeText) await navigator.clipboard.writeText(invite.url);
+      else {
+        const area=document.createElement('textarea');
+        area.value=invite.url; area.style.position='fixed'; area.style.opacity='0';
+        document.body.appendChild(area); area.select(); document.execCommand('copy'); area.remove();
+      }
+      notify('Link do convite copiado.');
+    }catch{ notify('Não foi possível copiar automaticamente. Selecione o link exibido.',true); }
+  }
+
+  async function shareInvite(){
+    try{
+      if(navigator.share) await navigator.share({title:'Convite Vitória Régia',text:shareText,url:invite.url});
+      else await copyInvite();
+    }catch(error){ if(error?.name!=='AbortError') notify('Não foi possível abrir o compartilhamento.',true); }
+  }
+
+  function downloadQr(){
+    const blob=new Blob([invite.qr_svg || ''],{type:'image/svg+xml;charset=utf-8'});
+    const href=URL.createObjectURL(blob);
+    const link=document.createElement('a');
+    link.href=href; link.download=`convite-${visitor.name || visitor.id || 'visitante'}.svg`.replace(/[^a-z0-9._-]+/gi,'-');
+    document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(href);
+  }
+
+  return <div className="modalOverlay visitorQrModalOverlay" role="presentation">
+    <section className="visitorQrModal" role="dialog" aria-modal="true" aria-label="Convite QR Code do visitante">
+      <button type="button" className="visitorQrClose" onClick={onClose} aria-label="Fechar"><X/></button>
+      <header><span><ShieldCheck/></span><div><small>Convite protegido</small><h2>{visitor.name || 'Visitante'}</h2><p>Unidade {visitor.unit || '-'} · {visitor.recurring?'Acesso recorrente':'Acesso avulso'}</p></div></header>
+      <div className="visitorQrCode" dangerouslySetInnerHTML={{__html:invite.qr_svg || ''}} />
+      <div className={`visitorQrValidity ${validation?.valid===false?'invalid':'valid'}`}><CheckCircle2/><span><b>{validation?.valid===false?'Convite sem autorização no momento':'QR Code ativo'}</b><small>{validation?.valid===false ? validation.reasons?.join(' ') : `${visitorPeriod(visitor)}${weekdayText ? ` · ${weekdayText}` : ''} · ${visitor.access_start_time || '00:00'} às ${visitor.access_end_time || '23:59'}`}</small></span></div>
+      <input className="visitorQrUrl" readOnly value={invite.url || ''} aria-label="Link do convite"/>
+      <div className="visitorQrActions">
+        <button type="button" className="primary" onClick={shareInvite}><Share2/> Compartilhar</button>
+        <button type="button" className="secondaryAction" onClick={copyInvite}><Copy/> Copiar link</button>
+        <button type="button" className="secondaryAction" onClick={()=>window.open(`https://t.me/share/url?url=${encodeURIComponent(invite.url||'')}&text=${encodeURIComponent(shareText)}`,'_blank','noopener,noreferrer')}><Send/> Telegram</button>
+        <button type="button" className="secondaryAction" onClick={downloadQr}><Download/> Baixar QR</button>
+      </div>
+    </section>
+  </div>;
+}
 
 function shiftPresetHours(type){ return ({manha:['07:00','12:00'], tarde:['12:00','18:00'], noite:['18:00','23:59'], dia:['00:00','23:59']}[type] || ['08:00','17:00']); }
 function shiftLabel(type){ return ({manha:'Manhã',tarde:'Tarde',noite:'Noite',dia:'Dia todo',custom:'Horário específico'}[type] || type || 'Escala'); }
