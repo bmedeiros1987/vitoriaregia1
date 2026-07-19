@@ -121,6 +121,7 @@
     state.overlay=null;
     document.body.classList.remove('vr-focus-layer','vr-deletion-open');
     document.removeEventListener('keydown',onKey);
+    scheduleSync();
     if(state.changed) window.setTimeout(()=>window.location.reload(),120);
   }
   function onKey(event){if(event.key==='Escape')close();}
@@ -157,16 +158,36 @@
     button.addEventListener('click',open);
     host.insertBefore(button,host.firstChild);
   }
+
+  // Não observa alterações de classe. A versão anterior alterava classes do body
+  // dentro de um observer de atributos e podia criar um ciclo sem fim no boot.
+  let syncQueued=false;
+  let lastDrawerOpen=null;
+  let lastFocusLayer=null;
   function syncLayerState(){
     const shell=document.querySelector('.appShell');
-    document.body.classList.toggle('vr-sidebar-drawer-open',Boolean(shell?.classList.contains('mobile-open')));
+    const drawerOpen=Boolean(shell?.classList.contains('mobile-open'));
+    if(drawerOpen!==lastDrawerOpen){
+      lastDrawerOpen=drawerOpen;
+      document.body.classList.toggle('vr-sidebar-drawer-open',drawerOpen);
+    }
     const externalLayer=document.querySelector('.cameraReaderOverlay,#vr-telegram-call-root,.modalOverlay,.rsvpManagerOverlay,.criticalEmergencyOverlay');
-    if(externalLayer&&!state.overlay) document.body.classList.add('vr-focus-layer');
-    else if(!state.overlay) document.body.classList.remove('vr-focus-layer');
+    const focusLayer=Boolean(externalLayer&&!state.overlay);
+    if(focusLayer!==lastFocusLayer){
+      lastFocusLayer=focusLayer;
+      document.body.classList.toggle('vr-focus-layer',focusLayer);
+    }
     injectMenu();
   }
-  const observer=new MutationObserver(syncLayerState);
-  function start(){observer.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['class','open','aria-expanded']});syncLayerState();}
+  function scheduleSync(){
+    if(syncQueued) return;
+    syncQueued=true;
+    const run=()=>{syncQueued=false;syncLayerState();};
+    if(typeof requestAnimationFrame==='function') requestAnimationFrame(run);
+    else setTimeout(run,0);
+  }
+  const observer=new MutationObserver(scheduleSync);
+  function start(){observer.observe(document.body,{childList:true,subtree:true});scheduleSync();}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
   window.VitoriaRegiaDeletionGovernance={open,close,reload:load};
 })();

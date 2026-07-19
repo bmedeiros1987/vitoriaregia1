@@ -1,6 +1,6 @@
 {
   "name": "vitoria-regia-one-client",
-  "version": "14.0.4",
+  "version": "14.0.5",
   "private": true,
   "type": "module",
   "scripts": {
@@ -22,5 +22,5 @@
   "engines": {
     "node": "20.19.0"
   },
-  "description": "Vitória Régia One v14.0.4 com inicialização resiliente, recuperação de cache e login prioritário."
+  "description": "Vitória Régia One v14.0.5 com login prioritário, domínio ativo e boot protegido contra ciclos."
 }

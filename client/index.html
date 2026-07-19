@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Vitória Régia" />
-    <link rel="manifest" href="/manifest.webmanifest?v=20260719e" />
+    <link rel="manifest" href="/manifest.webmanifest?v=20260719f" />
     <link rel="icon" href="/logo-vitoria-regia.svg" />
     <link rel="apple-touch-icon" href="/logo-vitoria-regia.png" />
     <link rel="stylesheet" href="/premium-polish.css?v=20260717" />
@@ -63,14 +63,14 @@
         window.addEventListener('unhandledrejection',()=>show('Não foi possível concluir a inicialização. Recarregue para tentar novamente.','error'));
       })();
     </script>
-    <!-- O formulário público continua disponível sem login; o restante não bloqueia a montagem do React. -->
-    <script defer src="/reservation-rsvp-public-v14.js?v=20260719e"></script>
+    <!-- O núcleo do login monta antes de todas as integrações não essenciais. -->
     <script type="module" src="/src/main.jsx"></script>
-    <script defer src="/package-intelligence-v14.js?v=20260719e"></script>
-    <script defer src="/reservation-rsvp-manager-v14.js?v=20260719e"></script>
-    <script defer src="/deletion-governance-v14.js?v=20260719e"></script>
-    <script type="module" src="/telegram-calls.js?v=20260719e"></script>
-    <script type="module" src="/telegram-call-details-ui.js?v=20260719e"></script>
-    <script type="module" src="/vitoria-one-v13-core.js?v=20260719e"></script>
+    <script defer src="/reservation-rsvp-public-v14.js?v=20260719f"></script>
+    <script defer src="/package-intelligence-v14.js?v=20260719f"></script>
+    <script defer src="/reservation-rsvp-manager-v14.js?v=20260719f"></script>
+    <script defer src="/deletion-governance-v14.js?v=20260719f"></script>
+    <script type="module" src="/telegram-calls.js?v=20260719f"></script>
+    <script type="module" src="/telegram-call-details-ui.js?v=20260719f"></script>
+    <script type="module" src="/vitoria-one-v13-core.js?v=20260719f"></script>
   </body>
 </html>

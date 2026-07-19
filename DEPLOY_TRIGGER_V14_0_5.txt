@@ -1,0 +1,9 @@
+Vitória Régia One v14.0.5
+
+Implantação de recuperação solicitada em 19/07/2026.
+
+Objetivos:
+- publicar o hotfix de inicialização v14.0.4 que ainda não chegou ao serviço ativo;
+- forçar renovação dos arquivos estáticos no Render;
+- validar o domínio oficial https://vitoriaregia-pro.onrender.com;
+- manter o login como primeiro componente carregado.
