@@ -1592,6 +1592,31 @@ async function updateNotificationDelivery(id, delivery={}) {
   await q('UPDATE notifications SET delivery_status=$1,status=$2,delivery_finished_at=now() WHERE id=$3',[JSON.stringify(delivery),status,id]).catch(()=>null);
   return { status, delivery };
 }
+function normalizeEmailTargets(values=[]){
+  const entries=(Array.isArray(values)?values:[values]).flatMap(value=>splitList(value));
+  const unique=new Map();
+  for(const value of entries){
+    const email=String(value||'').trim().toLowerCase();
+    if(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && !unique.has(email)) unique.set(email,email);
+  }
+  return [...unique.values()];
+}
+async function residentEmailTargets(resident={}){
+  const targets=[resident?.email || ''];
+  const residentId=Number(resident?.id || 0);
+  if(residentId){
+    const linked=await q("SELECT email FROM users WHERE resident_id=$1 AND COALESCE(active,true)=true AND COALESCE(email,'')<>'' ORDER BY id",[residentId]).catch(()=>({rows:[]}));
+    targets.push(...linked.rows.map(row=>row.email));
+  }
+  // Bancos antigos nem sempre ligaram users.resident_id. Se ainda não houver
+  // destinatário, a unidade é a associação segura disponível para a conta.
+  if(!normalizeEmailTargets(targets).length && resident?.unit){
+    const unit=normalizeUnit(resident.unit);
+    const byUnit=await q("SELECT email FROM users WHERE upper(replace(coalesce(unit,''),' ',''))=$1 AND COALESCE(active,true)=true AND role NOT IN ('funcionario','portaria','financeiro') AND COALESCE(email,'')<>'' ORDER BY id",[unit]).catch(()=>({rows:[]}));
+    targets.push(...byUnit.rows.map(row=>row.email));
+  }
+  return normalizeEmailTargets(targets);
+}
 async function notifyResident(resident, { title, body, channels={}, action_url='', payload={} }) {
   const prefs = await filterChannelsByPlan({ app:true, browser:true, email:true, telegram:true, whatsapp:false, ...parseJson(resident?.notification_preferences, {}) , ...channels });
   const notification = await createNotification({ resident_id: resident?.id || null, title, body, channel:'app', channels:prefs, action_url, payload:{ ...payload, __skip_auto_delivery:true }, status:'enviando' }).catch(()=>null);
@@ -1601,7 +1626,12 @@ async function notifyResident(resident, { title, body, channels={}, action_url='
     const premium = telegramPremiumMessage({ title, body, category:notificationCategoryFrom(title, body, payload), actionUrl:fullActionUrl(action_url), details: payload?.package_id ? { Código: payload.pickup_code || '', Encomenda: payload.package_id } : {} });
     jobs.telegram = withTimeout(sendTelegramMessage(resident?.telegram_chat_id || '', premium, { ...tgOptions, allowDefaultChat:true, dedupeKey:`resident:${notification?.id || resident?.id || 'sem-id'}:telegram` }).catch(e=>({ ok:false, error:e.message })), Number(process.env.TELEGRAM_TIMEOUT_MS || 6500), 'Telegram');
   }
-  if (prefs.email && resident?.email) jobs.email = withTimeout(sendEmailSmart({ to: resident.email, subject:title, text:body, actionUrl: action_url, actionLabel:'Abrir no sistema' }).catch(e=>({ ok:false, error:e.message })), Number(process.env.EMAIL_TIMEOUT_MS || 12000), 'E-mail');
+  if (prefs.email) {
+    const emailTargets=await residentEmailTargets(resident);
+    jobs.email=emailTargets.length
+      ? withTimeout(sendEmailSmart({ to:emailTargets.join(','), subject:title, text:body, actionUrl:fullActionUrl(action_url), actionLabel:'Abrir no sistema' }).catch(e=>({ ok:false, error:e.message })), Number(process.env.EMAIL_TIMEOUT_MS || 12000), 'E-mail')
+      : Promise.resolve({ ok:false, skipped:true, reason:'Morador e conta de usuário sem e-mail cadastrado.' });
+  }
   if (prefs.browser && resident?.id) jobs.browser = sendBrowserPushToResident(resident.id, title, body, action_url || '/', payload).catch(e=>({ ok:false, error:e.message }));
   if (prefs.whatsapp && (resident?.whatsapp_phone || resident?.phone)) jobs.whatsapp = sendWhatsAppText(resident.whatsapp_phone || resident.phone, body).catch(e=>({ ok:false, error:e.message }));
   const entries = await Promise.all(Object.entries(jobs).map(async ([k,p]) => [k, await p]));
@@ -1843,7 +1873,7 @@ async function notifyReservationUpdate(res, status=res.status, extra={}) {
   const resident = await residentForReservation(res);
   if (!resident) return { ok:false, skipped:true, reason:'Morador não localizado para a reserva.' };
   const info = reservationStatusInfo(status, { ...res, ...extra });
-  return notifyResident(resident, { title:info.title, body:info.body, channels:{ app:true,browser:true,email:true,telegram:true,whatsapp:true }, action_url:'/#/reservas', payload:{ reservation_id:res.id, status } });
+  return notifyResident(resident, { title:info.title, body:info.body, channels:{ app:true,browser:true,email:true,telegram:true,whatsapp:true }, action_url:'/#/reservas', payload:{ reservation_id:res.id, status, category:'reservation', event_type:'reservation_status', force_email:true } });
 }
 function guestCountsInLimit(v={}, settings={}) {
   const age = String(v.age_group || 'adulto').toLowerCase();
@@ -2272,7 +2302,7 @@ app.post('/api/packages', auth, can('packages.manage'), async (req,res,next)=>{ 
   await requireNoDuplicate('Encomenda', await packageDuplicate(req.body));
   const resident=await findResident(req.body);
   const pickup=randomCode(6);
-  const channels={ app:true, browser:true, ...parseJson(await getSetting('DELIVERY_DEFAULT_CHANNELS','{}'),{}), ...(req.body.notification_channels || {}), telegram:true };
+  const channels={ app:true, browser:true, ...parseJson(await getSetting('DELIVERY_DEFAULT_CHANNELS','{}'),{}), ...(req.body.notification_channels || {}), email:true, telegram:true };
   const r=await q('INSERT INTO packages(tracking,recipient,unit,resident_id,label,carrier,barcode,barcode_format,order_number,invoice_number,validation_status,ocr_confidence,source_type,notes,extracted_text,pickup_code,notification_channels,notification_status,photo_url) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *',[req.body.tracking,req.body.recipient,req.body.unit,resident?.id||null,req.body.label||req.body.carrier||req.body.tracking,req.body.carrier||'',req.body.barcode||'',req.body.barcode_format||'',req.body.order_number||'',req.body.invoice_number||'',req.body.validation_status||'pendente',Number(req.body.ocr_confidence||req.body.confidence||0),req.body.source_type||'manual',req.body.notes||'',req.body.extracted_text||'',pickup,JSON.stringify(channels),resident?'enviando':'sem_vinculo',req.body.photo_url||'']);
   const pack=r.rows[0];
   const actor=req.user.email;
@@ -2280,10 +2310,10 @@ app.post('/api/packages', auth, can('packages.manage'), async (req,res,next)=>{ 
 
   // E-mail, Telegram e push não podem bloquear o balcão da portaria. O cadastro já foi confirmado acima.
   void (async()=>{
-    const action_url=`/#/encomendas?package=${pack.id}`;
+    const action_url=`/#/portaria/encomendas?package=${pack.id}`;
     const body=`Sua encomenda ${pack.tracking} chegou na portaria. Código de retirada: ${pickup}. Escolha pelo Telegram: autorizar envio pelo elevador, retirar agora, retirar mais tarde, pedir contato por interfone ou informar que não reconhece.`;
     const deliveries=[];
-    if(resident) deliveries.push(notifyResident(resident,{ title:'Encomenda chegou', body, channels, action_url, payload:{ package_id:pack.id, pickup_code:pickup, category:'package', event_type:'package_arrival', telegram_call_category:'package', telegram_reply_markup:packageDecisionKeyboard(pack.id) } }));
+    if(resident) deliveries.push(notifyResident(resident,{ title:'Encomenda chegou', body, channels:{...channels,email:true}, action_url, payload:{ package_id:pack.id, pickup_code:pickup, category:'package', event_type:'package_arrival', force_email:true, telegram_call_category:'package', telegram_reply_markup:packageDecisionKeyboard(pack.id) } }));
     deliveries.push(sendPortariaTelegram({ title:'Encomenda cadastrada', body:`${pack.tracking} · Unidade ${pack.unit || '-'} · ${pack.recipient || resident?.name || ''}. Aguardando decisão do morador.`, category:'encomenda', action_url:'/#/portaria/encomendas', details:{ Código:pack.tracking, Unidade:pack.unit || '-', Retirada:pickup }, dedupeKey:`package-created-portaria:${pack.id}` }));
     const results=await Promise.allSettled(deliveries);
     const failed=results.some(result=>result.status==='rejected');
@@ -2365,9 +2395,7 @@ app.post('/api/reservations', auth, can('reservations.manage'), async (req,res,n
     await q('INSERT INTO finance(title,amount,type,status,due_date,unit,resident_id,category,boleto_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)', [`Taxa de reserva - ${reserva.area}`, fee, 'receita', 'pendente', boleto.due_date, reserva.unit, reserva.resident_id, 'reserva', boleto.id]);
     reserva={...reserva,boleto_id:boleto.id,digitable_line:boleto.digitable_line,payment_link:boleto.payment_link};
   }
-  await notifyReservationUpdate(reserva,'pre_agendada').catch(()=>null);
-  if (status === 'pendente_aceite_regras') await notifyReservationUpdate(reserva,'pendente_aceite_regras').catch(()=>null);
-  if (status === 'pendente_pagamento') await notifyReservationUpdate(reserva,'pendente_pagamento').catch(()=>null);
+  await notifyReservationUpdate(reserva,status).catch(()=>null);
   await audit(req.user.email,'criou reserva',req.body.area);
   res.json({ ...reserva, google_calendar_url: googleCalendarUrl(reserva) });
 } catch(e){ if (/idx_reservation_slot|duplicate key/i.test(String(e.message))) return res.status(409).json({ error:'Essa data e horário já estão bloqueados para o espaço selecionado.' }); next(e); } });
@@ -2390,7 +2418,7 @@ app.post('/api/reservations/:id/cancel', auth, can('reservations.manage'), async
   await notifyReservationUpdate(reserva,'cancelada',{ cancel_reason:req.body.reason||'' }).catch(()=>null);
   await audit(req.user.email,'cancelou reserva',req.params.id); res.json(reserva);
 } catch(e){ next(e); } });
-app.delete('/api/reservations/:id', auth, can('reservations.manage'), async (req,res,next)=>{ try { if(isResident(req.user)) return res.status(403).json({ error:'Moradores podem cancelar, mas não excluir o histórico da reserva.' }); const r=await q("UPDATE reservations SET status='cancelada',deleted_at=now(),cancel_reason=COALESCE(NULLIF($1,''),cancel_reason),canceled_at=now() WHERE id=$2 RETURNING id",[req.body?.reason||'Removida pelo sistema',req.params.id]); if(!r.rowCount) return res.status(404).json({ error:'Reserva não encontrada.' }); await audit(req.user.email,'removeu reserva',req.params.id); res.json({ ok:true }); } catch(e){ next(e); } });
+app.delete('/api/reservations/:id', auth, can('reservations.manage'), async (req,res,next)=>{ try { if(isResident(req.user)) return res.status(403).json({ error:'Moradores podem cancelar, mas não excluir o histórico da reserva.' }); const r=await q("UPDATE reservations SET status='cancelada',deleted_at=now(),cancel_reason=COALESCE(NULLIF($1,''),cancel_reason),canceled_at=now() WHERE id=$2 RETURNING *",[req.body?.reason||'Removida pelo sistema',req.params.id]); const reserva=r.rows[0]; if(!reserva) return res.status(404).json({ error:'Reserva não encontrada.' }); await notifyReservationUpdate(reserva,'cancelada',{cancel_reason:reserva.cancel_reason}).catch(()=>null); await audit(req.user.email,'removeu reserva',req.params.id); res.json({ ok:true }); } catch(e){ next(e); } });
 app.post('/api/reservations/:id/approve', auth, can('reservations.manage'), async (req,res,next)=>{ try {
   if(isResident(req.user)) return res.status(403).json({ error:'Somente a administração pode aprovar reservas.' });
   const r=await q("UPDATE reservations SET status='confirmada',approved_by=$1,approved_at=now() WHERE id=$2 RETURNING *",[req.user.id,req.params.id]);
