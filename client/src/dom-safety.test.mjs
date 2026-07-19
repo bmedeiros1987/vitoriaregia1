@@ -9,8 +9,8 @@ test('HTML não carrega extensões que substituem elementos controlados pelo Rea
   for(const unsafe of ['telegram-calls-menu-hotfix.js','vitoria-one-v13-nav.js','visitor-qr-v13.js','sindico-one-v14.js']){
     assert.doesNotMatch(html,new RegExp(`<script[^>]+${unsafe.replaceAll('.','\\.')}`));
   }
-  assert.match(html,/telegram-calls\.js\?v=20260719b/);
-  assert.match(html,/vitoria-one-v13-core\.js\?v=20260719b/);
+  assert.match(html,/telegram-calls\.js\?v=20260719c/);
+  assert.match(html,/vitoria-one-v13-core\.js\?v=20260719c/);
 });
 
 test('núcleo visual não remove, insere ou reescreve filhos do React', () => {
@@ -79,4 +79,32 @@ test('auditoria visual fixa menu e remove navegação durante a leitura', () => 
   assert.match(css,/body\.vr-scanner-open footer/);
   assert.match(css,/\.cameraReaderBox \{[\s\S]*height: 100dvh !important/);
   assert.match(css,/\.toast,[\s\S]*font-size: \.84rem !important/);
+});
+
+test('RSVP público sem login é carregado antes do React e protege o contato individual', () => {
+  const html=read('index.html');
+  const publicRsvp=read('public/reservation-rsvp-public-v14.js');
+  const reactPosition=html.indexOf('/src/main.jsx');
+  assert.ok(html.indexOf('/reservation-rsvp-public-v14.js') >= 0);
+  assert.ok(html.indexOf('/reservation-rsvp-public-v14.js') < reactPosition);
+  assert.ok(html.indexOf('/reservation-rsvp-manager-v14.js') < reactPosition);
+  assert.match(publicRsvp,/\/api\/public\/rsvp/);
+  assert.match(publicRsvp,/verification_channel/);
+  assert.match(publicRsvp,/readonly/);
+  assert.match(publicRsvp,/data-rsvp-companion/);
+  assert.match(publicRsvp,/Não exige login/);
+});
+
+test('gestor de convidados oferece importação, aprovação, revogação e lembretes de encomenda', () => {
+  const manager=read('public/reservation-rsvp-manager-v14.js');
+  const css=read('public/reservation-rsvp-v14.css');
+  assert.match(manager,/\/rsvp\/import/);
+  assert.match(manager,/accept="\.csv,\.txt,\.xlsx,\.xls,\.pdf"/);
+  assert.match(manager,/data-guest-action="approve"/);
+  assert.match(manager,/data-guest-action="revoke"/);
+  assert.match(manager,/data-regenerate-campaign/);
+  assert.match(manager,/\/api\/package-reminders/);
+  assert.match(manager,/\/reminder-now/);
+  assert.match(css,/#vr-rsvp-manager/);
+  assert.match(css,/#vr-package-reminders/);
 });
