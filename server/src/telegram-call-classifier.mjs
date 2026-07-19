@@ -20,7 +20,15 @@ function isUrgent(value) {
   return /urgente|medicamento|perec[ií]vel|refrigerad|prioridade/.test(value);
 }
 
+function suppressAutomaticCall(raw = '', body = {}) {
+  const value = normalize(raw);
+  if (body?.telegram_call_suppress === true || body?.disable_call === true || body?.disable_notification === true) return true;
+  if (/vr-silent/i.test(String(raw || ''))) return true;
+  return /resposta do morador sobre encomenda|prefer[eê]ncia (?:de entrega )?(?:informada|registrada)|resposta registrada|confirma[cç][aã]o registrada|esta a[cç][aã]o j[aá] foi processada|qr code de acesso est[aá] pronto|confirme sua presen[cç]a no evento|c[oó]digo de confirma[cç][aã]o do convite|lembrete.*encomenda aguardando/.test(value);
+}
+
 export function classifyTelegramCallMessage(text = '') {
+  if (suppressAutomaticCall(text)) return 'notification';
   const value = normalize(text);
   if (isEmergency(value)) return 'emergency';
   // Encomenda vem antes de visitante: uma mensagem pode mencionar a portaria ou
@@ -35,6 +43,7 @@ export function classifyTelegramCallMessage(text = '') {
 
 export function classifyTelegramCallPayload(body = {}) {
   const text = String(body?.text || '');
+  if (suppressAutomaticCall(text, body)) return 'notification';
   const messageCategory = classifyTelegramCallMessage(text);
   if (messageCategory === 'emergency') return messageCategory;
 
