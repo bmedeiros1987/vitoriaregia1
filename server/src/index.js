@@ -169,6 +169,26 @@ async function ensureCriticalLegacySchema() {
   if (!(await hasColumn('users', 'permissions'))) throw new Error('Migração crítica falhou: coluna users.permissions não foi criada. Verifique permissões do usuário do banco.');
   console.log('Migração crítica OK: users.permissions e colunas essenciais conferidas.');
 }
+async function ensurePackageReaderColumns() {
+  // O leitor premium grava estes campos no mesmo INSERT do cadastro manual.
+  // A migração é obrigatória: se o banco legado não puder ser atualizado, o
+  // servidor não deve iniciar oferecendo um formulário que inevitavelmente falha.
+  const required = [
+    ['carrier','carrier TEXT'],
+    ['barcode','barcode TEXT'],
+    ['barcode_format','barcode_format TEXT'],
+    ['order_number','order_number TEXT'],
+    ['invoice_number','invoice_number TEXT'],
+    ['validation_status',"validation_status TEXT DEFAULT 'pendente'"],
+    ['ocr_confidence','ocr_confidence INTEGER DEFAULT 0'],
+    ['source_type',"source_type TEXT DEFAULT 'manual'"]
+  ];
+  for (const [, columnSql] of required) await addColumnStrict('packages', columnSql);
+  for (const [column] of required) {
+    if (!(await hasColumn('packages', column))) throw new Error(`Migração crítica falhou: coluna packages.${column} não foi criada.`);
+  }
+  console.log('Migração crítica OK: colunas do leitor de encomendas conferidas.');
+}
 async function audit(actor, action, entity='') { await q('INSERT INTO audit(actor,action,entity) VALUES($1,$2,$3)', [actor || 'sistema', action, entity]).catch(()=>null); }
 function randomCode(len=6) { return randomBytes(12).toString('hex').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0, len); }
 
@@ -692,6 +712,7 @@ CREATE TABLE IF NOT EXISTS telegram_callback_events(
 `);
 
   await ensureCriticalLegacySchema();
+  await ensurePackageReaderColumns();
   await ensureEmergencyRequestColumns();
   await ensureTelegramLinkColumns();
 
@@ -723,7 +744,9 @@ CREATE TABLE IF NOT EXISTS telegram_callback_events(
     ['messages','resident_id INTEGER'], ['messages','user_id INTEGER'], ['messages','unit TEXT'], ['messages','subject TEXT'], ['messages','body TEXT'], ['messages','assigned_employee_id INTEGER'], ['messages','status TEXT DEFAULT \'nova\''], ['messages','response TEXT'], ['messages','responded_by TEXT'], ['messages','created_at TIMESTAMP DEFAULT now()'], ['messages','responded_at TIMESTAMP'],
 
     // packages / visitors
-    ['packages','tracking TEXT'], ['packages','recipient TEXT'], ['packages','unit TEXT'], ['packages','resident_id INTEGER'], ['packages','status TEXT DEFAULT \'pendente\''], ['packages','label TEXT'], ['packages','photo_url TEXT'], ['packages','notes TEXT'], ['packages','extracted_text TEXT'], ['packages','pickup_code TEXT'], ['packages','delivery_preference TEXT DEFAULT \'nao_informado\''], ['packages','notification_channels JSONB DEFAULT \'{}\'::jsonb'], ['packages','notification_status TEXT DEFAULT \'pendente\''], ['packages','created_at TIMESTAMP DEFAULT now()'], ['packages','delivered_at TIMESTAMP'], ['packages','resident_response_at TIMESTAMP'], ['packages','staff_delivered_at TIMESTAMP'], ['packages','resident_delivered_at TIMESTAMP'], ['packages','delivered_by_staff INTEGER'], ['packages','delivered_by_resident INTEGER'], ['packages','deleted_at TIMESTAMP'],
+    ['packages','tracking TEXT'], ['packages','recipient TEXT'], ['packages','unit TEXT'], ['packages','resident_id INTEGER'], ['packages','status TEXT DEFAULT \'pendente\''], ['packages','label TEXT'], ['packages','photo_url TEXT'],
+    ['packages','carrier TEXT'], ['packages','barcode TEXT'], ['packages','barcode_format TEXT'], ['packages','order_number TEXT'], ['packages','invoice_number TEXT'], ['packages','validation_status TEXT DEFAULT \'pendente\''], ['packages','ocr_confidence INTEGER DEFAULT 0'], ['packages','source_type TEXT DEFAULT \'manual\''],
+    ['packages','notes TEXT'], ['packages','extracted_text TEXT'], ['packages','pickup_code TEXT'], ['packages','delivery_preference TEXT DEFAULT \'nao_informado\''], ['packages','notification_channels JSONB DEFAULT \'{}\'::jsonb'], ['packages','notification_status TEXT DEFAULT \'pendente\''], ['packages','created_at TIMESTAMP DEFAULT now()'], ['packages','delivered_at TIMESTAMP'], ['packages','resident_response_at TIMESTAMP'], ['packages','staff_delivered_at TIMESTAMP'], ['packages','resident_delivered_at TIMESTAMP'], ['packages','delivered_by_staff INTEGER'], ['packages','delivered_by_resident INTEGER'], ['packages','deleted_at TIMESTAMP'],
     ['visitors','name TEXT'], ['visitors','document TEXT'], ['visitors','unit TEXT'], ['visitors','authorized_by TEXT'], ['visitors','status TEXT DEFAULT \'autorizado\''], ['visitors','plate TEXT'], ['visitors','phone TEXT'], ['visitors','recurring BOOLEAN DEFAULT false'], ['visitors','weekdays JSONB DEFAULT \'[]\'::jsonb'], ['visitors','valid_from DATE'], ['visitors','valid_until DATE'], ['visitors','announce_required BOOLEAN DEFAULT true'], ['visitors','announcement_channel TEXT DEFAULT \'interfone\''], ['visitors','notification_channels JSONB DEFAULT \'{}\'::jsonb'], ['visitors','photo_data TEXT'], ['visitors','reservation_id INTEGER'], ['visitors','notes TEXT'], ['visitors','deleted_at TIMESTAMP'], ['visitors','created_at TIMESTAMP DEFAULT now()'],
 
     // reservations / common areas / boletos / finance
@@ -1282,7 +1305,7 @@ function unmarkTelegramDedupe(keys=[]) {
 }
 function telegramPremiumMessage({ title='Vitória Régia', body='', category='notificacao', actionUrl='', details={} }={}) {
   const icons = {
-    emergencia:'🚨', encomenda:'📦', reserva:'📅', financeiro:'💳', suporte:'🛟', ocorrencia:'📘', comunicado:'📣', cadastro:'👤', sistema:'⚙️', notificacao:'🔔'
+    emergencia:'🚨', encomenda:'📦', visitante:'👤', reserva:'📅', financeiro:'💳', suporte:'🛟', ocorrencia:'📘', comunicado:'📣', cadastro:'👤', sistema:'⚙️', notificacao:'🔔'
   };
   const icon = icons[String(category || 'notificacao').toLowerCase()] || icons.notificacao;
   const lines = [
@@ -1301,8 +1324,12 @@ function telegramPremiumMessage({ title='Vitória Régia', body='', category='no
 }
 function notificationCategoryFrom(title='', body='', payload={}) {
   const t = `${title} ${body}`.toLowerCase();
+  const explicit = String(payload?.telegram_call_category || payload?.category || payload?.event_type || '').toLowerCase();
   if (payload?.emergency || /emerg[eê]ncia|alerta/.test(t)) return 'emergencia';
-  if (/encomenda|portaria|retirada/.test(t)) return 'encomenda';
+  if (/package|encomenda|pacote/.test(explicit)) return 'encomenda';
+  if (/visitor|visitante|convite/.test(explicit)) return 'visitante';
+  if (/encomenda|pacote|correios|retirada/.test(t)) return 'encomenda';
+  if (/visitante|convidad[oa]/.test(t)) return 'visitante';
   if (/reserva|sal[aã]o|espa[cç]o/.test(t)) return 'reserva';
   if (/boleto|financeiro|pagamento|taxa|cobran[cç]a/.test(t)) return 'financeiro';
   if (/suporte|ticket|pedido/.test(t)) return 'suporte';
@@ -2256,7 +2283,7 @@ app.post('/api/packages', auth, can('packages.manage'), async (req,res,next)=>{ 
     const action_url=`/#/encomendas?package=${pack.id}`;
     const body=`Sua encomenda ${pack.tracking} chegou na portaria. Código de retirada: ${pickup}. Escolha pelo Telegram: autorizar envio pelo elevador, retirar agora, retirar mais tarde, pedir contato por interfone ou informar que não reconhece.`;
     const deliveries=[];
-    if(resident) deliveries.push(notifyResident(resident,{ title:'Encomenda chegou', body, channels, action_url, payload:{ package_id:pack.id, pickup_code:pickup, telegram_reply_markup:packageDecisionKeyboard(pack.id) } }));
+    if(resident) deliveries.push(notifyResident(resident,{ title:'Encomenda chegou', body, channels, action_url, payload:{ package_id:pack.id, pickup_code:pickup, category:'package', event_type:'package_arrival', telegram_call_category:'package', telegram_reply_markup:packageDecisionKeyboard(pack.id) } }));
     deliveries.push(sendPortariaTelegram({ title:'Encomenda cadastrada', body:`${pack.tracking} · Unidade ${pack.unit || '-'} · ${pack.recipient || resident?.name || ''}. Aguardando decisão do morador.`, category:'encomenda', action_url:'/#/portaria/encomendas', details:{ Código:pack.tracking, Unidade:pack.unit || '-', Retirada:pickup }, dedupeKey:`package-created-portaria:${pack.id}` }));
     const results=await Promise.allSettled(deliveries);
     const failed=results.some(result=>result.status==='rejected');
@@ -2272,7 +2299,7 @@ app.post('/api/packages/:id/intercom-fallback', auth, can('packages.manage'), as
   if(!p) return res.status(404).json({ error:'Encomenda não encontrada.' });
   const resident=await findResident({ resident_id:p.resident_id, unit:p.unit, recipient:p.recipient });
   const body=`A portaria tentou contato por interfone, mas não conseguiu falar. Encomenda ${p.tracking || p.label || p.id} está aguardando orientação. Responda pelo botão: enviar pelo elevador, retirar agora, retirar mais tarde ou não reconheço.`;
-  if (resident) await notifyResident(resident,{ title:'Portaria tentou interfone', body, channels:{ app:true,browser:true,email:false,telegram:true,whatsapp:false }, action_url:'/#/portaria/encomendas', payload:{ package_id:p.id, pickup_code:p.pickup_code || '', telegram_reply_markup:packageDecisionKeyboard(p.id) } }).catch(()=>null);
+  if (resident) await notifyResident(resident,{ title:'Portaria tentou interfone', body, channels:{ app:true,browser:true,email:false,telegram:true,whatsapp:false }, action_url:'/#/portaria/encomendas', payload:{ package_id:p.id, pickup_code:p.pickup_code || '', category:'package', event_type:'package_intercom_fallback', telegram_call_category:'package', telegram_reply_markup:packageDecisionKeyboard(p.id) } }).catch(()=>null);
   await sendPortariaTelegram({ title:'Interfone sem contato', body:`Mensagem enviada ao morador da unidade ${p.unit || '-'}. Encomenda ${p.tracking || p.id}.`, category:'encomenda', action_url:'/#/portaria/encomendas', details:{ Unidade:p.unit || '-', Código:p.tracking || p.id, Morador:resident?.name || p.recipient || '-' }, dedupeKey:`intercom-fallback-portaria:${p.id}` }).catch(()=>null);
   await audit(req.user.email,'acionou Telegram após interfone sem contato',`${p.tracking || p.id} unidade ${p.unit || '-'}`).catch(()=>null);
   res.json({ ok:true, package:p, resident, message: resident ? 'Telegram enviado ao morador e à portaria.' : 'Morador não localizado; aviso enviado à portaria.' });
@@ -2289,8 +2316,8 @@ app.post('/api/visitors/:id/intercom-fallback', auth, can('visitors.manage'), as
   if(!v) return res.status(404).json({ error:'Visitante não encontrado.' });
   const resident=await findResident({ unit:v.unit, recipient:v.authorized_by });
   const body=`A portaria tentou contato por interfone, mas não conseguiu falar. Visitante: ${v.name}. Unidade ${v.unit || '-'}. Acesse o sistema ou responda à portaria para autorizar ou negar a entrada.`;
-  if (resident) await notifyResident(resident,{ title:'Portaria tentou interfone', body, channels:{ app:true,browser:true,email:false,telegram:true,whatsapp:false }, action_url:'/#/portaria/visitantes', payload:{ visitor_id:v.id } }).catch(()=>null);
-  await sendPortariaTelegram({ title:'Interfone sem contato', body:`Visitante ${v.name} na unidade ${v.unit || '-'}. Aviso Telegram enviado ao morador quando localizado.`, category:'notificacao', action_url:'/#/portaria/visitantes', details:{ Visitante:v.name, Unidade:v.unit || '-', Morador:resident?.name || '-' }, dedupeKey:`visitor-intercom-portaria:${v.id}` }).catch(()=>null);
+  if (resident) await notifyResident(resident,{ title:'Portaria tentou interfone', body, channels:{ app:true,browser:true,email:false,telegram:true,whatsapp:false }, action_url:'/#/portaria/visitantes', payload:{ visitor_id:v.id, category:'visitor', event_type:'visitor_waiting', telegram_call_category:'visitor' } }).catch(()=>null);
+  await sendPortariaTelegram({ title:'Interfone sem contato', body:`Visitante ${v.name} na unidade ${v.unit || '-'}. Aviso Telegram enviado ao morador quando localizado.`, category:'visitante', action_url:'/#/portaria/visitantes', details:{ Visitante:v.name, Unidade:v.unit || '-', Morador:resident?.name || '-' }, dedupeKey:`visitor-intercom-portaria:${v.id}` }).catch(()=>null);
   await audit(req.user.email,'acionou Telegram de visitante após interfone sem contato',`${v.name} unidade ${v.unit || '-'}`).catch(()=>null);
   res.json({ ok:true, visitor:v, resident, message: resident ? 'Telegram enviado ao morador e à portaria.' : 'Morador não localizado; aviso enviado à portaria.' });
 } catch(e){ next(e); } });
