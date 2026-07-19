@@ -15,90 +15,11 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 5
     steps:
-      - name: Capture live browser errors through CDP
+      - uses: actions/checkout@v4
+      - name: Capture live browser state
         shell: bash
         run: |
-          set -euo pipefail
-          base='https://vitoriaregia-pro.onrender.com'
-          browser=''
-          for candidate in google-chrome-stable google-chrome chromium chromium-browser; do
-            if command -v "$candidate" >/dev/null 2>&1; then browser="$candidate"; break; fi
-          done
-          echo "browser=$browser"
           python3 -m pip install --quiet websocket-client requests
-          "$browser" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage \
-            --remote-debugging-port=9222 --remote-allow-origins='*' \
-            --user-data-dir=/tmp/vr-chrome-profile \
-            "$base/?diagnostic=$(date +%s)" >/tmp/chrome.log 2>&1 &
-          chrome_pid=$!
-          trap 'kill "$chrome_pid" 2>/dev/null || true' EXIT
-          python3 - <<'PY'
-          import json, time, requests, websocket
-
-          endpoint='http://127.0.0.1:9222/json'
-          pages=[]
-          for _ in range(60):
-              try:
-                  pages=requests.get(endpoint,timeout=2).json()
-                  if pages: break
-              except Exception:
-                  pass
-              time.sleep(.5)
-          print('pages=',[(p.get('type'),p.get('url')) for p in pages])
-          page=next((p for p in pages if p.get('type')=='page'),None)
-          if not page:
-              raise SystemExit('Nenhuma página disponível no Chrome')
-          ws=websocket.create_connection(page['webSocketDebuggerUrl'],timeout=2,origin='http://localhost')
-          next_id=1
-          def send(method,params=None):
-              global next_id
-              current=next_id; next_id+=1
-              ws.send(json.dumps({'id':current,'method':method,'params':params or {}}))
-              return current
-          for method in ['Runtime.enable','Log.enable','Page.enable','Network.enable']:
-              send(method)
-          errors=[]; failures=[]; responses=[]
-          deadline=time.time()+18
-          while time.time()<deadline:
-              try:
-                  msg=json.loads(ws.recv())
-              except Exception:
-                  continue
-              method=msg.get('method','')
-              params=msg.get('params',{})
-              if method=='Runtime.exceptionThrown':
-                  detail=params.get('exceptionDetails',{})
-                  errors.append({'text':detail.get('text'),'url':detail.get('url'),'line':detail.get('lineNumber'),'column':detail.get('columnNumber'),'exception':detail.get('exception',{}).get('description')})
-              elif method=='Log.entryAdded':
-                  entry=params.get('entry',{})
-                  if entry.get('level') in ('error','warning'):
-                      errors.append({'level':entry.get('level'),'text':entry.get('text'),'url':entry.get('url'),'line':entry.get('lineNumber')})
-              elif method=='Network.loadingFailed':
-                  failures.append({'url':params.get('requestId'),'error':params.get('errorText'),'blocked':params.get('blockedReason')})
-              elif method=='Network.responseReceived':
-                  response=params.get('response',{})
-                  if int(response.get('status',0))>=400:
-                      responses.append({'status':response.get('status'),'url':response.get('url'),'mime':response.get('mimeType')})
-          eval_id=send('Runtime.evaluate',{'expression':"JSON.stringify({readyState:document.readyState,title:document.title,url:location.href,bodyText:(document.body&&document.body.innerText||'').slice(0,4000),root:(document.getElementById('root')&&document.getElementById('root').innerHTML||'').slice(0,8000),scripts:[...document.scripts].map(s=>s.src),styles:[...document.styleSheets].map(s=>s.href)})",'returnByValue':True})
-          snapshot=None
-          end=time.time()+8
-          while time.time()<end:
-              try: msg=json.loads(ws.recv())
-              except Exception: continue
-              if msg.get('id')==eval_id:
-                  snapshot=msg.get('result',{}).get('result',{}).get('value')
-                  break
-          print('\n=== SNAPSHOT ===')
-          print(snapshot)
-          print('\n=== JS / CONSOLE ERRORS ===')
-          print(json.dumps(errors,ensure_ascii=False,indent=2))
-          print('\n=== NETWORK 4XX/5XX ===')
-          print(json.dumps(responses,ensure_ascii=False,indent=2))
-          print('\n=== NETWORK FAILURES ===')
-          print(json.dumps(failures,ensure_ascii=False,indent=2))
-          ws.close()
-          PY
-          echo '=== CHROME STDERR ==='
-          grep -E 'ERROR|FATAL|Uncaught|SyntaxError|TypeError|ReferenceError|ERR_' /tmp/chrome.log | tail -100 || true
+          python3 .github/scripts/diagnose_live.py
