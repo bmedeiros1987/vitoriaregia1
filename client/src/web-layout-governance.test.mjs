@@ -38,12 +38,23 @@ test('central aparece somente para gestão autorizada',()=>{
   assert.match(script,/criados pelo síndico/i);
 });
 
-test('arquivos são carregados por último para prevalecer sobre o layout antigo',()=>{
+test('núcleo React inicia antes das integrações auxiliares',()=>{
   const html=read('index.html');
   const oldCss=html.indexOf('/vitoria-one-v14-layout-audit.css');
   const newCss=html.indexOf('/vitoria-one-v14-web-premium.css');
-  const governance=html.indexOf('/deletion-governance-v14.js');
   const react=html.indexOf('/src/main.jsx');
+  const intelligence=html.indexOf('/package-intelligence-v14.js');
+  const governance=html.indexOf('/deletion-governance-v14.js');
   assert.ok(oldCss>=0&&newCss>oldCss);
-  assert.ok(governance>=0&&governance<react);
+  assert.ok(react>=0&&intelligence>react&&governance>react);
+  assert.match(html,/<script async src="\/deletion-governance-v14\.js/);
+});
+
+test('tela de inicialização nunca permanece vazia e possui recuperação de cache',()=>{
+  const html=read('index.html');
+  assert.match(html,/id="vr-boot-fallback"/);
+  assert.match(html,/Recarregar sistema/);
+  assert.match(html,/navigator\.serviceWorker\.getRegistrations/);
+  assert.match(html,/caches\.keys/);
+  assert.match(html,/unhandledrejection/);
 });
