@@ -63,10 +63,10 @@
         window.addEventListener('unhandledrejection',()=>show('Não foi possível concluir a inicialização. Recarregue para tentar novamente.','error'));
       })();
     </script>
-    <!-- O núcleo React inicia primeiro. Integrações são adiadas e preservam a ordem de dependência. -->
+    <!-- O formulário público continua disponível sem login; o restante não bloqueia a montagem do React. -->
+    <script defer src="/reservation-rsvp-public-v14.js?v=20260719e"></script>
     <script type="module" src="/src/main.jsx"></script>
     <script defer src="/package-intelligence-v14.js?v=20260719e"></script>
-    <script defer src="/reservation-rsvp-public-v14.js?v=20260719e"></script>
     <script defer src="/reservation-rsvp-manager-v14.js?v=20260719e"></script>
     <script defer src="/deletion-governance-v14.js?v=20260719e"></script>
     <script type="module" src="/telegram-calls.js?v=20260719e"></script>
