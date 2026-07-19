@@ -32,20 +32,8 @@
   }
 
   function ensureMenu() {
-    const host=document.querySelector('.appShell aside nav');
-    if (!host || !user()) return;
-    let section=document.getElementById('vr-telegram-call-menu');
-    if (!section) {
-      section=document.createElement('section');
-      section.id='vr-telegram-call-menu';
-      section.className='vr-call-menu';
-      const config=[...host.querySelectorAll(':scope > button')].find(button=>/configura/i.test(button.textContent || ''));
-      if (config) host.insertBefore(section,config); else host.appendChild(section);
-    }
-    if (section.dataset.ready==='true') return;
-    section.dataset.ready='true';
-    section.innerHTML='<small>ALERTAS INTELIGENTES</small><button type="button" data-vr-call-open><i>☎</i><span>Chamadas Telegram</span></button>';
-    section.querySelector('button').addEventListener('click',open);
+    // O acionador agora é renderizado nativamente pelo React. Não injetar nós no menu.
+    return Boolean(user());
   }
 
   function ensureRoot() {
@@ -195,8 +183,6 @@
   function sync() { ensureMenu(); syncPosition(); }
   let timer=null;
   function scheduleSync() { clearTimeout(timer); timer=setTimeout(sync,40); }
-  const observer=new MutationObserver(scheduleSync);
-  observer.observe(document.documentElement,{ childList:true,subtree:true,attributes:true,attributeFilter:['class'] });
   window.addEventListener('resize',syncPosition);
   window.addEventListener('storage',scheduleSync);
   window.addEventListener('hashchange',scheduleSync);
