@@ -68,7 +68,7 @@ async function deliverReminder(pack,{manual=false}={}) {
   if(!resident){ await q("UPDATE packages SET next_reminder_at=now()+interval '12 hours' WHERE id=$1",[pack.id]).catch(()=>null); return {ok:false,skipped:true,reason:'Morador não localizado.'}; }
   const body=reminderMessage(pack);
   const title=manual ? 'Lembrete de encomenda reenviado' : 'Lembrete: encomenda aguardando retirada';
-  const channels={app:true,email:true,telegram:true,whatsapp:true,...parseJson(pack.reminder_channels,{})};
+  const channels={app:true,telegram:true,whatsapp:true,...parseJson(pack.reminder_channels,{}),email:true};
   const results={};
   if(channels.app) results.app=await createAppNotification(pack,resident,title,body).then(()=>({ok:true}));
   if(channels.email) results.email=await sendEmail({to:resident.email,subject:`${title} - Vitória Régia`,text:body,html:`<h2>${title}</h2><p>${body}</p><p><a href="${String(process.env.PUBLIC_APP_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/,'')}/#/portaria/encomendas">Abrir encomendas</a></p>`});
