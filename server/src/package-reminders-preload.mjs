@@ -128,8 +128,7 @@ function installRoutes(app) {
   routesInstalled=true;
   const router=express.Router();
   router.use(express.json({limit:'512kb'}));
-  router.use(authenticate);
-  router.get('/package-reminders',async(req,res)=>{
+  router.get('/package-reminders',authenticate,async(req,res)=>{
     try {
       await ensureSchema();
       const rows=isAdmin(req.vrUser)
@@ -138,11 +137,11 @@ function installRoutes(app) {
       res.json({ok:true,packages:rows.map(view),defaults:{first_delay_minutes:120,interval_minutes:180,max_reminders:4,email_always:true}});
     } catch(error) { res.status(400).json({error:error.message}); }
   });
-  router.post('/packages/:id/reminder-now',async(req,res)=>{
+  router.post('/packages/:id/reminder-now',authenticate,async(req,res)=>{
     try { await ensureSchema(); res.json({ok:true,result:await deliverReminder(await packageForUser(req.params.id,req.vrUser),{manual:true})}); }
     catch(error) { res.status(error.status || 400).json({error:error.message}); }
   });
-  router.put('/packages/:id/reminder-config',async(req,res)=>{
+  router.put('/packages/:id/reminder-config',authenticate,async(req,res)=>{
     try {
       await ensureSchema();
       const pack=await packageForUser(req.params.id,req.vrUser);
@@ -155,7 +154,7 @@ function installRoutes(app) {
       res.json({ok:true,package:view(updated)});
     } catch(error) { res.status(error.status || 400).json({error:error.message}); }
   });
-  router.post('/package-reminders/process',async(req,res)=>{
+  router.post('/package-reminders/process',authenticate,async(req,res)=>{
     if(!isAdmin(req.vrUser)) return res.status(403).json({error:'Apenas portaria ou administração pode processar a fila.'});
     await processDue();
     res.json({ok:true});
