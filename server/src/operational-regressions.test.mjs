@@ -18,7 +18,7 @@ test('migração obrigatória cobre todas as colunas gravadas pelo leitor de enc
   const index = source('index.js');
   for (const column of ['carrier','barcode','barcode_format','order_number','invoice_number','validation_status','ocr_confidence','source_type']) {
     assert.match(index, new RegExp(`\\['packages','${column} `));
-    assert.match(index, new RegExp(`\\['${column}',[\"']${column} `));
+    assert.match(index, new RegExp(`\\['${column}',["']${column} `));
   }
   assert.match(index, /await ensurePackageReaderColumns\(\)/);
   assert.match(index, /telegram_call_category:'package'/);
@@ -45,4 +45,24 @@ test('encomendas e reservas sempre tentam e-mail para a conta vinculada', () => 
   assert.match(index,/actionUrl:fullActionUrl\(action_url\)/);
   assert.match(index,/notifyReservationUpdate\(reserva,status\)/);
   assert.doesNotMatch(index,/notifyReservationUpdate\(reserva,'pre_agendada'\)[\s\S]{0,220}pendente_aceite_regras/);
+});
+
+test('sessão das integrações usa o mesmo segredo do núcleo antes de instalar as rotas', () => {
+  const runtime=source('runtime-secret-alignment-preload.mjs');
+  const pkg=JSON.parse(source('../package.json'));
+  assert.match(runtime,/vitoria-regia-jwt-v14/);
+  assert.match(runtime,/process\.env\.JWT_SECRET = createHash/);
+  assert.ok(pkg.scripts.start.indexOf('runtime-secret-alignment-preload.mjs') < pkg.scripts.start.indexOf('telegram-callmebot-ssl-hotfix.mjs'));
+});
+
+test('OCR inteligente reconhece etiquetas, aprende correções e mantém autenticação', () => {
+  const preload=source('package-ocr-intelligence-preload.mjs');
+  const pkg=JSON.parse(source('../package.json'));
+  assert.match(preload,/CREATE TABLE IF NOT EXISTS package_ocr_learning/);
+  assert.match(preload,/J&T Express/);
+  assert.match(preload,/\/parse-package/);
+  assert.match(preload,/\/learn-package/);
+  assert.match(preload,/capture|tracking|resident_name/i);
+  assert.match(preload,/jwt\.verify\(token, JWT_SECRET\)/);
+  assert.match(pkg.scripts.start,/package-ocr-intelligence-preload\.mjs/);
 });

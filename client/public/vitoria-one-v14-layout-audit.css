@@ -1,0 +1,495 @@
+/* Vitória Régia One v14.0.1 — auditoria total de layout, leitura e navegação */
+:root {
+  --vr-sidebar-open: 286px;
+  --vr-sidebar-closed: 86px;
+  --vr-safe-top: env(safe-area-inset-top, 0px);
+  --vr-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --vr-content-max: 1540px;
+  --vr-sticky-top: calc(var(--vr-safe-top) + 8px);
+}
+
+html,
+body,
+#root,
+.appShell {
+  min-height: 100%;
+}
+
+body {
+  overflow-x: hidden;
+}
+
+.appShell {
+  position: relative !important;
+  isolation: isolate;
+}
+
+.content {
+  min-width: 0 !important;
+}
+
+.content > * {
+  max-width: var(--vr-content-max);
+  margin-inline: auto;
+}
+
+/* Menu lateral realmente fixo, sem acompanhar ou empurrar a rolagem. */
+@media (min-width: 861px) {
+  .appShell {
+    display: block !important;
+  }
+
+  .appShell > aside {
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    width: var(--vr-sidebar-open) !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow: hidden auto !important;
+    overscroll-behavior: contain;
+    z-index: 1200 !important;
+    contain: layout paint;
+  }
+
+  .appShell > main.content {
+    display: block !important;
+    width: auto !important;
+    min-height: 100dvh;
+    margin-left: var(--vr-sidebar-open) !important;
+    padding-left: clamp(18px, 2.2vw, 38px) !important;
+    padding-right: clamp(18px, 2.2vw, 38px) !important;
+    transition: margin-left .2s ease;
+  }
+
+  .appShell.menu-closed > aside {
+    width: var(--vr-sidebar-closed) !important;
+  }
+
+  .appShell.menu-closed > main.content {
+    margin-left: var(--vr-sidebar-closed) !important;
+  }
+
+  .appShell > aside .sideBottom {
+    position: sticky !important;
+    bottom: 0;
+    margin-top: auto;
+    padding-bottom: max(14px, var(--vr-safe-bottom));
+    backdrop-filter: blur(18px);
+  }
+}
+
+/* Cabeçalho e menus internos ficam no topo da área de conteúdo. */
+.content > .topbar,
+.content .topbar {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 760 !important;
+  margin-inline: calc(clamp(18px, 2.2vw, 38px) * -1) !important;
+  padding-inline: clamp(18px, 2.2vw, 38px) !important;
+  padding-top: max(8px, var(--vr-safe-top)) !important;
+  backdrop-filter: blur(20px) saturate(140%);
+}
+
+.subTabs,
+.tabs,
+.panelTabs,
+.moduleTabs,
+.segmentedTabs,
+[role="tablist"] {
+  position: sticky !important;
+  top: clamp(68px, 8vw, 92px) !important;
+  z-index: 650 !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  scrollbar-width: none;
+  overscroll-behavior-inline: contain;
+  backdrop-filter: blur(18px) saturate(135%);
+}
+
+.subTabs::-webkit-scrollbar,
+.tabs::-webkit-scrollbar,
+.panelTabs::-webkit-scrollbar,
+.moduleTabs::-webkit-scrollbar,
+.segmentedTabs::-webkit-scrollbar,
+[role="tablist"]::-webkit-scrollbar {
+  display: none;
+}
+
+/* Cards e formulários: leitura mais limpa e sem sobreposição. */
+.panel,
+.card,
+.packageRegisterCard,
+.packageScanSummary article,
+.scannerHero,
+.noticeBox,
+.feedCard,
+.moduleCard {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.formGrid,
+.scannerActionsGrid,
+.packageScanSummary,
+.metricStrip,
+.moduleGrid {
+  align-items: stretch;
+}
+
+.formGrid label,
+.formGrid input,
+.formGrid select,
+.formGrid textarea,
+.formGrid button {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.packageScanSummary {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+}
+
+.packageScanSummary article span {
+  font-size: clamp(.98rem, 1.5vw, 1.18rem) !important;
+  line-height: 1.25 !important;
+}
+
+.packageUnifiedActions > * {
+  min-height: 52px;
+}
+
+/* Notificações discretas: não cobrem os campos nem a câmera. */
+.toast,
+#vr-call-toast {
+  position: fixed !important;
+  inset: max(12px, calc(var(--vr-safe-top) + 8px)) 14px auto auto !important;
+  width: min(360px, calc(100vw - 28px)) !important;
+  max-width: 360px !important;
+  min-height: 0 !important;
+  padding: 10px 13px !important;
+  border-radius: 14px !important;
+  font-size: .84rem !important;
+  line-height: 1.3 !important;
+  box-shadow: 0 12px 34px rgba(8, 40, 35, .2) !important;
+  z-index: 4200 !important;
+}
+
+/* Leitor em modo imersivo. O menu, rodapé e atalhos desaparecem só durante a câmera. */
+body.vr-scanner-open {
+  overflow: hidden !important;
+}
+
+body.vr-scanner-open .appShell > aside,
+body.vr-scanner-open .mobileMenu,
+body.vr-scanner-open .bottomNav,
+body.vr-scanner-open .floatingEmergency,
+body.vr-scanner-open footer,
+body.vr-scanner-open .appFooter,
+body.vr-scanner-open .vr-footer {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+.cameraReaderOverlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 5000 !important;
+  padding: 0 !important;
+  background: #081b18 !important;
+}
+
+.cameraReaderBox {
+  width: 100vw !important;
+  height: 100dvh !important;
+  max-width: none !important;
+  max-height: none !important;
+  border-radius: 0 !important;
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) auto auto !important;
+  overflow: hidden !important;
+  background: #071b18 !important;
+}
+
+.cameraReaderHead {
+  position: relative !important;
+  z-index: 4;
+  padding: max(12px, calc(var(--vr-safe-top) + 8px)) 16px 12px !important;
+  gap: 12px !important;
+  background: linear-gradient(180deg, rgba(6, 34, 29, .98), rgba(6, 34, 29, .78)) !important;
+}
+
+.cameraReaderHead small {
+  display: block;
+  max-width: 68ch;
+  margin-top: 3px;
+  font-size: .82rem !important;
+  line-height: 1.3;
+  opacity: .9;
+}
+
+.cameraReaderStage {
+  position: relative !important;
+  min-height: 0 !important;
+  height: auto !important;
+  overflow: hidden !important;
+  background: #020806 !important;
+}
+
+.cameraReaderStage video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+
+.cameraGuide {
+  inset: clamp(14px, 3vw, 38px) !important;
+  border-width: 3px !important;
+  border-radius: 24px !important;
+  box-shadow: 0 0 0 9999px rgba(0, 10, 8, .28), inset 0 0 0 1px rgba(255,255,255,.22) !important;
+}
+
+.cameraGuide > span {
+  top: 12px !important;
+  max-width: calc(100% - 28px);
+  padding: 9px 16px !important;
+  font-size: clamp(.95rem, 3.2vw, 1.18rem) !important;
+}
+
+.vr-auto-capture-status {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  width: min(92%, 520px);
+  padding: 9px 12px;
+  border-radius: 999px;
+  background: rgba(5, 28, 24, .88);
+  color: #fff;
+  text-align: center;
+  font-size: .78rem;
+  line-height: 1.25;
+  box-shadow: 0 8px 24px rgba(0,0,0,.3);
+}
+
+.vr-auto-capture-status[data-tone="warn"] { background: rgba(108, 64, 3, .92); }
+.vr-auto-capture-status[data-tone="ok"] { background: rgba(8, 92, 74, .94); }
+.vr-auto-capture-status[data-tone="ready"] { background: rgba(15, 126, 91, .98); }
+
+.cameraReaderActions {
+  position: relative !important;
+  z-index: 5;
+  display: grid !important;
+  grid-template-columns: minmax(110px, .7fr) minmax(150px, 1fr) minmax(150px, 1fr) !important;
+  gap: 10px !important;
+  padding: 12px 14px max(12px, var(--vr-safe-bottom)) !important;
+  background: rgba(248, 251, 250, .98) !important;
+}
+
+.cameraReaderActions > * {
+  min-width: 0 !important;
+  min-height: 52px !important;
+  margin: 0 !important;
+}
+
+.cameraReaderTip,
+.scannerDetectedBox {
+  position: absolute !important;
+  left: 16px;
+  right: 16px;
+  bottom: calc(82px + var(--vr-safe-bottom));
+  z-index: 6;
+  width: auto !important;
+  max-width: 520px;
+  margin-inline: auto;
+}
+
+.cameraReaderTip {
+  display: none !important;
+}
+
+.scannerDetectedBox {
+  padding: 8px 11px !important;
+  border-radius: 12px !important;
+  background: rgba(4, 35, 29, .9) !important;
+  color: #fff !important;
+  pointer-events: none;
+}
+
+.vr-auto-capturing .cameraGuide {
+  border-color: #58f0bd !important;
+  animation: vrCapturePulse .55s ease both;
+}
+
+@keyframes vrCapturePulse {
+  50% { transform: scale(.992); filter: brightness(1.16); }
+}
+
+/* Modal de chamadas: ocupa a área útil e não fica vazio atrás do menu. */
+#vr-telegram-call-root {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 4300 !important;
+  overflow: auto !important;
+  background: rgba(4, 24, 21, .45) !important;
+  padding: max(12px, var(--vr-safe-top)) 12px max(12px, var(--vr-safe-bottom)) !important;
+}
+
+#vr-telegram-call-root .vr-call-shell {
+  width: min(1180px, 100%) !important;
+  min-height: min(720px, calc(100dvh - 24px)) !important;
+  margin: 0 auto !important;
+  border-radius: 24px !important;
+  overflow: hidden !important;
+}
+
+#vr-telegram-call-root .vr-call-error {
+  min-height: 320px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  text-align: center;
+  gap: 10px;
+}
+
+@media (max-width: 860px) {
+  :root {
+    --vr-sticky-top: calc(var(--vr-safe-top) + 62px);
+  }
+
+  .appShell {
+    display: block !important;
+  }
+
+  .appShell > aside {
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    width: min(88vw, 330px) !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow: hidden auto !important;
+    transform: translateX(-105%) !important;
+    transition: transform .22s ease !important;
+    z-index: 2500 !important;
+  }
+
+  .appShell.mobile-open > aside {
+    transform: translateX(0) !important;
+  }
+
+  .appShell > main.content {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: calc(var(--safe-header-space, 68px) + var(--vr-safe-top)) 12px calc(94px + var(--vr-safe-bottom)) !important;
+  }
+
+  .mobileMenu {
+    position: fixed !important;
+    top: max(12px, calc(var(--vr-safe-top) + 8px)) !important;
+    left: 12px !important;
+    z-index: 2200 !important;
+    width: 50px !important;
+    height: 50px !important;
+    margin: 0 !important;
+  }
+
+  .content > .topbar,
+  .content .topbar {
+    top: 0 !important;
+    min-height: calc(62px + var(--vr-safe-top));
+    margin-inline: -12px !important;
+    padding-left: 74px !important;
+    padding-right: 12px !important;
+  }
+
+  .subTabs,
+  .tabs,
+  .panelTabs,
+  .moduleTabs,
+  .segmentedTabs,
+  [role="tablist"] {
+    top: calc(62px + var(--vr-safe-top)) !important;
+    margin-inline: -12px !important;
+    padding-inline: 12px !important;
+  }
+
+  .bottomNav {
+    position: fixed !important;
+    left: 10px !important;
+    right: 10px !important;
+    bottom: max(8px, var(--vr-safe-bottom)) !important;
+    width: auto !important;
+    z-index: 2000 !important;
+  }
+
+  .packageScanSummary {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .scannerActionsGrid,
+  .packageUnifiedActions {
+    grid-template-columns: 1fr !important;
+  }
+
+  .cameraReaderActions {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  .cameraReaderActions .confirmAction {
+    grid-column: 1 / -1 !important;
+    grid-row: 1 !important;
+  }
+
+  .cameraReaderActions .secondaryAction {
+    grid-column: 1 !important;
+  }
+
+  .cameraFallbackButton {
+    grid-column: 2 !important;
+  }
+
+  .toast,
+  #vr-call-toast {
+    inset: max(8px, calc(var(--vr-safe-top) + 6px)) 10px auto 70px !important;
+    width: auto !important;
+    max-width: none !important;
+  }
+
+  #vr-telegram-call-root {
+    padding: 0 !important;
+  }
+
+  #vr-telegram-call-root .vr-call-shell {
+    min-height: 100dvh !important;
+    border-radius: 0 !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .packageScanSummary {
+    grid-template-columns: 1fr !important;
+  }
+
+  .cameraGuide {
+    inset: 12px 10px !important;
+    border-radius: 18px !important;
+  }
+
+  .cameraReaderActions {
+    gap: 8px !important;
+    padding-inline: 10px !important;
+  }
+
+  .cameraReaderActions > * {
+    min-height: 48px !important;
+    font-size: .88rem !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .appShell > aside,
+  .appShell > main.content,
+  .vr-auto-capturing .cameraGuide {
+    transition: none !important;
+    animation: none !important;
+  }
+}
