@@ -54,7 +54,7 @@ test('visitantes recorrentes usam QR Code nativo sem reativar o script legado', 
   assert.match(main,/\/api\/visitor-invites\/verify/);
   assert.match(main,/confirm_entry:confirmEntry/);
   assert.match(main,/function VisitorQrVerifyModal/);
-  assert.match da semana para o visitante recorrente/);
+  assert.match(main,/Selecione ao menos um dia da semana para o visitante recorrente/);
   assert.match(main,/Gerar QR Code seguro/);
   assert.doesNotMatch(html,/<script[^>]+visitor-qr-v13\.js/);
 });
