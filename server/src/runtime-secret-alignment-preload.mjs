@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { createHash } from 'node:crypto';
 
 function sanitizeDatabaseUrl(value = '') {
