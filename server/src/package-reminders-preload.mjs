@@ -25,7 +25,7 @@ async function ensureSchema() {
     ]) await q(`ALTER TABLE packages ADD COLUMN IF NOT EXISTS ${column}`);
     await q('UPDATE packages SET reminder_enabled=true WHERE reminder_enabled IS NULL');
     await q('UPDATE packages SET reminder_interval_minutes=COALESCE(reminder_interval_minutes,180),max_reminders=COALESCE(max_reminders,4),reminder_count=COALESCE(reminder_count,0)');
-    await q("UPDATE packages SET next_reminder_at=COALESCE(next_reminder_at,created_at + interval '120 minutes') WHERE deleted_at IS NULL AND COALESCE(status,'')<>'entregue' AND reminder_enabled=true");
+    await q("UPDATE packages SET next_reminder_at=COALESCE(next_reminder_at,now() + interval '120 minutes') WHERE deleted_at IS NULL AND COALESCE(status,'')<>'entregue' AND reminder_enabled=true");
   })().catch(error=>{ schemaPromise=null; throw error; });
   return schemaPromise;
 }
@@ -65,7 +65,7 @@ async function createAppNotification(pack,resident,title,body) {
 
 async function deliverReminder(pack,{manual=false}={}) {
   const resident=await residentForPackage(pack);
-  if(!resident) return {ok:false,skipped:true,reason:'Morador não localizado.'};
+  if(!resident){ await q("UPDATE packages SET next_reminder_at=now()+interval '12 hours' WHERE id=$1",[pack.id]).catch(()=>null); return {ok:false,skipped:true,reason:'Morador não localizado.'}; }
   const body=reminderMessage(pack);
   const title=manual ? 'Lembrete de encomenda reenviado' : 'Lembrete: encomenda aguardando retirada';
   const channels={app:true,email:true,telegram:true,whatsapp:true,...parseJson(pack.reminder_channels,{})};
@@ -103,7 +103,7 @@ async function processDue() {
   processing=true;
   try {
     await ensureSchema();
-    const responses=(await q('SELECT * FROM packages WHERE deleted_at IS NULL AND resident_response_at IS NOT NULL AND response_email_notified_at IS NULL ORDER BY resident_response_at ASC LIMIT 20')).rows;
+    const responses=(await q("SELECT * FROM packages WHERE deleted_at IS NULL AND COALESCE(status,'')<>'entregue' AND resident_response_at IS NOT NULL AND response_email_notified_at IS NULL AND resident_response_at>now()-interval '24 hours' ORDER BY resident_response_at ASC LIMIT 20")).rows;
     for(const pack of responses) await notifyResponseByEmail(pack).catch(error=>console.warn('[package-reminders] resposta:',error.message));
     const due=(await q("SELECT * FROM packages WHERE deleted_at IS NULL AND reminder_enabled=true AND COALESCE(status,'')<>'entregue' AND COALESCE(reminder_count,0)<COALESCE(max_reminders,4) AND COALESCE(next_reminder_at,created_at+interval '120 minutes')<=now() ORDER BY COALESCE(next_reminder_at,created_at) ASC LIMIT 25")).rows;
     for(const pack of due) await deliverReminder(pack).catch(error=>console.warn('[package-reminders] lembrete:',error.message));
