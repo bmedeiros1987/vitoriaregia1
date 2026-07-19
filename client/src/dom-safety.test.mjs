@@ -45,3 +45,16 @@ test('encomendas reúne leitor, cadastro e histórico em uma única tela', () =>
   assert.match(main,/className="packageHistorySection"/);
   assert.match(main,/active === 'portaria' && sub === 'leitor' \? 'encomendas'/);
 });
+
+test('visitantes recorrentes usam QR Code nativo sem reativar o script legado', () => {
+  const main=read('src/main.jsx');
+  const html=read('index.html');
+  assert.match(main,/function VisitorQrPassModal/);
+  assert.match(main,/\/api\/visitor-invites/);
+  assert.match(main,/\/api\/visitor-invites\/verify/);
+  assert.match(main,/confirm_entry:confirmEntry/);
+  assert.match(main,/function VisitorQrVerifyModal/);
+  assert.match(main,/Selecione ao menos um dia da semana para o visitante recorrente/);
+  assert.match(main,/Gerar QR Code seguro/);
+  assert.doesNotMatch(html,/<script[^>]+visitor-qr-v13\.js/);
+});

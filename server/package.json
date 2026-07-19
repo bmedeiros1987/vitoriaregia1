@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch --import ./src/telegram-callmebot-ssl-hotfix.mjs --import ./src/visitor-qr-preload.mjs --import ./src/platform-preload.mjs src/index.js",
-    "build": "node --check src/telegram-callmebot-ssl-hotfix.mjs && node --check src/telegram-concierge-data.mjs && node --check src/telegram-concierge-audio.mjs && node --check src/telegram-concierge-preload.mjs && node --check src/telegram-callmebot-preload.mjs && node --check src/visitor-qr-preload.mjs && node --check src/platform-core.mjs && node --check src/platform-contract.mjs && node --check src/platform-asaas.mjs && node --check src/platform-preload.mjs && node --check src/index.js",
+    "test:regressions": "node --test src/operational-regressions.test.mjs",
+    "build": "npm run test:regressions && node --check src/telegram-call-classifier.mjs && node --check src/telegram-callmebot-ssl-hotfix.mjs && node --check src/telegram-concierge-data.mjs && node --check src/telegram-concierge-audio.mjs && node --check src/telegram-concierge-preload.mjs && node --check src/telegram-callmebot-preload.mjs && node --check src/visitor-qr-preload.mjs && node --check src/platform-core.mjs && node --check src/platform-contract.mjs && node --check src/platform-asaas.mjs && node --check src/platform-preload.mjs && node --check src/index.js",
     "start": "node --import ./src/telegram-callmebot-ssl-hotfix.mjs --import ./src/visitor-qr-preload.mjs --import ./src/platform-preload.mjs src/index.js"
   },
   "dependencies": {
