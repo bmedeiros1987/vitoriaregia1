@@ -6,4 +6,9 @@
 .vrDeletionRow:has(.vrDeleteButton:disabled){background:rgba(244,248,247,.9)}
 body.vr-focus-layer .appShell>main.content{filter:saturate(.82);pointer-events:none}
 body.vr-deletion-open .vrDeletionOverlay{pointer-events:auto}
+@media(min-width:861px){
+  .appShell>footer,.appShell>.appFooter,.appShell>.vr-footer{grid-column:2!important;margin-left:0!important;width:auto!important}
+  .appShell>.bottomNav{grid-column:2!important}
+  .appShell>.floatingEmergency{position:fixed!important}
+}
 @media(max-width:860px){.vrDeletionToast{position:fixed;bottom:max(14px,calc(env(safe-area-inset-bottom,0px) + 10px))}}
