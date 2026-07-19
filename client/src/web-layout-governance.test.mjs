@@ -47,7 +47,7 @@ test('núcleo React inicia antes das integrações auxiliares',()=>{
   const governance=html.indexOf('/deletion-governance-v14.js');
   assert.ok(oldCss>=0&&newCss>oldCss);
   assert.ok(react>=0&&intelligence>react&&governance>react);
-  assert.match(html,/<script async src="\/deletion-governance-v14\.js/);
+  assert.match(html,/<script defer src="\/deletion-governance-v14\.js/);
 });
 
 test('tela de inicialização nunca permanece vazia e possui recuperação de cache',()=>{
