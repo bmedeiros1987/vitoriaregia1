@@ -15,31 +15,37 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
-      - name: Locate active Render service
+      - name: Validate live login with headless Chrome
         shell: bash
         run: |
           set -uo pipefail
-          candidates=(
-            'https://regia-pro.onrender.com'
-            'https://vitoriaregia-pro.onrender.com'
-            'https://vitoria-regia-pro.onrender.com'
-            'https://vitoriaregia1.onrender.com'
-            'https://vitoria-regia-one.onrender.com'
-          )
-          for base in "${candidates[@]}"; do
-            echo
-            echo "================ $base ================"
-            curl -sS -L --max-time 45 -H 'Cache-Control: no-cache' -D /tmp/headers "$base/?diagnostic=$(date +%s)" -o /tmp/live || true
-            cat /tmp/headers || true
-            echo "body-size=$(wc -c </tmp/live 2>/dev/null || echo 0)"
-            head -c 1200 /tmp/live 2>/dev/null || true
-            echo
-            echo '--- markers ---'
-            grep -Eo '14\.0\.[0-9]+|20260719[a-z]|vr-boot-fallback|/assets/[^" ]+\.js|/src/main\.jsx' /tmp/live 2>/dev/null | head -40 || true
-            echo '--- health ---'
-            curl -sS -L --max-time 25 -o /tmp/health -w 'status=%{http_code} type=%{content_type} size=%{size_download}\n' "$base/api/health" || true
-            head -c 500 /tmp/health 2>/dev/null || true
-            echo
+          base='https://vitoriaregia-pro.onrender.com'
+          echo '=== HTML AND ASSETS ==='
+          curl -sS -L --max-time 45 -H 'Cache-Control: no-cache' "$base/?diagnostic=$(date +%s)" -o /tmp/live.html
+          grep -Eo '/assets/[^" ]+\.(js|css)' /tmp/live.html | sort -u | tee /tmp/assets.txt || true
+          while read -r asset; do
+            [ -z "$asset" ] && continue
+            curl -sS -L --max-time 35 -o /tmp/asset -w "$asset status=%{http_code} type=%{content_type} size=%{size_download}\n" "$base$asset" || true
+          done </tmp/assets.txt
+          echo
+          echo '=== HEADLESS DOM ==='
+          browser=''
+          for candidate in google-chrome-stable google-chrome chromium chromium-browser; do
+            if command -v "$candidate" >/dev/null 2>&1; then browser="$candidate"; break; fi
           done
+          echo "browser=$browser"
+          if [ -n "$browser" ]; then
+            timeout 90 "$browser" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --virtual-time-budget=15000 --dump-dom "$base/?diagnostic=$(date +%s)" >/tmp/dom.html 2>/tmp/chrome.log || true
+            echo "dom-size=$(wc -c </tmp/dom.html 2>/dev/null || echo 0)"
+            grep -Ein 'login|entrar|email|senha|vr-boot-fallback|erro|error|root' /tmp/dom.html | head -100 || true
+            echo '--- chrome log ---'
+            tail -120 /tmp/chrome.log || true
+          fi
+          echo
+          echo '=== API ==='
+          curl -sS -L --max-time 35 -D /tmp/api.headers "$base/api/settings/public" -o /tmp/api.body || true
+          cat /tmp/api.headers
+          head -c 1200 /tmp/api.body
+          echo
