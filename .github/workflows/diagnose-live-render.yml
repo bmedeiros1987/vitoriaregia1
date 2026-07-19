@@ -22,4 +22,9 @@ jobs:
         shell: bash
         run: |
           python3 -m pip install --quiet websocket-client requests
-          python3 .github/scripts/diagnose_live.py
+          python3 .github/scripts/diagnose_live.py > live-diagnostic.txt 2>&1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: live-render-diagnostic
+          path: live-diagnostic.txt
+          if-no-files-found: error
