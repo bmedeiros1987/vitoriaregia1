@@ -1,8 +1,8 @@
 {
   "name": "vitoria-regia-one",
-  "version": "14.0.6",
+  "version": "14.0.7",
   "private": true,
-  "description": "Vitória Régia One v14.0.6: recuperação definitiva do layout web, sidebar fixa e estado de foco seguro.",
+  "description": "Vitória Régia One v14.0.7: largura web corrigida, scroll contínuo e shell sem recuos duplicados.",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "npm --prefix client run dev",

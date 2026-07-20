@@ -9,8 +9,8 @@ test('HTML não carrega extensões que substituem elementos controlados pelo Rea
   for(const unsafe of ['telegram-calls-menu-hotfix.js','vitoria-one-v13-nav.js','visitor-qr-v13.js','sindico-one-v14.js']){
     assert.doesNotMatch(html,new RegExp(`<script[^>]+${unsafe.replaceAll('.','\\.')}`));
   }
-  assert.match(html,/telegram-calls\.js\?v=20260719g/);
-  assert.match(html,/vitoria-one-v13-core\.js\?v=20260719g/);
+  assert.match(html,/telegram-calls\.js\?v=20260719h/);
+  assert.match(html,/vitoria-one-v13-core\.js\?v=20260719h/);
 });
 
 test('núcleo visual não remove, insere ou reescreve filhos do React', () => {

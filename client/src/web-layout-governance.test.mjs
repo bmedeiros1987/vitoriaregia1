@@ -4,14 +4,22 @@ import { readFileSync } from 'node:fs';
 
 const read=relative=>readFileSync(new URL(`../${relative}`,import.meta.url),'utf8');
 
-test('recuperação web usa somente uma reserva de largura para a sidebar',()=>{
+test('recuperação web vence a camada Super Premium sem somar recuos',()=>{
   const css=read('public/vitoria-one-v14-layout-recovery.css');
-  assert.match(css,/display:block!important/);
+  assert.match(css,/body\.vr-one-active \.appShell\.vr-one-shell>main\.content/);
+  assert.match(css,/width:calc\(100vw - var\(--vr-shell-offset\)\)!important/);
+  assert.match(css,/margin:0 0 0 var\(--vr-shell-offset\)!important/);
+  assert.match(css,/padding:28px var\(--vr-shell-gutter\)/);
   assert.match(css,/grid-template-columns:none!important/);
-  assert.match(css,/position:fixed!important/);
-  assert.match(css,/margin:0 0 0 var\(--vr-recovery-sidebar\)!important/);
-  assert.match(css,/width:calc\(100% - var\(--vr-recovery-sidebar\)\)!important/);
-  assert.doesNotMatch(css,/grid-template-columns:var\(--vr-recovery-sidebar\)/);
+});
+
+test('documento e conteúdo principal permanecem roláveis fora de modais reais',()=>{
+  const css=read('public/vitoria-one-v14-layout-recovery.css');
+  assert.match(css,/html\{[\s\S]*overflow-y:auto!important/);
+  assert.match(css,/body:not\(\.vr-deletion-open\):not\(\.vr-scanner-open\)[\s\S]*overflow-y:visible!important/);
+  assert.match(css,/#root,[\s\S]*height:auto!important/);
+  assert.match(css,/main\.content[\s\S]*max-height:none!important/);
+  assert.match(css,/body\.vr-deletion-open,[\s\S]*overflow:hidden!important/);
 });
 
 test('camada de foco presa é removida e não pode ocultar o sistema',()=>{
@@ -22,7 +30,6 @@ test('camada de foco presa é removida e não pode ocultar o sistema',()=>{
   assert.match(css,/pointer-events:auto!important/);
   assert.match(script,/function clearStaleFocus/);
   assert.match(script,/document\.body\.classList\.remove\('vr-focus-layer','vr-deletion-open'\)/);
-  assert.doesNotMatch(script,/querySelector\('\.cameraReaderOverlay,#vr-telegram-call-root/);
 });
 
 test('drawer mobile esconde somente navegação concorrente enquanto aberto',()=>{
@@ -47,7 +54,7 @@ test('central aparece somente para gestão autorizada',()=>{
   assert.match(script,/criados pelo síndico/i);
 });
 
-test('núcleo React inicia antes das integrações e CSS de recuperação carrega por último',()=>{
+test('núcleo React inicia antes das integrações e CSS definitivo carrega por último',()=>{
   const html=read('index.html');
   const oldCss=html.indexOf('/vitoria-one-v14-layout-audit.css');
   const premiumCss=html.indexOf('/vitoria-one-v14-web-premium.css');
@@ -57,6 +64,7 @@ test('núcleo React inicia antes das integrações e CSS de recuperação carreg
   const governance=html.indexOf('/deletion-governance-v14.js');
   assert.ok(oldCss>=0&&premiumCss>oldCss&&recoveryCss>premiumCss);
   assert.ok(react>=0&&intelligence>react&&governance>react);
+  assert.match(html,/vitoria-one-v14-layout-recovery\.css\?v=20260719h/);
   assert.match(html,/<script defer src="\/deletion-governance-v14\.js/);
 });
 

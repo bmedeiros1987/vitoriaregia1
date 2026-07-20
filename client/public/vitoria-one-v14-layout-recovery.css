@@ -1,38 +1,85 @@
-/* Vitória Régia One v14.0.5 — recuperação definitiva do shell web */
+/* Vitória Régia One v14.0.7 — shell web, largura e rolagem definitivos */
 :root{
-  --vr-recovery-sidebar:286px;
-  --vr-recovery-sidebar-compact:88px;
-  --vr-recovery-gutter:clamp(18px,2vw,34px);
-  --vr-recovery-max:1500px;
+  --vr-shell-sidebar:288px;
+  --vr-shell-sidebar-gap:18px;
+  --vr-shell-offset:324px;
+  --vr-shell-sidebar-compact:82px;
+  --vr-shell-offset-compact:122px;
+  --vr-shell-gutter:28px;
+  --vr-shell-max:1680px;
+  --vr-safe-top:env(safe-area-inset-top,0px);
+  --vr-safe-bottom:env(safe-area-inset-bottom,0px);
 }
 
 *,*::before,*::after{box-sizing:border-box}
-html,body,#root,.appShell{width:100%;min-width:0;max-width:100%}
+html{
+  width:100%!important;
+  min-width:0!important;
+  min-height:100%!important;
+  height:auto!important;
+  max-height:none!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  scroll-behavior:smooth;
+}
+body:not(.vr-deletion-open):not(.vr-scanner-open){
+  width:100%!important;
+  min-width:0!important;
+  min-height:100vh!important;
+  height:auto!important;
+  max-height:none!important;
+  overflow-x:hidden!important;
+  overflow-y:visible!important;
+  position:static!important;
+  touch-action:pan-x pan-y!important;
+  overscroll-behavior-y:auto!important;
+}
+#root,
+body:not(.vr-deletion-open):not(.vr-scanner-open) #root,
+body:not(.vr-deletion-open):not(.vr-scanner-open) .appShell,
+body:not(.vr-deletion-open):not(.vr-scanner-open) .appShell.vr-one-shell{
+  width:100%!important;
+  min-width:0!important;
+  min-height:100vh!important;
+  height:auto!important;
+  max-height:none!important;
+  overflow:visible!important;
+}
 
 /*
- * Regra única no desktop: sidebar fixa + uma única margem no conteúdo.
- * A versão anterior misturava grid com margin-left e reservava o menu duas vezes.
+ * A camada Super Premium usa seletores fortes. Estes seletores têm força
+ * equivalente ou maior para impedir width:100% + padding-left + margin-left.
  */
 @media (min-width:861px){
-  html body .appShell,
-  html body .appShell.menu-vertical{
+  html body.vr-one-active .appShell.vr-one-shell,
+  html body .appShell.vr-one-shell,
+  html body .appShell{
     display:block!important;
     grid-template-columns:none!important;
-    width:100%!important;
-    min-height:100dvh!important;
+    min-height:100vh!important;
+    height:auto!important;
+    max-height:none!important;
+    overflow:visible!important;
   }
 
+  html body.vr-one-active .appShell.vr-one-shell>aside,
+  html body .appShell.vr-one-shell>aside,
   html body .appShell>aside{
     position:fixed!important;
-    inset:0 auto 0 0!important;
+    left:var(--vr-shell-sidebar-gap)!important;
+    right:auto!important;
+    top:var(--vr-shell-sidebar-gap)!important;
+    bottom:var(--vr-shell-sidebar-gap)!important;
+    inset:var(--vr-shell-sidebar-gap) auto var(--vr-shell-sidebar-gap) var(--vr-shell-sidebar-gap)!important;
+    width:var(--vr-shell-sidebar)!important;
+    min-width:var(--vr-shell-sidebar)!important;
+    max-width:var(--vr-shell-sidebar)!important;
+    height:auto!important;
+    min-height:0!important;
+    max-height:calc(100dvh - (var(--vr-shell-sidebar-gap) * 2))!important;
     display:flex!important;
     flex-direction:column!important;
-    width:var(--vr-recovery-sidebar)!important;
-    min-width:var(--vr-recovery-sidebar)!important;
-    max-width:var(--vr-recovery-sidebar)!important;
-    height:100dvh!important;
-    max-height:100dvh!important;
-    overflow:hidden auto!important;
+    overflow:hidden!important;
     opacity:1!important;
     visibility:visible!important;
     transform:none!important;
@@ -40,30 +87,59 @@ html,body,#root,.appShell{width:100%;min-width:0;max-width:100%}
     z-index:1200!important;
   }
 
-  html body .appShell.menu-closed>aside{
-    width:var(--vr-recovery-sidebar-compact)!important;
-    min-width:var(--vr-recovery-sidebar-compact)!important;
-    max-width:var(--vr-recovery-sidebar-compact)!important;
+  html body.vr-one-active .appShell.vr-one-shell>aside nav,
+  html body .appShell>aside nav{
+    min-height:0!important;
+    overflow-x:hidden!important;
+    overflow-y:auto!important;
+    overscroll-behavior:contain;
+    scrollbar-width:thin;
   }
 
+  html body.vr-one-active .appShell.vr-one-shell.menu-closed>aside,
+  html body .appShell.menu-closed>aside{
+    width:var(--vr-shell-sidebar-compact)!important;
+    min-width:var(--vr-shell-sidebar-compact)!important;
+    max-width:var(--vr-shell-sidebar-compact)!important;
+  }
+
+  html body.vr-one-active .appShell.vr-one-shell>main.content,
+  html body .appShell.vr-one-shell>main.content,
   html body .appShell>main.content{
     display:block!important;
     grid-column:auto!important;
-    width:calc(100% - var(--vr-recovery-sidebar))!important;
-    max-width:none!important;
+    position:relative!important;
+    left:auto!important;
+    right:auto!important;
+    top:auto!important;
+    width:calc(100vw - var(--vr-shell-offset))!important;
     min-width:0!important;
-    min-height:100dvh!important;
-    margin:0 0 0 var(--vr-recovery-sidebar)!important;
-    padding:0 var(--vr-recovery-gutter) clamp(34px,4vw,64px)!important;
-    overflow:visible!important;
-    filter:none;
+    max-width:none!important;
+    min-height:100vh!important;
+    height:auto!important;
+    max-height:none!important;
+    margin:0 0 0 var(--vr-shell-offset)!important;
+    padding:28px var(--vr-shell-gutter) max(72px,calc(44px + var(--vr-safe-bottom)))!important;
+    overflow-x:visible!important;
+    overflow-y:visible!important;
+    contain:none!important;
+    transform:none!important;
+    filter:none!important;
   }
 
+  html body.vr-one-active .appShell.vr-one-shell.menu-closed>main.content,
   html body .appShell.menu-closed>main.content{
-    width:calc(100% - var(--vr-recovery-sidebar-compact))!important;
-    margin-left:var(--vr-recovery-sidebar-compact)!important;
+    width:calc(100vw - var(--vr-shell-offset-compact))!important;
+    margin-left:var(--vr-shell-offset-compact)!important;
+    padding-left:var(--vr-shell-gutter)!important;
   }
 
+  html body.vr-one-active .appShell.vr-one-shell>main.content>.topbar,
+  html body.vr-one-active .appShell.vr-one-shell>main.content>.dashboard,
+  html body.vr-one-active .appShell.vr-one-shell>main.content>.panel,
+  html body.vr-one-active .appShell.vr-one-shell>main.content>.stack,
+  html body.vr-one-active .appShell.vr-one-shell>main.content>section,
+  html body.vr-one-active .appShell.vr-one-shell>main.content>div:not(.toast),
   html body .appShell>main.content>.topbar,
   html body .appShell>main.content>.dashboard,
   html body .appShell>main.content>.panel,
@@ -71,24 +147,77 @@ html,body,#root,.appShell{width:100%;min-width:0;max-width:100%}
   html body .appShell>main.content>section,
   html body .appShell>main.content>div:not(.toast){
     width:100%!important;
-    max-width:var(--vr-recovery-max)!important;
+    min-width:0!important;
+    max-width:var(--vr-shell-max)!important;
+    height:auto!important;
+    max-height:none!important;
     margin-left:auto!important;
     margin-right:auto!important;
+    overflow:visible!important;
   }
 
+  html body.vr-one-active .appShell.vr-one-shell>main.content>.topbar,
   html body .appShell>main.content>.topbar{
+    position:relative!important;
+    top:auto!important;
     display:flex!important;
     opacity:1!important;
     visibility:visible!important;
     pointer-events:auto!important;
     margin-top:0!important;
-    margin-bottom:clamp(16px,1.8vw,26px)!important;
+    margin-bottom:20px!important;
   }
 }
 
-/* Falha segura: uma classe de foco antiga nunca mais pode esconder a aplicação. */
+/* Libera páginas e painéis que herdaram altura fixa de camadas anteriores. */
+body:not(.vr-deletion-open):not(.vr-scanner-open) main.content,
+body:not(.vr-deletion-open):not(.vr-scanner-open) main.content>.dashboard,
+body:not(.vr-deletion-open):not(.vr-scanner-open) main.content>.stack,
+body:not(.vr-deletion-open):not(.vr-scanner-open) main.content>.panel,
+body:not(.vr-deletion-open):not(.vr-scanner-open) main.content>.page,
+body:not(.vr-deletion-open):not(.vr-scanner-open) main.content>.pageShell,
+body:not(.vr-deletion-open):not(.vr-scanner-open) main.content>.moduleShell{
+  min-height:0!important;
+  height:auto!important;
+  max-height:none!important;
+  overflow-y:visible!important;
+}
+
+body:not(.vr-deletion-open):not(.vr-scanner-open) .content .panel,
+body:not(.vr-deletion-open):not(.vr-scanner-open) .content .subpanel,
+body:not(.vr-deletion-open):not(.vr-scanner-open) .content .card,
+body:not(.vr-deletion-open):not(.vr-scanner-open) .content .noticeBox,
+body:not(.vr-deletion-open):not(.vr-scanner-open) .content .formGrid,
+body:not(.vr-deletion-open):not(.vr-scanner-open) .content .premiumForm{
+  min-width:0!important;
+  max-width:100%!important;
+}
+
+body:not(.vr-deletion-open):not(.vr-scanner-open) .content .formGrid,
+body:not(.vr-deletion-open):not(.vr-scanner-open) .content .premiumForm{
+  width:100%!important;
+  height:auto!important;
+  max-height:none!important;
+  align-items:start!important;
+}
+
+body:not(.vr-deletion-open):not(.vr-scanner-open) .content .formGrid>*,
+body:not(.vr-deletion-open):not(.vr-scanner-open) .content .premiumForm>*{
+  min-width:0!important;
+  max-width:100%!important;
+}
+
+.content textarea{resize:vertical!important;min-height:124px}
+.content button,.content input,.content select,.content textarea{max-width:100%!important}
+.tableWrap,.tableContainer,.dataTableWrap{max-width:100%!important;overflow-x:auto!important;overflow-y:visible!important}
+
+/* Classe órfã nunca bloqueia a página. */
 body.vr-focus-layer:not(.vr-deletion-open):not(.vr-scanner-open){
-  overflow:auto!important;
+  overflow-x:hidden!important;
+  overflow-y:visible!important;
+  height:auto!important;
+  max-height:none!important;
+  position:static!important;
 }
 body.vr-focus-layer:not(.vr-deletion-open):not(.vr-scanner-open) .appShell>aside,
 body.vr-focus-layer:not(.vr-deletion-open):not(.vr-scanner-open) .appShell .bottomNav,
@@ -102,50 +231,14 @@ body.vr-focus-layer:not(.vr-deletion-open):not(.vr-scanner-open) .appShell [role
   visibility:visible!important;
   pointer-events:auto!important;
 }
-body.vr-focus-layer:not(.vr-deletion-open):not(.vr-scanner-open) .appShell>main.content{
-  filter:none!important;
-  pointer-events:auto!important;
-}
 
-/* Hierarquia e densidade premium para a área útil. */
-.content>.dashboard,
-.content>.panel,
-.content>.stack{
-  min-width:0!important;
+/* Bloqueio de fundo somente em camadas abertas de verdade. */
+body.vr-deletion-open,
+body.vr-scanner-open{
+  overflow:hidden!important;
+  height:100dvh!important;
+  max-height:100dvh!important;
 }
-.content .panel,
-.content .subpanel,
-.content .card,
-.content .noticeBox{
-  max-width:100%!important;
-}
-.content .formGrid,
-.content .premiumForm{
-  width:100%!important;
-  min-width:0!important;
-  align-items:start!important;
-}
-.content .formGrid>*,
-.content .premiumForm>*{
-  min-width:0!important;
-  max-width:100%!important;
-}
-.content textarea{resize:vertical;min-height:124px}
-.content button,.content input,.content select,.content textarea{max-width:100%}
-
-/* Abas e cabeçalhos internos permanecem legíveis sem cobrir o conteúdo. */
-.content .subTabs,
-.content .tabs,
-.content .panelTabs,
-.content .moduleTabs,
-.content .segmentedTabs,
-.content [role="tablist"]{
-  width:100%!important;
-  max-width:100%!important;
-  z-index:640!important;
-}
-
-/* Somente camadas realmente abertas escondem a navegação concorrente. */
 body.vr-deletion-open .appShell>aside,
 body.vr-deletion-open .appShell .bottomNav,
 body.vr-deletion-open .appShell .mobileMenu,
@@ -157,31 +250,43 @@ body.vr-deletion-open .appShell .content>.topbar{
 }
 
 @media (max-width:860px){
-  html body .appShell{display:block!important;width:100%!important}
+  :root{--vr-shell-gutter:12px}
+  html{overflow-y:auto!important}
+  body:not(.vr-deletion-open):not(.vr-scanner-open){overflow-y:visible!important}
+  html body.vr-one-active .appShell.vr-one-shell,
+  html body .appShell{display:block!important;width:100%!important;height:auto!important;overflow:visible!important}
+  html body.vr-one-active .appShell.vr-one-shell>main.content,
   html body .appShell>main.content,
   html body .appShell.menu-closed>main.content{
     width:100%!important;
+    min-width:0!important;
     max-width:100%!important;
+    min-height:100vh!important;
+    height:auto!important;
+    max-height:none!important;
     margin:0!important;
-    padding-left:12px!important;
-    padding-right:12px!important;
+    padding:calc(76px + var(--vr-safe-top)) 12px max(104px,calc(76px + var(--vr-safe-bottom)))!important;
+    overflow:visible!important;
   }
+  html body.vr-one-active .appShell.vr-one-shell>aside,
   html body .appShell>aside{
     position:fixed!important;
     inset:0 auto 0 0!important;
-    display:flex!important;
     width:min(88vw,330px)!important;
     min-width:0!important;
     max-width:min(88vw,330px)!important;
     height:100dvh!important;
+    max-height:100dvh!important;
+    transform:translateX(-105%)!important;
     opacity:1!important;
     visibility:visible!important;
-    transform:translateX(-105%)!important;
     pointer-events:auto!important;
     z-index:2600!important;
   }
   html body .appShell.mobile-open>aside{transform:translateX(0)!important}
   html body .appShell>main.content>.topbar{
+    position:sticky!important;
+    top:0!important;
     display:flex!important;
     opacity:1!important;
     visibility:visible!important;
@@ -190,9 +295,14 @@ body.vr-deletion-open .appShell .content>.topbar{
 }
 
 @media (min-width:861px) and (max-width:1180px){
-  :root{--vr-recovery-sidebar:250px;--vr-recovery-gutter:18px}
+  :root{
+    --vr-shell-sidebar:250px;
+    --vr-shell-offset:286px;
+    --vr-shell-gutter:18px;
+  }
 }
 
 @media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
   .appShell>aside,.appShell>main.content{transition:none!important}
 }
