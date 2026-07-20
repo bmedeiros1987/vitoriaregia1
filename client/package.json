@@ -1,6 +1,6 @@
 {
   "name": "vitoria-regia-one-client",
-  "version": "14.0.6",
+  "version": "14.0.7",
   "private": true,
   "type": "module",
   "scripts": {
@@ -22,5 +22,5 @@
   "engines": {
     "node": "20.19.0"
   },
-  "description": "Vitória Régia One v14.0.6 com recuperação definitiva do shell, sidebar fixa e navegação protegida."
+  "description": "Vitória Régia One v14.0.7 com largura web corrigida e rolagem contínua."
 }
