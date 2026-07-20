@@ -32,8 +32,9 @@
       '.reservationRsvpOverlay'
     ];
     for (const selector of selectors) {
-      const nodes = document.querySelectorAll(selector);
-      for (const node of nodes) if (isVisible(node)) return node;
+      for (const node of document.querySelectorAll(selector)) {
+        if (isVisible(node)) return node;
+      }
     }
     return null;
   }
@@ -42,13 +43,6 @@
     if (!node) return;
     if (node.style.getPropertyValue(property) === value && node.style.getPropertyPriority(property) === 'important') return;
     node.style.setProperty(property, value, 'important');
-  }
-
-  function clearInlineLock(node) {
-    if (!node) return;
-    for (const property of ['overflow', 'overflow-x', 'overflow-y', 'height', 'max-height', 'position', 'top', 'right', 'bottom', 'left', 'touch-action', 'overscroll-behavior']) {
-      node.style.removeProperty(property);
-    }
   }
 
   function unlockDocument() {
@@ -61,12 +55,6 @@
     body.classList.remove('vr-scroll-lock-active');
     for (const className of staleLockClasses) body.classList.remove(className);
 
-    clearInlineLock(html);
-    clearInlineLock(body);
-    clearInlineLock(root);
-    clearInlineLock(shell);
-    clearInlineLock(content);
-
     setImportant(html, 'overflow-x', 'hidden');
     setImportant(html, 'overflow-y', 'scroll');
     setImportant(html, 'height', 'auto');
@@ -77,12 +65,19 @@
     setImportant(body, 'height', 'auto');
     setImportant(body, 'max-height', 'none');
     setImportant(body, 'position', 'static');
+    setImportant(body, 'top', 'auto');
+    setImportant(body, 'right', 'auto');
+    setImportant(body, 'bottom', 'auto');
+    setImportant(body, 'left', 'auto');
     setImportant(body, 'touch-action', 'pan-x pan-y');
+    setImportant(body, 'overscroll-behavior', 'auto');
 
     for (const node of [root, shell, content]) {
       setImportant(node, 'height', 'auto');
       setImportant(node, 'max-height', 'none');
       setImportant(node, 'overflow-y', 'visible');
+      setImportant(node, 'touch-action', 'pan-x pan-y');
+      setImportant(node, 'overscroll-behavior-y', 'auto');
     }
     if (root) setImportant(root, 'min-height', '100vh');
     if (shell) {
@@ -97,14 +92,13 @@
   }
 
   function lockDocument() {
-    document.body.classList.add('vr-scroll-lock-active');
+    if (!document.body.classList.contains('vr-scroll-lock-active')) document.body.classList.add('vr-scroll-lock-active');
   }
 
   function synchronize() {
     scheduled = false;
     if (!document.body) return;
-    const blockingLayer = realBlockingLayer();
-    if (blockingLayer) lockDocument();
+    if (realBlockingLayer()) lockDocument();
     else unlockDocument();
   }
 
