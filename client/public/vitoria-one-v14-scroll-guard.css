@@ -1,0 +1,99 @@
+/* Vitória Régia One v14.0.8 — guardião definitivo de rolagem */
+
+html{
+  min-height:100%!important;
+  height:auto!important;
+  max-height:none!important;
+  overflow-x:hidden!important;
+  overflow-y:scroll!important;
+  overscroll-behavior-y:auto!important;
+  scrollbar-gutter:stable;
+}
+
+/*
+ * Qualquer classe legada de menu/modal deixa de bloquear a página.
+ * O bloqueio válido é controlado exclusivamente por vr-scroll-lock-active.
+ */
+html body:not(.vr-scroll-lock-active){
+  min-height:100vh!important;
+  height:auto!important;
+  max-height:none!important;
+  overflow-x:hidden!important;
+  overflow-y:visible!important;
+  position:static!important;
+  inset:auto!important;
+  touch-action:pan-x pan-y!important;
+  overscroll-behavior-y:auto!important;
+}
+
+html body:not(.vr-scroll-lock-active) #root,
+html body:not(.vr-scroll-lock-active) .appShell,
+html body:not(.vr-scroll-lock-active) .appShell.vr-one-shell,
+html body:not(.vr-scroll-lock-active) main.content{
+  min-height:100vh!important;
+  height:auto!important;
+  max-height:none!important;
+  overflow-y:visible!important;
+  overscroll-behavior-y:auto!important;
+  touch-action:pan-x pan-y!important;
+}
+
+html body:not(.vr-scroll-lock-active) #root,
+html body:not(.vr-scroll-lock-active) .appShell,
+html body:not(.vr-scroll-lock-active) .appShell.vr-one-shell{
+  position:relative!important;
+  top:auto!important;
+  right:auto!important;
+  bottom:auto!important;
+  left:auto!important;
+}
+
+html body:not(.vr-scroll-lock-active) main.content{
+  position:relative!important;
+  top:auto!important;
+  bottom:auto!important;
+  contain:none!important;
+  clip:auto!important;
+}
+
+html body:not(.vr-scroll-lock-active) main.content > *,
+html body:not(.vr-scroll-lock-active) main.content .dashboard,
+html body:not(.vr-scroll-lock-active) main.content .stack,
+html body:not(.vr-scroll-lock-active) main.content .panel,
+html body:not(.vr-scroll-lock-active) main.content .page,
+html body:not(.vr-scroll-lock-active) main.content .pageShell,
+html body:not(.vr-scroll-lock-active) main.content .moduleShell,
+html body:not(.vr-scroll-lock-active) main.content .buildingFeedPremium{
+  height:auto!important;
+  max-height:none!important;
+}
+
+/* Camadas que realmente ocupam toda a tela continuam bloqueando o fundo. */
+html body.vr-scroll-lock-active{
+  height:100dvh!important;
+  max-height:100dvh!important;
+  overflow:hidden!important;
+  touch-action:none!important;
+  overscroll-behavior:none!important;
+}
+
+/* No desktop, classes antigas nunca podem reativar overflow hidden. */
+@media (min-width:861px){
+  html body.vr-mobile-menu-lock:not(.vr-scroll-lock-active),
+  html body.vr-sidebar-drawer-open:not(.vr-scroll-lock-active),
+  html body.vr-presentation-modal-open:not(.vr-scroll-lock-active),
+  html body.vr-focus-layer:not(.vr-scroll-lock-active){
+    height:auto!important;
+    max-height:none!important;
+    overflow-x:hidden!important;
+    overflow-y:visible!important;
+    position:static!important;
+    touch-action:pan-x pan-y!important;
+  }
+}
+
+@media (max-width:860px){
+  html{overflow-y:auto!important;scrollbar-gutter:auto}
+  html body:not(.vr-scroll-lock-active){overflow-y:visible!important}
+  html body:not(.vr-scroll-lock-active) main.content{min-height:100dvh!important}
+}
