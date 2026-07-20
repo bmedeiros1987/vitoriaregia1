@@ -18,7 +18,7 @@ function sanitizeDatabaseUrl(value = '') {
 }
 
 if (!String(process.env.APP_VERSION || '').trim()) {
-  process.env.APP_VERSION = 'Vitória Régia One v14.0.6';
+  process.env.APP_VERSION = 'Vitória Régia One v14.0.7';
 }
 
 if (!String(process.env.JWT_SECRET || '').trim()) {
