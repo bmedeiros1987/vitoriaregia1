@@ -1,8 +1,8 @@
 {
   "name": "vitoria-regia-one",
-  "version": "14.0.7",
+  "version": "14.0.8",
   "private": true,
-  "description": "Vitória Régia One v14.0.7: largura web corrigida, scroll contínuo e shell sem recuos duplicados.",
+  "description": "Vitória Régia One v14.0.8: guardião automático de rolagem e remoção de travas órfãs.",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "npm --prefix client run dev",
