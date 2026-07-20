@@ -22,6 +22,19 @@ test('documento e conteúdo principal permanecem roláveis fora de modais reais'
   assert.match(css,/body\.vr-deletion-open,[\s\S]*overflow:hidden!important/);
 });
 
+test('guardião final remove travas órfãs e só bloqueia com camada visível',()=>{
+  const css=read('public/vitoria-one-v14-scroll-guard.css');
+  const script=read('public/vitoria-one-v14-scroll-guard.js');
+  assert.match(css,/body:not\(\.vr-scroll-lock-active\)/);
+  assert.match(css,/overflow-y:scroll!important/);
+  assert.match(css,/body\.vr-scroll-lock-active[\s\S]*overflow:hidden!important/);
+  assert.match(script,/function realBlockingLayer/);
+  assert.match(script,/function unlockDocument/);
+  assert.match(script,/staleLockClasses/);
+  assert.match(script,/window\.__vrEnsurePageScroll/);
+  assert.doesNotMatch(script,/function clearInlineLock/);
+});
+
 test('camada de foco presa é removida e não pode ocultar o sistema',()=>{
   const css=read('public/vitoria-one-v14-layout-recovery.css');
   const script=read('public/deletion-governance-v14.js');
@@ -54,18 +67,21 @@ test('central aparece somente para gestão autorizada',()=>{
   assert.match(script,/criados pelo síndico/i);
 });
 
-test('núcleo React inicia antes das integrações e CSS definitivo carrega por último',()=>{
+test('núcleo React inicia antes das integrações e guardião carrega por último',()=>{
   const html=read('index.html');
   const oldCss=html.indexOf('/vitoria-one-v14-layout-audit.css');
   const premiumCss=html.indexOf('/vitoria-one-v14-web-premium.css');
   const recoveryCss=html.indexOf('/vitoria-one-v14-layout-recovery.css');
+  const scrollCss=html.indexOf('/vitoria-one-v14-scroll-guard.css');
   const react=html.indexOf('/src/main.jsx');
   const intelligence=html.indexOf('/package-intelligence-v14.js');
   const governance=html.indexOf('/deletion-governance-v14.js');
-  assert.ok(oldCss>=0&&premiumCss>oldCss&&recoveryCss>premiumCss);
-  assert.ok(react>=0&&intelligence>react&&governance>react);
-  assert.match(html,/vitoria-one-v14-layout-recovery\.css\?v=20260719h/);
-  assert.match(html,/<script defer src="\/deletion-governance-v14\.js/);
+  const core=html.indexOf('/vitoria-one-v13-core.js');
+  const scrollScript=html.indexOf('/vitoria-one-v14-scroll-guard.js');
+  assert.ok(oldCss>=0&&premiumCss>oldCss&&recoveryCss>premiumCss&&scrollCss>recoveryCss);
+  assert.ok(react>=0&&intelligence>react&&governance>react&&scrollScript>core);
+  assert.match(html,/vitoria-one-v14-scroll-guard\.css\?v=20260720a/);
+  assert.match(html,/vitoria-one-v14-scroll-guard\.js\?v=20260720a/);
 });
 
 test('tela de inicialização nunca permanece vazia e possui recuperação de cache',()=>{
